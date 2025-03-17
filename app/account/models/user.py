@@ -20,11 +20,11 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone, password):
+    def create_superuser(self, phone_number, password):
         """
         Создаёт суперпользователя.
         """
-        user = self.create_user(phone, password)
+        user = self.create_user(phone_number, password)
         user.is_admin = True
         user.is_staff = True
         user.is_superuser = True
@@ -89,7 +89,7 @@ class User(AbstractUser):
 
     username = None
     USERNAME_FIELD = "phone_number"
-    REQUIRED_FIELDS = ['first_name', 'last_name']  # Required fields when creating a superuser
+    REQUIRED_FIELDS = []  # Required fields when creating a superuser
 
     objects = UserManager()
 
