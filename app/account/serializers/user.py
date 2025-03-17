@@ -12,7 +12,7 @@ class UserSerializer(serializers.ModelSerializer):
         ]
 
 
-class RegisterSerializer(serializers.ModelSerializer):
+class RegisterSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
