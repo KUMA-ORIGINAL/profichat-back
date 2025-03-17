@@ -1,0 +1,86 @@
+[
+  {
+    "model": "account.user",
+    "pk": 2,
+    "fields": {
+      "first_name": "Анна",
+      "last_name": "Иванова",
+      "patronymic": "Петровна",
+      "position": "Бухгалтер",
+      "specialization": "Финансовый учет",
+      "email": "accountant@example.com",
+      "phone_number": "+79001234567",
+      "birthdate": "1990-05-10",
+      "telegram_id": 123456789,
+      "comment": "Занимается финансовым учетом.",
+      "status": "работает",
+      "photo": "accountant.jpg",
+      "role": "accountant",
+      "organization": 1,
+      "room": null
+    }
+  },
+  {
+    "model": "account.user",
+    "pk": 4,
+    "fields": {
+      "first_name": "Максим",
+      "last_name": "Смирнов",
+      "patronymic": "Александрович",
+      "position": "Супер Админ",
+      "specialization": "Администрирование",
+      "email": "superadmin@example.com",
+      "phone_number": "+79003456789",
+      "birthdate": "1980-11-05",
+      "telegram_id": 1122334455,
+      "comment": "Супер администратор системы.",
+      "status": "работает",
+      "photo": "superadmin.jpg",
+      "role": "superadmin",
+      "organization": 1,
+      "room": null
+    }
+  },
+  {
+    "model": "account.user",
+    "pk": 5,
+    "fields": {
+      "first_name": "Елена",
+      "last_name": "Кузнецова",
+      "patronymic": "Вячеславовна",
+      "position": "Админ",
+      "specialization": "Управление процессами",
+      "email": "admin@example.com",
+      "phone_number": "+79004567890",
+      "birthdate": "1992-02-14",
+      "telegram_id": 5566778899,
+      "comment": "Администратор системы.",
+      "status": "работает",
+      "photo": "admin.jpg",
+      "role": "admin",
+      "organization": 1,
+      "room": null
+    }
+  },
+    {
+    "model": "account.user",
+    "pk": 3,
+    "fields": {
+      "first_name": "Игорь",
+      "last_name": "Петров",
+      "patronymic": "Сергеевич",
+      "position": "Врач",
+      "specialization": "Терапевт",
+      "email": "doctor@example.com",
+      "phone_number": "+79002345678",
+      "birthdate": "1985-08-20",
+      "telegram_id": 987654321,
+      "comment": "Общий врач.",
+      "status": "работает",
+      "photo": "doctor.jpg",
+      "role": "doctor",
+      "organization": 1,
+      "room": null
+    }
+  }
+]

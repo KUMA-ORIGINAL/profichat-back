@@ -1,0 +1,6 @@
+##
+POST http://localhost:8000/api/jwt/create/
+Content-Type: application/x-www-form-urlencoded
+
+username = user1 &
+password = 123user123
