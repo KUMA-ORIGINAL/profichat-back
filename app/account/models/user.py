@@ -108,5 +108,5 @@ class User(AbstractUser):
             "phone_number": self.phone_number,
             "first_name": self.first_name,
             "last_name": self.last_name,
-            "photo": self.photo,
+            "photo": self.photo.url if self.photo else None,
         })
