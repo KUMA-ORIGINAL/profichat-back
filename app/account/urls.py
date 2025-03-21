@@ -5,7 +5,7 @@ from . import views
 
 router = DefaultRouter()
 router.register('profession-categories', views.ProfessionCategoryViewSet, basename='profession-categories')
-router.register(r'specialists', views.SpecialistViewSet, basename='specialist')
+router.register('specialists', views.SpecialistViewSet, basename='specialist')
 
 urlpatterns = [
     path('', include(router.urls)),
