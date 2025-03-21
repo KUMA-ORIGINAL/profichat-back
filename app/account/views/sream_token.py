@@ -6,9 +6,7 @@ from rest_framework.views import APIView
 from ..stream_client import chat_client
 
 
-@extend_schema(
-    tags=['Get Stream Token'],
-)
+@extend_schema(tags=['Auth'])
 class GetStreamTokenView(APIView):
     """
     API для генерации токена GetStream

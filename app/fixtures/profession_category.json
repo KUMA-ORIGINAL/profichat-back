@@ -1,0 +1,34 @@
+[
+    {
+        "model": "account.professioncategory",
+        "pk": 1,
+        "fields": {
+            "name": "Врачи",
+            "photo": "profession_categories/dentistry.jpg"
+        }
+    },
+    {
+        "model": "account.professioncategory",
+        "pk": 2,
+        "fields": {
+            "name": "Блогеры",
+            "photo": "profession_categories/cardiology.jpg"
+        }
+    },
+    {
+        "model": "account.professioncategory",
+        "pk": 2,
+        "fields": {
+            "name": "Юристы",
+            "photo": "profession_categories/cardiology.jpg"
+        }
+    },
+    {
+        "model": "account.professioncategory",
+        "pk": 2,
+        "fields": {
+            "name": "Экономисты",
+            "photo": "profession_categories/cardiology.jpg"
+        }
+    }
+]

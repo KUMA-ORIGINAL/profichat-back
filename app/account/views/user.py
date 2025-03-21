@@ -1,16 +1,32 @@
-from rest_framework import status, permissions
+from drf_spectacular.utils import extend_schema
+from rest_framework import status, permissions, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from ..serializers import RegisterSerializer, LoginSerializer, UserSerializer
+from .. import serializers
 
 User = get_user_model()
 
 
+@extend_schema(tags=['Users Me'])
+class UserMeViewSet(generics.RetrieveUpdateAPIView):
+    queryset = User.objects.all()
+    permission_classes  = (permissions.IsAuthenticated,)
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return serializers.UserMeUpdateSerializer
+        return serializers.UserMeSerializer
+
+    def get_object(self):
+        return self.request.user
+
+
+@extend_schema(tags=['Auth'])
 class RegisterView(APIView):
-    serializer_class = RegisterSerializer
+    serializer_class = serializers.RegisterSerializer
 
     def post(self, request):
         phone_number = request.data.get("phone_number")
@@ -21,11 +37,12 @@ class RegisterView(APIView):
 
         user = User.objects.create_user(phone_number=phone_number, password=password)
         user.create_stream_user()  # Создание в Stream Chat
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+        return Response(serializers.UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=['Auth'])
 class LoginView(APIView):
-    serializer_class = LoginSerializer
+    serializer_class = serializers.LoginSerializer
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
