@@ -32,8 +32,8 @@ class UserManager(BaseUserManager):
         return user
 
 
-ROLE_CLIENT = 'accountant'  # Роль бухгалтера
-ROLE_SPECIALIST = 'doctor'  # Роль врача
+ROLE_CLIENT = 'client'  # Роль бухгалтера
+ROLE_SPECIALIST = 'specialist'  # Роль врача
 
 class User(AbstractUser):
     ROLE_CHOICES = (

@@ -9,7 +9,7 @@ from ..serializers import SpecialistSerializer
 
 @extend_schema(tags=['Specialist'])
 class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = User.objects.filter(role='doctor')  # Только специалисты
+    queryset = User.objects.filter(role='specialist')  # Только специалисты
     serializer_class = SpecialistSerializer
     permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend]
