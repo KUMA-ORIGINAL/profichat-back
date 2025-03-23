@@ -15,13 +15,13 @@ class UserMeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'photo')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'photo')
 
 
 class UserMeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'photo')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'photo')
 
 
 class SpecialistSerializer(serializers.ModelSerializer):
