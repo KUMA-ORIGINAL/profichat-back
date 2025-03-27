@@ -376,6 +376,11 @@ UNFOLD = {
                         "icon": "category",
                         "link": reverse_lazy("admin:account_professioncategory_changelist"),
                     },
+                    {
+                        "title": _("Заявки на бизнес"),
+                        "icon": "contact_mail",
+                        "link": reverse_lazy("admin:account_application_changelist"),
+                    },
                 ],
             },
             {
