@@ -10,5 +10,5 @@ from ..serializers import ProfessionCategorySerializer
 )
 class ProfessionCategoryViewSet(viewsets.GenericViewSet,
                                 mixins.ListModelMixin,):
-    queryset = ProfessionCategory.objects.all()
+    queryset = ProfessionCategory.objects.filter(parent=None)
     serializer_class = ProfessionCategorySerializer

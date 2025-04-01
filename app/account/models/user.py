@@ -31,9 +31,8 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-
-ROLE_CLIENT = 'client'  # Роль бухгалтера
-ROLE_SPECIALIST = 'specialist'  # Роль врача
+ROLE_CLIENT = 'client'
+ROLE_SPECIALIST = 'specialist'
 
 class User(AbstractUser):
     ROLE_CHOICES = (

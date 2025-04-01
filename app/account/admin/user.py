@@ -6,24 +6,25 @@ from django.utils.translation import gettext_lazy as _
 from unfold.admin import ModelAdmin as UnfoldModelAdmin
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
+from common.admin import BaseModelAdmin
 from ..models import User
 
 admin.site.unregister(Group)
 
 
 @admin.register(Group)
-class GroupAdmin(GroupAdmin, UnfoldModelAdmin):
+class GroupAdmin(GroupAdmin, BaseModelAdmin):
     pass
 
 
 @admin.register(User)
-class UserAdmin(UserAdmin, UnfoldModelAdmin):
+class UserAdmin(UserAdmin, BaseModelAdmin):
     model = User
     form = UserChangeForm
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
 
-    list_display = ('id', 'first_name', 'last_name', 'phone_number', 'role')
+    list_display = ('id', 'first_name', 'last_name', 'phone_number', 'role', 'detail_link')
     list_filter = ('role', 'is_active', 'is_staff')
     list_display_links = ('id', 'first_name')
     search_fields = ('first_name', 'last_name', 'phone_number')  # Поля для поиска

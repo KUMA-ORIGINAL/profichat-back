@@ -145,6 +145,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 STREAM_API_KEY=env("STREAM_API_KEY")
 STREAM_API_SECRET=env("STREAM_API_SECRET")
 
+SMS_LOGIN=env("SMS_LOGIN")
+SMS_PASSWORD=env("SMS_PASSWORD")
+
 LANGUAGES = (
     ('ru', 'Russian'),
     ('en', 'English'),

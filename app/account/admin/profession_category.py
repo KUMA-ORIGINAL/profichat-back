@@ -7,7 +7,8 @@ from common.admin import BaseModelAdmin
 
 @admin.register(ProfessionCategory)
 class ProfessionCategoryAdmin(BaseModelAdmin):
-    list_display = ("id", "name", "display_photo")
+    list_display = ("id", "name", 'parent', "display_photo", 'detail_link')
+    list_filter = ('parent',)
     search_fields = ("name",)
 
     def display_photo(self, obj):

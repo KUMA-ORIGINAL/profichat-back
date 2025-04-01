@@ -14,4 +14,5 @@ urlpatterns = [
     path("auth/register/", views.RegisterView.as_view(), name="register"),
     path("auth/login/", views.LoginView.as_view(), name="login"),
     path("auth/stream-token/", views.GetStreamTokenView.as_view(), name="stream_token"),
+    path('auth/verify/', views.VerifyOTPView.as_view(), name='verify'),
 ]
