@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 
 from .profession_category import ProfessionCategorySerializer
-from ..models import User
+from ..models import User, Application
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -12,10 +12,15 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserMeSerializer(serializers.ModelSerializer):
+    application_status = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'photo', 'role')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'photo', 'role', 'application_status')
+
+    def get_application_status(self, obj):
+        last_application = Application.objects.filter(user=obj).order_by('-created_at').first()
+        return last_application.status if last_application else None
 
 
 class UserMeUpdateSerializer(serializers.ModelSerializer):
