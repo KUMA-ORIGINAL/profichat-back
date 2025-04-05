@@ -1,0 +1,222 @@
+[
+    {
+        "model": "services.service",
+        "pk": 1,
+        "fields": {
+            "name": "Консультация терапевта",
+            "description": "Консультация врача-терапевта.",
+            "price": "1200.00",
+            "photo": "consultation_therapist.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 2,
+        "fields": {
+            "name": "ЭКГ",
+            "description": "Электрокардиография сердца.",
+            "price": "500.00",
+            "photo": "ecg.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 3,
+        "fields": {
+            "name": "МРТ головы",
+            "description": "Магнитно-резонансная томография головы.",
+            "price": "4500.00",
+            "photo": "mri_head.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 4,
+        "fields": {
+            "name": "УЗИ брюшной полости",
+            "description": "УЗИ органов брюшной полости.",
+            "price": "1800.00",
+            "photo": "ultrasound_abdomen.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 5,
+        "fields": {
+            "name": "Стоматологическая чистка",
+            "description": "Профессиональная чистка зубов.",
+            "price": "2500.00",
+            "photo": "dental_cleaning.jpg",
+            "organization": 2
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 6,
+        "fields": {
+            "name": "Консультация стоматолога",
+            "description": "Консультация стоматолога.",
+            "price": "1000.00",
+            "photo": "dentist_consultation.jpg",
+            "organization": 2
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 7,
+        "fields": {
+            "name": "Рентген грудной клетки",
+            "description": "Рентгенограмма органов грудной клетки.",
+            "price": "1500.00",
+            "photo": "chest_xray.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 8,
+        "fields": {
+            "name": "Плановая вакцинация",
+            "description": "Вакцинация против гриппа.",
+            "price": "600.00",
+            "photo": "vaccination.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 9,
+        "fields": {
+            "name": "Физиотерапия",
+            "description": "Комплекс физиотерапевтических процедур.",
+            "price": "2300.00",
+            "photo": "physiotherapy.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 10,
+        "fields": {
+            "name": "Лабораторное исследование крови",
+            "description": "Анализ крови (общий и биохимический).",
+            "price": "900.00",
+            "photo": "blood_test.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 11,
+        "fields": {
+            "name": "Вызов врача на дом",
+            "description": "Консультация врача на дому.",
+            "price": "3200.00",
+            "photo": "doctor_home_visit.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 12,
+        "fields": {
+            "name": "КТ органов грудной клетки",
+            "description": "Компьютерная томография грудной клетки.",
+            "price": "6000.00",
+            "photo": "ct_scan_chest.jpg",
+            "organization": 2
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 13,
+        "fields": {
+            "name": "Массаж спины",
+            "description": "Классический массаж спины.",
+            "price": "1400.00",
+            "photo": "back_massage.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 14,
+        "fields": {
+            "name": "Операция на глаза",
+            "description": "Хирургическое лечение катаракты.",
+            "price": "35000.00",
+            "photo": "eye_surgery.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 15,
+        "fields": {
+            "name": "Консультация дерматолога",
+            "description": "Консультация дерматолога.",
+            "price": "1300.00",
+            "photo": "dermatologist_consultation.jpg",
+            "organization": 2
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 16,
+        "fields": {
+            "name": "Удаление зуба",
+            "description": "Хирургическое удаление зуба.",
+            "price": "2500.00",
+            "photo": "tooth_extraction.jpg",
+            "organization": 2
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 17,
+        "fields": {
+            "name": "Консультация эндокринолога",
+            "description": "Консультация врача-эндокринолога.",
+            "price": "1500.00",
+            "photo": "endocrinologist_consultation.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 18,
+        "fields": {
+            "name": "Диагностика зрения",
+            "description": "Комплексное исследование зрения.",
+            "price": "1100.00",
+            "photo": "vision_diagnostics.jpg",
+            "organization": 1
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 19,
+        "fields": {
+            "name": "Гастроскопия",
+            "description": "Эндоскопическое исследование желудка.",
+            "price": "2800.00",
+            "photo": "gastroscopy.jpg",
+            "organization": 2
+        }
+    },
+    {
+        "model": "services.service",
+        "pk": 20,
+        "fields": {
+            "name": "Сеанс мануальной терапии",
+            "description": "Сеанс мануальной терапии спины.",
+            "price": "1700.00",
+            "photo": "manual_therapy.jpg",
+            "organization": 1
+        }
+    }
+]

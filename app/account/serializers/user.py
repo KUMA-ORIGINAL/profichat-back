@@ -1,7 +1,6 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 
-from .profession_category import ProfessionCategorySerializer
 from ..models import User, Application
 
 
@@ -27,14 +26,6 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'photo')
-
-
-class SpecialistSerializer(serializers.ModelSerializer):
-    profession = ProfessionCategorySerializer(read_only=True)
-
-    class Meta:
-        model = User
-        fields = ["id", "first_name", "last_name", "phone_number", "photo", "profession"]
 
 
 class RegisterSerializer(serializers.Serializer):

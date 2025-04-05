@@ -57,6 +57,7 @@ INSTALLED_APPS = [
 
     'account',
     'common',
+    'chat_access'
 ]
 
 MIDDLEWARE = [
@@ -383,6 +384,16 @@ UNFOLD = {
                         "title": _("Заявки на бизнес"),
                         "icon": "contact_mail",
                         "link": reverse_lazy("admin:account_application_changelist"),
+                    },
+                    {
+                        "title": _("Тарифы"),
+                        "icon": "paid",  # иконка от Material Icons, можно заменить
+                        "link": reverse_lazy("admin:chat_access_tariff_changelist"),
+                    },
+                    {
+                        "title": _("Заказы доступа"),
+                        "icon": "assignment",  # тоже иконка от Material Icons
+                        "link": reverse_lazy("admin:chat_access_accessorder_changelist"),
                     },
                 ],
             },
