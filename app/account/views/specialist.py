@@ -1,6 +1,7 @@
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
+from rest_framework.filters import SearchFilter
 from rest_framework.permissions import AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -15,8 +16,9 @@ class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
         Prefetch('tariffs', queryset=Tariff.objects.filter(is_active=True))
     )
     permission_classes = [AllowAny]
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['profession']  # Фильтрация по категории специальности
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['profession']
+    search_fields = ['first_name', 'last_name']
 
     def get_serializer_class(self):
         if self.action == 'list':
