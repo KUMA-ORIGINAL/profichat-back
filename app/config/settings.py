@@ -57,7 +57,8 @@ INSTALLED_APPS = [
 
     'account',
     'common',
-    'chat_access'
+    'chat_access',
+    'payouts',
 ]
 
 MIDDLEWARE = [
@@ -387,13 +388,28 @@ UNFOLD = {
                     },
                     {
                         "title": _("Тарифы"),
-                        "icon": "paid",  # иконка от Material Icons, можно заменить
+                        "icon": "paid",
                         "link": reverse_lazy("admin:chat_access_tariff_changelist"),
                     },
                     {
                         "title": _("Заказы доступа"),
-                        "icon": "assignment",  # тоже иконка от Material Icons
+                        "icon": "assignment",
                         "link": reverse_lazy("admin:chat_access_accessorder_changelist"),
+                    },
+                ],
+            },
+            {
+                "title": _("Финансы"),
+                "items": [
+                    {
+                        "title": _("Заявки на вывод средств"),
+                        "icon": "account_balance_wallet",
+                        "link": reverse_lazy("admin:payouts_payoutrequest_changelist"),
+                    },
+                    {
+                        "title": _("Способы вывода"),
+                        "icon": "payments",
+                        "link": reverse_lazy("admin:payouts_payoutmethod_changelist"),
                     },
                 ],
             },
