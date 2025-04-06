@@ -15,6 +15,7 @@ class PayoutRequestAdmin(BaseModelAdmin):
         'status',
         'created_at',
         'processed_at',
+        'detail_link',
     )
     list_filter = ('status', 'method')
     search_fields = ('user__username', 'phone_number')
