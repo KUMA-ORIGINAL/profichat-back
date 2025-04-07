@@ -23,6 +23,6 @@ RUN pip install --no-cache /wheels/*
 COPY ./app_entrypoint.prod.sh .
 RUN chmod +x ./app_entrypoint.prod.sh
 
-COPY . .
+COPY . $PROJECT_DIR
 
 CMD ["sh", "/app/app_entrypoint.prod.sh"]
