@@ -2,7 +2,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
-from django.templatetags.static import static
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -55,7 +54,6 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'django_filters',
     'corsheaders',
-    'cachalot',
 
     'account',
     'common',
@@ -173,33 +171,6 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 CSRF_TRUSTED_ORIGINS = [f"https://{DOMAIN}", f"http://{DOMAIN}"]
 
 AUTH_USER_MODEL = 'account.User'
-
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django_redis.cache.RedisCache',
-#         'LOCATION': 'redis://redis:6379/1',
-#         'OPTIONS': {
-#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#         }
-#     }
-# }
-
-# CACHALOTE_ONLY_CACHABLE_MODELS = (
-#     'menu.category',          # Кешировать только эти модели
-#     'menu.product',  # Кешировать только эти модели
-#     'menu.modificator',  # Кешировать только эти модели
-# )
-# CACHALOT_TIMEOUT = 60 * 30
-#
-# CHANNEL_LAYERS = {
-#     'default': {
-#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
-#         'CONFIG': {
-#             "hosts": ['redis://redis:6379/2'],  # Используем другой слот Redis (например, /2)
-#         },
-#     },
-# }
-
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'ProfiChat',
@@ -334,47 +305,6 @@ UNFOLD = {
         "show_search": False,  # Search in applications and models names
         "show_all_applications": False,  # Dropdown with all applications and models
         "navigation": [
-            # {
-            #     "title": _("Навигация"),
-            #     "items": [
-            #         {
-            #             "title": _("Организация"),
-            #             "icon": "corporate_fare",
-            #             "link": reverse_lazy("admin:organizations_organization_changelist"),
-            #             'permission': 'account.admin_permissions.permission_callback_for_doctor_and_accountant',
-            #         },
-            #         {
-            #             "title": _("Здания"),
-            #             "icon": "location_city",
-            #             "link": reverse_lazy("admin:organizations_building_changelist"),
-            #             'permission': 'account.admin_permissions.permission_callback_for_doctor_and_accountant',
-            #         },
-            #         {
-            #             "title": _("Отделы"),
-            #             "icon": "account_tree",
-            #             "link": reverse_lazy("admin:organizations_department_changelist"),
-            #             'permission': 'account.admin_permissions.permission_callback_for_doctor_and_accountant',
-            #         },
-            #         {
-            #             "title": _("Кабинеты"),
-            #             "icon": "meeting_room",
-            #             "link": reverse_lazy("admin:organizations_room_changelist"),
-            #             'permission': 'account.admin_permissions.permission_callback_for_doctor_and_accountant',
-            #         },
-            #     ],
-            # },
-            # {
-            #     "title": _("Услуги"),
-            #     "separator": True,
-            #     "items": [
-            #         {
-            #             "title": _("Услуги"),
-            #             "icon": "construction",
-            #             "link": reverse_lazy("admin:services_service_changelist"),
-            #             'permission': 'account.admin_permissions.permission_callback_for_doctor_and_accountant',
-            #         },
-            #     ],
-            # },
             {
                 "title": _("Навигация"),
                 "items": [
@@ -441,16 +371,4 @@ UNFOLD = {
             },
         ],
     },
-    # "TABS": [
-    #     {
-    #         "models": ["venues.venue"],
-    #         "items": [
-    #             {
-    #                 "title": "Генерация qr-code",
-    #                 "icon": "grade",
-    #                 "link": reverse_lazy("admin:qr"),
-    #             },
-    #         ],
-    #     },
-    # ],
 }
