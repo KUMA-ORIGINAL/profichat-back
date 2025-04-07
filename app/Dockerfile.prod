@@ -31,6 +31,4 @@ ENV PYTHONUNBUFFERED=1
 COPY ./app_entrypoint.prod.sh .
 RUN chmod +x ./app_entrypoint.prod.sh
 
-USER appuser
-
 CMD ["sh", "/app/app_entrypoint.prod.sh"]
