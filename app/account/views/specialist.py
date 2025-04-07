@@ -20,7 +20,7 @@ class SpecialistPagination(PageNumberPagination):
 
 @extend_schema(tags=['Specialist'])
 class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = User.objects.filter(role='specialist').prefetch_related(
+    queryset = User.objects.filter(role='specialist', show_in_search=True).prefetch_related(
         Prefetch('tariffs', queryset=Tariff.objects.filter(is_active=True))
     )
     permission_classes = [AllowAny]

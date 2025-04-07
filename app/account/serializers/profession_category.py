@@ -16,3 +16,10 @@ class ProfessionCategorySerializer(serializers.ModelSerializer):
         if subcategories.exists():
             return ProfessionCategorySerializer(subcategories, many=True).data
         return []
+
+
+class ProfessionCategoryMeSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = ProfessionCategory
+        fields = ("id", "name", 'photo')

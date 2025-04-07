@@ -85,6 +85,7 @@ class User(AbstractUser):
                                 blank=True)
     is_invited = models.BooleanField(_("Приглашен"), default=False)
     is_active = models.BooleanField(default=True)
+    show_in_search = models.BooleanField(default=True, verbose_name="Показывать в поиске")
 
     username = None
     USERNAME_FIELD = "phone_number"
