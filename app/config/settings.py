@@ -24,15 +24,17 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_HEADERS = ["Authorization", "Content-Type", "Accept"]
 
-if DEBUG:
-    SECURE_SSL_REDIRECT = False
-    SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SECURE = False
-else:
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+SECURE_SSL_REDIRECT = not DEBUG  # Перенаправлять на HTTPS, если не Debug
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if not DEBUG else None
+SESSION_COOKIE_SECURE = not DEBUG  # Только для HTTPS
+CSRF_COOKIE_SECURE = not DEBUG  # Только для HTTPS
+X_FRAME_OPTIONS = 'DENY'  # Защита от clickjacking
+SECURE_HSTS_SECONDS = 31536000  # Принудительно использовать HTTPS на год
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True  # Включаем HSTS для всех поддоменов
+SECURE_HSTS_PRELOAD = True  # Чтобы сайт был в списке HSTS
+SECURE_CONTENT_TYPE_NOSNIFF = True  # Защита от контентного кэширования
+SECURE_BROWSER_XSS_FILTER = True  # Защита от XSS
+CSRF_COOKIE_HTTPONLY = True  # Защита от кражи CSRF токенов
 
 
 INSTALLED_APPS = [
