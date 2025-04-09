@@ -9,6 +9,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .. import serializers
 from ..models.otp import OTP
+from ..serializers import ShowInSearchSerializer
 from ..sms import send_sms_code
 
 User = get_user_model()
@@ -28,6 +29,20 @@ class UserMeViewSet(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
+@extend_schema(tags=['Users Me'])
+class UpdateShowInSearchView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ShowInSearchSerializer
+
+    def patch(self, request):
+        user = request.user
+        serializer = self.serializer_class(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'detail': 'Поле "show_in_search" обновлено успешно.'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 @extend_schema(tags=['Auth'])
 class RegisterView(APIView):
     serializer_class = serializers.RegisterSerializer
@@ -40,7 +55,7 @@ class RegisterView(APIView):
             return Response({"error": "Этот номер уже зарегистрирован"}, status=status.HTTP_400_BAD_REQUEST)
 
         user = User.objects.create_user(phone_number=phone_number, password=password)
-        user.create_stream_user()  # Создание в Stream Chat
+        user.upsert_stream_user()  # Создание в Stream Chat
         return Response(serializers.UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
     # def post(self, request):

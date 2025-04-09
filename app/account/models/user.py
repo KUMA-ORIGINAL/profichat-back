@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth.base_user import BaseUserManager
 from django.db import models
 from django.contrib.auth.models import AbstractUser
@@ -101,12 +103,28 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
-    def create_stream_user(self):
-        """Создаёт пользователя в GetStream API"""
-        chat_client.upsert_user({
-            "id": str(self.id),
-            "phone_number": self.phone_number,
-            "first_name": self.first_name,
-            "last_name": self.last_name,
-            "photo": self.photo.url if self.photo else None,
-        })
+    def upsert_stream_user(self) -> None:
+        try:
+            chat_client.upsert_user({
+                "id": str(self.id),
+                "phone_number": self.phone_number,
+                "first_name": self.first_name,
+                "last_name": self.last_name,
+                "photo": self.photo.url if self.photo else None,
+            })
+        except Exception as e:
+            logging.error("Ошибка при синхронизации пользователя с GetStream: %s", e)
+
+    def delete_stream_user(self):
+        try:
+            chat_client.delete_user(str(self.id))
+        except Exception as e:
+            logging.error("Ошибка при удалении пользователя из GetStream: %s", e)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.upsert_stream_user()
+
+    def delete(self, using=None, keep_parents=False):
+        self.delete_stream_user()
+        return super().delete(using=using, keep_parents=keep_parents)

@@ -11,6 +11,7 @@ router.register('apply', views.ApplicationCreateViewSet, basename='application-c
 urlpatterns = [
     path('', include(router.urls)),
     path('users/me/', views.UserMeViewSet.as_view(), name='user-me'),
+    path('users/show-in-search/', views.UpdateShowInSearchView.as_view(), name='update-show-in-search'),
     path("auth/register/", views.RegisterView.as_view(), name="register"),
     path("auth/login/", views.LoginView.as_view(), name="login"),
     path("auth/stream-token/", views.GetStreamTokenView.as_view(), name="stream_token"),

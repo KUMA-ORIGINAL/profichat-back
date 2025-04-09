@@ -45,3 +45,9 @@ class LoginSerializer(serializers.Serializer):
         if not user:
             raise serializers.ValidationError("Неверный номер телефона или пароль!")
         return {"user": user}
+
+
+class ShowInSearchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('show_in_search',)
