@@ -7,6 +7,7 @@ router = DefaultRouter()
 router.register('profession-categories', views.ProfessionCategoryViewSet, basename='profession-categories')
 router.register('specialists', views.SpecialistViewSet, basename='specialist')
 router.register('apply', views.ApplicationCreateViewSet, basename='application-create'),
+router.register(r'work-schedules', views.WorkScheduleViewSet, basename='work-schedule')
 
 urlpatterns = [
     path('', include(router.urls)),
