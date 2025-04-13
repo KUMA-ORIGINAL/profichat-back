@@ -18,25 +18,24 @@ class AccessOrder(models.Model):
         ('cancelled', 'Отменён'),
     ]
 
-    tariff = models.ForeignKey(
-        'Tariff',
-        on_delete=models.PROTECT,
-        verbose_name="Тариф"
-    )
     duration_hours = models.PositiveIntegerField(
-        default=24,
-        verbose_name="Срок действия (в часах)"
+        verbose_name="Срок действия (в часах)",
+        blank=True,
+        null=True,
     )
     tariff_type = models.CharField(
         max_length=255,
         choices=TARIFF_TYPE_CHOICES,
-        default='paid',
-        verbose_name="Тип пакета"
+        verbose_name="Тип пакета",
+        blank=True,
+        null=True,
     )
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        verbose_name="Стоимость"
+        verbose_name="Стоимость",
+        blank=True,
+        default=0,
     )
     payment_status = models.CharField(
         max_length=20,
@@ -60,6 +59,11 @@ class AccessOrder(models.Model):
         verbose_name="Конец пакета"
     )
 
+    tariff = models.ForeignKey(
+        'Tariff',
+        on_delete=models.PROTECT,
+        verbose_name="Тариф"
+    )
     client = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -77,6 +81,16 @@ class AccessOrder(models.Model):
         ordering = ['-created_at']
         verbose_name = "Заказ доступа"
         verbose_name_plural = "Заказы доступа"
+
+    def save(self, *args, **kwargs):
+        is_creating = self._state.adding
+        if is_creating:
+            self.duration_hours = self.tariff.duration_hours
+            self.tariff_type = self.tariff.tariff_type
+            self.price = self.tariff.price
+        super().save(*args, **kwargs)  # сначала сохранить объект, чтобы получить id и т.п.
+        if is_creating and not self.activated_at:
+            self.activate()
 
     def activate(self):
         """Активировать доступ (после оплаты)"""

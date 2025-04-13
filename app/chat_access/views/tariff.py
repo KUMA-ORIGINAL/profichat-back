@@ -6,9 +6,8 @@ from ..serializers import TariffSerializer
 
 class TariffViewSet(viewsets.ModelViewSet):
     queryset = Tariff.objects.all()
-    serializer_class = TariffSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    serializer_class = TariffSerializer
 
-    def perform_create(self, serializer):
-        # Если нужно, автоматически указывать текущего специалиста
-        serializer.save(specialist=self.request.user)
+    def get_queryset(self):
+        return Tariff.objects.filter(specialist=self.request.user)

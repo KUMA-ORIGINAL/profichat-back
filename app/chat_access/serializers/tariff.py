@@ -16,6 +16,8 @@ class TariffSpecialistSerializer(serializers.ModelSerializer):
 
 
 class TariffSerializer(serializers.ModelSerializer):
+    specialist = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
     class Meta:
         model = Tariff
         fields = [

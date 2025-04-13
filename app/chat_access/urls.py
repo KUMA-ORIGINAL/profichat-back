@@ -4,8 +4,8 @@ from rest_framework.routers import DefaultRouter
 from chat_access import views
 
 router = DefaultRouter()
-router.register(r'tariffs', views.TariffViewSet)
-router.register(r'access-orders', views.AccessOrderViewSet)
+router.register(r'tariffs', views.TariffViewSet, basename='tariffs')
+router.register(r'access-orders', views.AccessOrderViewSet, basename='access-orders')
 
 
 urlpatterns = [
