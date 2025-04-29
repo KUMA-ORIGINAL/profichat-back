@@ -29,7 +29,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
 
-    list_display = ('id', 'first_name', 'last_name', 'phone_number', 'role', 'detail_link')
+    list_display = ('id', 'first_name', 'last_name', 'phone_number', 'balance', 'role', 'detail_link')
     list_filter = ('role', 'is_active', 'is_staff')
     list_display_links = ('id', 'first_name')
     search_fields = ('first_name', 'last_name', 'phone_number')
@@ -43,7 +43,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
             _("Personal info"),
             {
                 "fields": (
-                    "first_name", "last_name", "birthdate", "gender", 'profession',
+                    "first_name", "last_name", "birthdate", "gender", 'balance', 'profession',
                     "photo", 'role', 'show_in_search', 'inviter', 'is_invited')}),
         (
             _("Permissions"),

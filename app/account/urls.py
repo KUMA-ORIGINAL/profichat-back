@@ -15,6 +15,7 @@ urlpatterns = [
     path('users/show-in-search/', views.UpdateShowInSearchView.as_view(), name='update-show-in-search'),
     path("auth/register/", views.RegisterView.as_view(), name="register"),
     path("auth/login/", views.LoginView.as_view(), name="login"),
+    path('auth/token/refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
     path("auth/stream-token/", views.GetStreamTokenView.as_view(), name="stream_token"),
     path('auth/verify/', views.VerifyOTPView.as_view(), name='verify'),
 ]

@@ -8,6 +8,7 @@ from django.core.validators import RegexValidator
 
 from ..stream_client import chat_client
 
+
 class UserManager(BaseUserManager):
 
     def create_user(self, phone_number, password=None):
@@ -32,6 +33,7 @@ class UserManager(BaseUserManager):
         user.is_superuser = True
         user.save(using=self._db)
         return user
+
 
 ROLE_CLIENT = 'client'
 ROLE_SPECIALIST = 'specialist'
@@ -58,6 +60,7 @@ class User(AbstractUser):
     gender = models.CharField(_("Пол"), max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
     description = models.TextField(_("Описание"), blank=True, null=True)
+    balance = models.DecimalField(_("Баланс"), max_digits=12, decimal_places=2, default=0)
     phone_number = models.CharField(
         _("phone number"),
         max_length=15,

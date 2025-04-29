@@ -20,4 +20,4 @@ class PayoutRequestAdmin(BaseModelAdmin):
     list_filter = ('status', 'method')
     search_fields = ('user__username', 'phone_number')
     autocomplete_fields = ('user', 'method')
-    readonly_fields = ('created_at', 'processed_at')
+    readonly_fields = ('created_at', 'processed_at', 'balance_updated')

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from .. import serializers
 from ..models.otp import OTP
@@ -96,6 +97,12 @@ class LoginView(APIView):
                 "access": str(refresh.access_token),
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(tags=["Auth"])
+class CustomTokenRefreshView(TokenRefreshView):
+    """Обновление access токена по refresh токену"""
+    pass
 
 
 @extend_schema(tags=['Auth'])

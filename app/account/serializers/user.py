@@ -17,7 +17,7 @@ class UserMeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate',
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'balance', 'birthdate',
                   'photo', 'role', 'application_status', 'show_in_search', 'profession')
 
     def get_application_status(self, obj):
