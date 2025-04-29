@@ -17,8 +17,8 @@ class UserMeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'balance', 'birthdate',
-                  'photo', 'description', 'role', 'application_status', 'show_in_search', 'profession')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'balance', 'birthdate', 'description',
+                  'photo', 'role', 'application_status', 'show_in_search', 'profession')
 
     def get_application_status(self, obj):
         last_application = Application.objects.filter(user=obj).order_by('-created_at').first()
@@ -28,7 +28,7 @@ class UserMeSerializer(serializers.ModelSerializer):
 class UserMeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'photo')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'description', 'photo')
 
 
 class RegisterSerializer(serializers.Serializer):
