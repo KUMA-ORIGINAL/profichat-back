@@ -149,6 +149,8 @@ STREAM_API_SECRET=env("STREAM_API_SECRET")
 SMS_LOGIN=env("SMS_LOGIN")
 SMS_PASSWORD=env("SMS_PASSWORD")
 
+PAYMENT_API_TOKEN = env('PAYMENT_API_TOKEN')
+
 LANGUAGES = (
     ('ru', 'Russian'),
     ('en', 'English'),

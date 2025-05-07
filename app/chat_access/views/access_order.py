@@ -3,7 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import AccessOrder
-from ..serializers import AccessOrderSerializer, ClientAccessSerializer
+from ..serializers import AccessOrderSerializer, ClientAccessSerializer, AccessOrderCreateSerializer
+from ..services.open_banking import generate_payment_link
 
 
 class AccessOrderViewSet(viewsets.ModelViewSet):
@@ -13,6 +14,8 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'my_clients':
             return ClientAccessSerializer
+        elif self.action == 'create':
+            return AccessOrderCreateSerializer
         return AccessOrderSerializer
 
     def get_queryset(self):
@@ -55,3 +58,19 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
 
         serializer = ClientAccessSerializer(latest_orders.values(), many=True, context={"request": request})
         return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        access_order = serializer.save()
+
+        payment_url = generate_payment_link(access_order)
+
+        if not payment_url:
+            return Response(
+                {"detail": "Не удалось создать платёжную ссылку."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response({"payment_url": payment_url}, status=status.HTTP_201_CREATED)

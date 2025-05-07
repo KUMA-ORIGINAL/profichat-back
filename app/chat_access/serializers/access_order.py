@@ -39,6 +39,19 @@ class ClientAccessSerializer(serializers.Serializer):
         return "0 часов"
 
 
+class AccessOrderCreateSerializer(serializers.ModelSerializer):
+    client = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+    class Meta:
+        model = AccessOrder
+        fields = [
+            'id',
+            'client',
+            'specialist',
+            'tariff',
+        ]
+
+
 class AccessOrderSerializer(serializers.ModelSerializer):
     client = serializers.HiddenField(default=serializers.CurrentUserDefault())
     specialist_name = serializers.SerializerMethodField()

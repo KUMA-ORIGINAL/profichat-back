@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def generate_payment_link(access_order):
     payload = {
-        "amount": access_order.total_price,
+        "amount": str(access_order.price),
         "transaction_id": str(access_order.id),
         "comment": f"Оплата заказа #{access_order.id} hospital",
         "redirect_url": f"https://hospital.operator.kg/",
