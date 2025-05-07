@@ -28,21 +28,33 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                 client=request.user,
                 specialist_id=specialist_id
             ).order_by("-id").first()
+
             if order is None:
-                return Response({"detail": "Заказ не найден."}, status=status.HTTP_404_NOT_FOUND)
-            serializer = self.get_serializer(order)
+                return Response(
+                    {"detail": "No access order found for this specialist."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            serializer = self.get_serializer(order, context={"request": request})
             return Response(serializer.data)
+
         except Exception as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": f"An error occurred while retrieving the access order: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=False, methods=["get"], url_path="my-clients")
     def my_clients(self, request):
         user = request.user
 
         if not hasattr(user, 'role') or user.role != 'specialist':
-            return Response({"detail": "Только специалист может просматривать клиентов."}, status=403)
+            return Response(
+                {"detail": "Only specialists can view clients."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-        # Получаем последние заказы от каждого клиента к специалисту
+        # Get the latest order per client for this specialist
         orders = (
             AccessOrder.objects
             .filter(specialist=user)
@@ -50,13 +62,16 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
             .order_by('client_id', '-created_at')
         )
 
-        # Последний заказ каждого клиента
         latest_orders = {}
         for order in orders:
             if order.client_id not in latest_orders:
                 latest_orders[order.client_id] = order
 
-        serializer = ClientAccessSerializer(latest_orders.values(), many=True, context={"request": request})
+        serializer = ClientAccessSerializer(
+            latest_orders.values(),
+            many=True,
+            context={"request": request}
+        )
         return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
@@ -64,12 +79,11 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         access_order = serializer.save()
-
         payment_url = generate_payment_link(access_order)
 
         if not payment_url:
             return Response(
-                {"detail": "Не удалось создать платёжную ссылку."},
+                {"detail": "Failed to generate payment link. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
