@@ -76,6 +76,13 @@ class AccessOrder(models.Model):
         related_name="orders_received",
         verbose_name="Специалист"
     )
+    # chat = models.ForeignKey(
+    #     'Chat',
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     blank=True,
+    #     related_name='access_orders'
+    # )
 
     class Meta:
         ordering = ['-created_at']

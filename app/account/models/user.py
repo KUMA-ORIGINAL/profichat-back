@@ -6,7 +6,7 @@ from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import RegexValidator
 
-from ..stream_client import chat_client
+from common.stream_client import chat_client
 
 
 class UserManager(BaseUserManager):

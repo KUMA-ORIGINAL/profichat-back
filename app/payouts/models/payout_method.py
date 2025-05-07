@@ -10,6 +10,12 @@ class PayoutMethod(models.Model):
         default=True,
         verbose_name="Активен"
     )
+    logo = models.ImageField(
+        upload_to='payout_logos/',
+        null=True,
+        blank=True,
+        verbose_name="Логотип"
+    )
 
     def __str__(self):
         return self.name

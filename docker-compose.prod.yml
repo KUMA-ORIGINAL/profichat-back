@@ -16,8 +16,8 @@ services:
     depends_on:
       database:
         condition: service_healthy
-#      redis:
-#        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   database:
     image: postgres:16
@@ -37,18 +37,19 @@ services:
           cpus: '1'
           memory: 1G
 
-#  redis:
-#    image: redis:7.4-alpine
-#    container_name: redis
-#    ports:
-#      - '127.0.0.1:6379:6379'
-#    volumes:
-#      - redis_data:/data
-#    healthcheck:
-#      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
-#      interval: 1s
-#      timeout: 3s
-#      retries: 5
+  redis:
+    image: redis
+    restart: always
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --replicaof no one --maxmemory-policy noeviction
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
+      interval: 1s
+      timeout: 3s
+      retries: 5
 
   nginx:
     build: nginx
@@ -63,23 +64,10 @@ services:
       - certs:/etc/letsencrypt
     depends_on:
       - backend
-#      - frontend
-#
-#  frontend:
-#    build:
-#      context: ../web-menu/
-#      dockerfile: Dockerfile
-#    restart: always
-#    expose:
-#      - 3000
-#    depends_on:
-#      - backend
-#    volumes:
-#      - static_volume:/frontend_static
 
 volumes:
   database-storage:
-  redis_data:
+  redis-data:
   static_volume:
   media_volume:
   certs:

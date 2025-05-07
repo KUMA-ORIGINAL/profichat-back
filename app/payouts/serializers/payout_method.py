@@ -6,4 +6,4 @@ from ..models import PayoutMethod
 class PayoutMethodSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayoutMethod
-        fields = ['id', 'name']
+        fields = ('id', 'name', 'logo')
