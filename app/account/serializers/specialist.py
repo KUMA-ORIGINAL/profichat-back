@@ -12,7 +12,7 @@ class SpecialistSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "first_name", "last_name", "phone_number", "photo", "profession", 'tariffs']
+        fields = ["id", "first_name", "last_name", "phone_number", "photo", "profession", 'description', 'tariffs']
 
 
 class SpecialistListSerializer(serializers.ModelSerializer):
