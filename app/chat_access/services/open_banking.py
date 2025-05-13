@@ -14,7 +14,7 @@ def generate_payment_link(access_order):
         "amount": str(access_order.price),
         "transaction_id": str(access_order.id),
         "comment": f"Оплата заказа #{access_order.id} hospital",
-        "redirect_url": f"https://hospital.operator.kg/",
+        "redirect_url": f"https://profichat.kg/specialist/3",
         'token': PAYMENT_API_TOKEN,
     }
 
