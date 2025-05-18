@@ -6,6 +6,8 @@ from django.views.decorators.csrf import csrf_exempt
 from ..models import AccessOrder
 import logging
 
+from ..services.notifications import send_payment_success_push
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +45,7 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
 
                 if new_payment_status == 'success':
                     access_order.activate()
+                    send_payment_success_push(access_order.client, access_order)
             else:
                 logger.info(f"Повторный webhook: статус уже установлен — {new_payment_status}")
 
