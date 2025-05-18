@@ -14,7 +14,7 @@ class AccessOrder(models.Model):
 
     PAYMENT_STATUS_CHOICES = [
         ('pending', 'Ожидает оплаты'),
-        ('paid', 'Успешно'),
+        ('success', 'Успешно'),
         ('cancelled', 'Отменён'),
     ]
 
@@ -95,9 +95,7 @@ class AccessOrder(models.Model):
             self.duration_hours = self.tariff.duration_hours
             self.tariff_type = self.tariff.tariff_type
             self.price = self.tariff.price
-        super().save(*args, **kwargs)  # сначала сохранить объект, чтобы получить id и т.п.
-        if is_creating and not self.activated_at:
-            self.activate()
+        super().save(*args, **kwargs)
 
     def activate(self):
         """Активировать доступ (после оплаты)"""

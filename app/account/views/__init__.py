@@ -4,3 +4,4 @@ from .profession_category import *
 from .specialist import *
 from .application import *
 from .work_schedule import *
+from .notifications import *

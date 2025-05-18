@@ -17,3 +17,4 @@ gunicorn==23.0.0
 stream-chat==4.23.0
 django-silk==5.3.2
 django-redis==5.4.0
+django-push-notifications[FCM]==3.2.1

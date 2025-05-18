@@ -7,6 +7,8 @@
 .env.dev
 .env.prod
 
+/app/firebase.json
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

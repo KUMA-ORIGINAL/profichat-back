@@ -4,3 +4,4 @@ from .application import *
 from .otp import *
 from .specialist import *
 from .work_schedule import *
+from .notifications import *

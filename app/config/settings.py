@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'django_filters',
     'corsheaders',
+    "push_notifications",
 
     'account',
     'common',
@@ -142,6 +143,14 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+import firebase_admin
+
+default_app = firebase_admin.initialize_app()
+
+PUSH_NOTIFICATIONS_SETTINGS = {
+    "FIREBASE_APP": default_app
+}
 
 STREAM_API_KEY=env("STREAM_API_KEY")
 STREAM_API_SECRET=env("STREAM_API_SECRET")
