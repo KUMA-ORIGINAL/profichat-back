@@ -54,12 +54,11 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # Get the latest order per client for this specialist
         orders = (
             AccessOrder.objects
             .filter(specialist=user)
             .select_related('client', 'tariff')
-            .order_by('client_id', '-created_at')
+            .order_by( '-created_at')
         )
 
         latest_orders = {}
