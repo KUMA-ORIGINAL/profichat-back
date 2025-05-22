@@ -254,7 +254,7 @@ LOGGING = {
             'style': '{',
         },
         'simple': {
-            'format': '{levelname} - {module} - {message}',
+            'format': '{levelname} - {asctime} - {module} - {message}',
             'style': '{',
         },
     },
