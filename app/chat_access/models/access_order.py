@@ -102,7 +102,6 @@ class AccessOrder(models.Model):
         self.activated_at = timezone.now()
         # Если тариф основан на днях — переводим в часы
         self.expires_at = self.activated_at + timedelta(hours=self.tariff.duration_hours)
-        self.payment_status = 'paid'
         self.save()
 
     @property
