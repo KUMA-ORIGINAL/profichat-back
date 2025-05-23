@@ -1,4 +1,5 @@
 from django.urls import path, include
+from push_notifications.api.rest_framework import GCMDeviceAuthorizedViewSet
 from rest_framework.routers import DefaultRouter
 
 from . import views
@@ -8,6 +9,7 @@ router.register('profession-categories', views.ProfessionCategoryViewSet, basena
 router.register('specialists', views.SpecialistViewSet, basename='specialist')
 router.register('apply', views.ApplicationCreateViewSet, basename='application-create'),
 router.register(r'work-schedules', views.WorkScheduleViewSet, basename='work-schedule')
+router.register(r'device/gcm', GCMDeviceAuthorizedViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

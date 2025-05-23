@@ -149,7 +149,8 @@ import firebase_admin
 default_app = firebase_admin.initialize_app()
 
 PUSH_NOTIFICATIONS_SETTINGS = {
-    "FIREBASE_APP": default_app
+    "FIREBASE_APP": default_app,
+    "UPDATE_ON_DUPLICATE_REG_ID": True
 }
 
 STREAM_API_KEY=env("STREAM_API_KEY")
