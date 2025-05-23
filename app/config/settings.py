@@ -373,6 +373,34 @@ UNFOLD = {
                 ],
             },
             {
+                "title": _("Push-уведомления"),
+                "icon": "bell",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    # {
+                    #     "title": "Apple (APNS)",
+                    #     "icon": "apple",
+                    #     "link": reverse_lazy("admin:push_notifications_apnsdevice_changelist"),
+                    # },
+                    {
+                        "title": "Google (GCM/FCM)",
+                        "icon": "send",
+                        "link": reverse_lazy("admin:push_notifications_gcmdevice_changelist"),
+                    },
+                    # {
+                    #     "title": "Web Push",
+                    #     "icon": "globe",
+                    #     "link": reverse_lazy("admin:push_notifications_webpushdevice_changelist"),
+                    # },
+                    # {
+                    #     "title": "Windows (WNS)",
+                    #     "icon": "window",
+                    #     "link": reverse_lazy("admin:push_notifications_wnsdevice_changelist"),
+                    # },
+                ],
+            },
+            {
                 "title": _("Пользователи"),
                 "separator": True,
                 "collapsible": False,
