@@ -7,6 +7,7 @@ router = DefaultRouter()
 router.register(r'tariffs', views.TariffViewSet, basename='tariffs')
 router.register(r'access-orders', views.AccessOrderViewSet, basename='access-orders')
 router.register('payment/webhook', views.PaymentWebhookViewSet, basename='payment_webhook')
+router.register(r'chats', views.ChatViewSet, basename='chat')
 
 
 urlpatterns = [

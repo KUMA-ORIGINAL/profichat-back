@@ -356,6 +356,11 @@ UNFOLD = {
                         "icon": "assignment",
                         "link": reverse_lazy("admin:chat_access_accessorder_changelist"),
                     },
+                    {
+                        "title": _("Чаты"),
+                        "icon": "chat",
+                        "link": reverse_lazy("admin:chat_access_chat_changelist"),
+                    },
                 ],
             },
             {
