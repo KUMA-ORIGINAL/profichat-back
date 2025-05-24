@@ -49,6 +49,7 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
             'client',
             'specialist',
             'tariff',
+            'chat'
         ]
 
 

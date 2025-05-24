@@ -86,4 +86,9 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        return Response({"payment_url": payment_url}, status=status.HTTP_201_CREATED)
+        data = {
+            'id': access_order.id,
+            "payment_url": payment_url,
+        }
+
+        return Response(data, status=status.HTTP_201_CREATED)

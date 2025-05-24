@@ -18,6 +18,7 @@ class AccessOrderAdmin(BaseModelAdmin):
         'created_at',
         'activated_at',
         'expires_at',
+        'detail_link'
     )
     list_filter = ('payment_status', 'tariff__tariff_type', 'specialist')
     search_fields = ('client__username', 'specialist__username')

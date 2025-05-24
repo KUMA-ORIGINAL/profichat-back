@@ -11,6 +11,7 @@ class ChatAdmin(BaseModelAdmin):
         'specialist',
         'channel_id',
         'created_at',
+        'detail_link'
     )
     list_filter = ('created_at',)
     search_fields = (
