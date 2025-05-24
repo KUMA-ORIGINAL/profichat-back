@@ -1,17 +1,32 @@
-from rest_framework import viewsets
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework import viewsets, mixins
 from rest_framework.permissions import IsAuthenticated
 from ..models import Chat
-from ..serializers import ChatSerializer
+from ..serializers import ChatListSerializer, ChatCreateSerializer
 
 
-class ChatViewSet(viewsets.ReadOnlyModelViewSet):
+@extend_schema(tags=['Chats'])
+@extend_schema_view(
+    create=extend_schema(
+        summary='Создание чата',
+        description='При создании чата, client автоматически поставится. '
+                    'Кто отправил запрос, тот и клиент'
+    )
+)
+class ChatViewSet(viewsets.GenericViewSet,
+                  mixins.ListModelMixin,
+                  mixins.CreateModelMixin):
     """
-    ViewSet только для чтения чатов.
+    ViewSet для чатов.
     Доступен только авторизованным пользователям.
     """
     queryset = Chat.objects.all()
-    serializer_class = ChatSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ChatCreateSerializer
+        return ChatListSerializer
 
     def get_queryset(self):
         """

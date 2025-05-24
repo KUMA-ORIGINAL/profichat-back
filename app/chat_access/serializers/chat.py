@@ -13,7 +13,7 @@ class UserShortSerializer(serializers.ModelSerializer):
         fields = ('id', 'username', 'email')  # Добавьте/уберите поля по необходимости
 
 
-class ChatSerializer(serializers.ModelSerializer):
+class ChatListSerializer(serializers.ModelSerializer):
     client = UserShortSerializer(read_only=True)
     specialist = UserShortSerializer(read_only=True)
 
@@ -27,3 +27,16 @@ class ChatSerializer(serializers.ModelSerializer):
             'created_at',
         )
         read_only_fields = ('id', 'created_at', 'channel_id')
+
+
+class ChatCreateSerializer(serializers.ModelSerializer):
+    client = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+    class Meta:
+        model = Chat
+        fields = (
+            'id',
+            'client',
+            'specialist',
+            'channel_id',
+        )

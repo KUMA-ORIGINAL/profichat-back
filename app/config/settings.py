@@ -382,7 +382,7 @@ UNFOLD = {
                 "title": _("Push-уведомления"),
                 "icon": "bell",
                 "separator": True,
-                "collapsible": True,
+                "collapsible": False,
                 "items": [
                     # {
                     #     "title": "Apple (APNS)",
