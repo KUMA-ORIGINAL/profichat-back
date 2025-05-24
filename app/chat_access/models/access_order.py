@@ -93,8 +93,10 @@ class AccessOrder(models.Model):
         is_creating = self._state.adding
         if is_creating:
             self.duration_hours = self.tariff.duration_hours
-            self.tariff_type = self.tariff.tariff_type
-            self.price = self.tariff.price
+            if self.tariff_type is None:
+                self.tariff_type = self.tariff.tariff_type
+            if self.price is None:
+                self.price = self.tariff.price
         super().save(*args, **kwargs)
 
     def activate(self):
@@ -107,7 +109,7 @@ class AccessOrder(models.Model):
     @property
     def is_active(self):
         """Есть ли сейчас доступ"""
-        if self.payment_status != 'paid' or not self.expires_at:
+        if self.payment_status != 'success' or not self.expires_at:
             return False
         return self.expires_at > timezone.now()
 

@@ -22,4 +22,5 @@ urlpatterns = [
     path('auth/verify/', views.VerifyOTPView.as_view(), name='verify'),
     
     path('register-fcm/', views.RegisterFCMTokenView.as_view(), name='register-fcm'),
+    path('invite-client/', views.InviteClientView.as_view(), name='invite-client'),
 ]
