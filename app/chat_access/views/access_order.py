@@ -21,6 +21,33 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return AccessOrder.objects.filter(client=self.request.user)
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        access_order = serializer.save()
+
+        if access_order.tariff_type == 'free':
+            access_order.payment_status = 'success'
+            access_order.activate()  # Активируем доступ
+
+            return Response({
+                'id': access_order.id,
+                'message': 'Доступ активирован сразу, так как выбран бесплатный тариф.'
+            }, status=status.HTTP_201_CREATED)
+
+        payment_url = generate_payment_link(access_order)
+        if not payment_url:
+            return Response(
+                {"detail": "Failed to generate payment link. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        data = {
+            'id': access_order.id,
+            "payment_url": payment_url,
+        }
+        return Response(data, status=status.HTTP_201_CREATED)
+
     @action(detail=False, methods=["get"], url_path="last-for-specialist/(?P<specialist_id>[^/.]+)")
     def last_for_specialist(self, request, specialist_id=None):
         try:
@@ -72,23 +99,3 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
             context={"request": request}
         )
         return Response(serializer.data)
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        access_order = serializer.save()
-        payment_url = generate_payment_link(access_order)
-
-        if not payment_url:
-            return Response(
-                {"detail": "Failed to generate payment link. Please try again later."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        data = {
-            'id': access_order.id,
-            "payment_url": payment_url,
-        }
-
-        return Response(data, status=status.HTTP_201_CREATED)

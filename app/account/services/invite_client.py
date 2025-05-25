@@ -33,7 +33,6 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
         )
         create_stream_channel(chat)
 
-
     tariff = Tariff.objects.get(id=tariff_id)
     access_order = AccessOrder.objects.create(
         client=client,

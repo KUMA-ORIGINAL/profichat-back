@@ -52,6 +52,30 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
             'chat'
         ]
 
+    def validate(self, attrs):
+        tariff = attrs.get('tariff')
+        client = attrs.get('client')
+        specialist = attrs.get('specialist')
+
+        if tariff.tariff_type == 'free':
+            if AccessOrder.objects.filter(
+                    client=client,
+                    specialist=specialist,
+                    tariff__tariff_type='free'
+            ).exists():
+                raise serializers.ValidationError({
+                    'tariff': "Вы уже использовали бесплатный тариф для этого специалиста."
+                })
+
+        return attrs
+
+    def create(self, validated_data):
+        tariff = validated_data['tariff']
+        validated_data['duration_hours'] = tariff.duration_hours
+        validated_data['tariff_type'] = tariff.tariff_type
+        validated_data['price'] = tariff.price
+        return super().create(validated_data)
+
 
 class AccessOrderSerializer(serializers.ModelSerializer):
     client = serializers.HiddenField(default=serializers.CurrentUserDefault())

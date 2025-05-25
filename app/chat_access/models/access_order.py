@@ -89,21 +89,10 @@ class AccessOrder(models.Model):
         verbose_name = "Заказ доступа"
         verbose_name_plural = "Заказы доступа"
 
-    def save(self, *args, **kwargs):
-        is_creating = self._state.adding
-        if is_creating:
-            self.duration_hours = self.tariff.duration_hours
-            if self.tariff_type is None:
-                self.tariff_type = self.tariff.tariff_type
-            if self.price is None:
-                self.price = self.tariff.price
-        super().save(*args, **kwargs)
-
     def activate(self):
         """Активировать доступ (после оплаты)"""
         self.activated_at = timezone.now()
-        # Если тариф основан на днях — переводим в часы
-        self.expires_at = self.activated_at + timedelta(hours=self.tariff.duration_hours)
+        self.expires_at = self.activated_at + timedelta(hours=self.duration_hours)
         self.save()
 
     @property
