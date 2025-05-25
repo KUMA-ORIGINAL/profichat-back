@@ -146,10 +146,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 import firebase_admin
 
-default_app = firebase_admin.initialize_app()
+firebase_app = firebase_admin.initialize_app()
 
 PUSH_NOTIFICATIONS_SETTINGS = {
-    "FIREBASE_APP": default_app,
+    "FIREBASE_APP": firebase_app,
     "UPDATE_ON_DUPLICATE_REG_ID": True
 }
 
