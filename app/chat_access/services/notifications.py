@@ -19,13 +19,13 @@ def send_payment_success_push(user, access_order):
     device.send_message(
         message,
         title=title,
-        extra={"order_id": access_order.id}
+        extra={"order_id": str(access_order.id)}
     )
 
 
 def send_chat_invite_push(user, chat):
-    devices = GCMDevice.objects.filter(user=user, active=True)
-    if not devices:
+    device = GCMDevice.objects.filter(user=user, active=True).first()
+    if not device:
         logger.info(f"[Push] Нет активных устройств для пользователя {user}")
         return
 
@@ -34,11 +34,11 @@ def send_chat_invite_push(user, chat):
 
     logger.info(f"[Push] Отправка приглашения в чат пользователю {user}: {message}")
 
-    devices.send_message(
+    device.send_message(
         message,
         title=title,
         extra={
-            "chat_id": chat.id,
+            "chat_id": str(chat.id),
             "type": "chat_invite"
         }
     )

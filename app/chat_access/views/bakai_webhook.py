@@ -38,6 +38,7 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
 
             current_status = access_order.payment_status
 
+            send_payment_success_push(access_order.client, access_order)
             if current_status != new_payment_status:
                 logger.info(f"Обновление статуса заказа {access_order.id}: {current_status} → {new_payment_status}")
                 access_order.payment_status = new_payment_status
