@@ -20,7 +20,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
             is_active=False
         )
         invite_link = f"https://example.com/complete-registration?phone={client.phone_number}"
-        text = f"Вас пригласили в сервис. Завершите регистрацию по ссылке: {invite_link}"
+        text = f"Profichat\nВас пригласили в сервис. Завершите регистрацию по ссылке: {invite_link}"
         send_sms(phone=client.phone_number, text=text)
 
     chat = Chat.objects.filter(
