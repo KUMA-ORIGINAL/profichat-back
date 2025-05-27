@@ -6,6 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 from ..models import AccessOrder
 import logging
 
+from ..services import update_chat_data_from_order
 from ..services.notifications import send_payment_success_push
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,9 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
 
                 if new_payment_status == 'success':
                     access_order.activate()
+
+                    if access_order.chat:
+                        update_chat_data_from_order(access_order)
 
                     specialist = access_order.specialist
                     specialist.balance += access_order.price

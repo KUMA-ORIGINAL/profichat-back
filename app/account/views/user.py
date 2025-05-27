@@ -70,7 +70,7 @@ class RegisterView(APIView):
             phone_number = serializer.validated_data.get("phone_number")
             password = serializer.validated_data.get("password")
             first_name = serializer.validated_data.get("first_name")
-            last_name = serializer.validated_data.get("password")
+            last_name = serializer.validated_data.get("last_name")
 
             existing_user = User.objects.filter(phone_number=phone_number).first()
             if existing_user and existing_user.is_active:
