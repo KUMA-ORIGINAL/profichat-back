@@ -90,7 +90,14 @@ class User(AbstractUser):
     inviter = models.ForeignKey("self", verbose_name=_("Реферал (кто пригласил)"), on_delete=models.SET_NULL, null=True,
                                 blank=True)
     is_invited = models.BooleanField(_("Приглашен"), default=False)
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(
+        _("active"),
+        default=False,
+        help_text=_(
+            "Designates whether this user should be treated as active. "
+            "Unselect this instead of deleting accounts."
+        ),
+    )
     show_in_search = models.BooleanField(default=True, verbose_name="Показывать в поиске")
 
     username = None

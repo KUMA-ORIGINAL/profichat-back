@@ -29,7 +29,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
 
-    list_display = ('id', 'first_name', 'last_name', 'phone_number', 'balance', 'role', 'detail_link')
+    list_display = ('id', 'first_name', 'last_name', 'phone_number', 'balance', 'role', 'is_active', 'detail_link')
     list_filter = ('role', 'is_active', 'is_staff')
     list_display_links = ('id', 'first_name')
     search_fields = ('first_name', 'last_name', 'phone_number')

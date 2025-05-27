@@ -45,6 +45,11 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
 
                 if new_payment_status == 'success':
                     access_order.activate()
+
+                    specialist = access_order.specialist
+                    specialist.balance += access_order.price
+                    specialist.save(update_fields=["balance"])
+
                     send_payment_success_push(access_order.client, access_order)
             else:
                 logger.info(f"Повторный webhook: статус уже установлен — {new_payment_status}")

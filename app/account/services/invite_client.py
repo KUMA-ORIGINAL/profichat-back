@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from .sms import send_sms
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
 from chat_access.services.notifications import send_chat_invite_push
@@ -16,10 +17,11 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
     if not client:
         client = User.objects.create_user(
             phone_number=phone_number,
-            is_active=False  # пока не активирован
+            is_active=False
         )
-        # 3. Отправляем SMS со ссылкой на скачивание
-        # send_sms_invitation(phone)
+        invite_link = f"https://example.com/complete-registration?phone={client.phone_number}"
+        text = f"Вас пригласили в сервис. Завершите регистрацию по ссылке: {invite_link}"
+        send_sms(phone=client.phone_number, text=text)
 
     chat = Chat.objects.filter(
         client=client,

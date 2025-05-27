@@ -19,7 +19,7 @@ urlpatterns = [
     path("auth/login/", views.LoginView.as_view(), name="login"),
     path('auth/token/refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
     path("auth/stream-token/", views.GetStreamTokenView.as_view(), name="stream_token"),
-    path('auth/verify/', views.VerifyOTPView.as_view(), name='verify'),
+    path('auth/verify-otp/', views.VerifyOTPView.as_view(), name='verify'),
     
     path('register-fcm/', views.RegisterFCMTokenView.as_view(), name='register-fcm'),
     path('invite-client/', views.InviteClientView.as_view(), name='invite-client'),
