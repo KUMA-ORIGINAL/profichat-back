@@ -34,6 +34,8 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
 class RegisterSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
 
 
 class LoginSerializer(serializers.Serializer):

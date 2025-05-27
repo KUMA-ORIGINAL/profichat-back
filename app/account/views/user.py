@@ -69,6 +69,8 @@ class RegisterView(APIView):
         if serializer.is_valid():
             phone_number = serializer.validated_data.get("phone_number")
             password = serializer.validated_data.get("password")
+            first_name = serializer.validated_data.get("first_name")
+            last_name = serializer.validated_data.get("password")
 
             existing_user = User.objects.filter(phone_number=phone_number).first()
             if existing_user and existing_user.is_active:
@@ -78,7 +80,12 @@ class RegisterView(APIView):
             otp = OTP.objects.create(phone_number=phone_number, code=code)
 
             if not existing_user:
-                user = User.objects.create_user(phone_number=phone_number, password=password)
+                user = User.objects.create_user(
+                    phone_number=phone_number,
+                    password=password,
+                )
+                user.first_name = first_name
+                user.last_name = last_name
                 user.save()
             else:
                 user = existing_user
