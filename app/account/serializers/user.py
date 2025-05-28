@@ -1,4 +1,3 @@
-from django.contrib.auth import authenticate
 from rest_framework import serializers
 
 from .profession_category import ProfessionCategoryMeSerializer
@@ -31,25 +30,8 @@ class UserMeUpdateSerializer(serializers.ModelSerializer):
         fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'description', 'photo')
 
 
-class RegisterSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    password = serializers.CharField(write_only=True)
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-
-
-class LoginSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    password = serializers.CharField(write_only=True)
-
-    def validate(self, data):
-        user = authenticate(phone_number=data["phone_number"], password=data["password"])
-        if not user:
-            raise serializers.ValidationError("Неверный номер телефона или пароль!")
-        return {"user": user}
-
-
 class ShowInSearchSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('show_in_search',)
+

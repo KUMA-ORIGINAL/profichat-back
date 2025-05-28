@@ -15,11 +15,15 @@ urlpatterns = [
     path('', include(router.urls)),
     path('users/me/', views.UserMeViewSet.as_view(), name='user-me'),
     path('users/show-in-search/', views.UpdateShowInSearchView.as_view(), name='update-show-in-search'),
+
     path("auth/register/", views.RegisterView.as_view(), name="register"),
     path("auth/login/", views.LoginView.as_view(), name="login"),
     path('auth/token/refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
     path("auth/stream-token/", views.GetStreamTokenView.as_view(), name="stream_token"),
     path('auth/verify-otp/', views.VerifyOTPView.as_view(), name='verify'),
+    path('auth/password-reset/request/', views.PasswordResetRequestView.as_view(), name='password_reset_request'),
+    path('auth/password-reset/verify/', views.PasswordResetVerifyView.as_view(), name='password_reset_verify'),
+    path('auth/password-reset/confirm/', views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     
     path('register-fcm/', views.RegisterFCMTokenView.as_view(), name='register-fcm'),
     path('invite-client/', views.InviteClientView.as_view(), name='invite-client'),
