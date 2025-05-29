@@ -2,9 +2,19 @@ from django.contrib.auth import authenticate
 from rest_framework import serializers
 
 
-class RegisterSerializer(serializers.Serializer):
+class VerifyOTPSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
-    password = serializers.CharField(write_only=True)
+    code = serializers.CharField()
+
+
+class PhoneNumberSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+
+
+class VerifyOTPWithUserSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+    code = serializers.CharField()
+    password = serializers.CharField()
     first_name = serializers.CharField()
     last_name = serializers.CharField()
 
@@ -20,10 +30,6 @@ class LoginSerializer(serializers.Serializer):
         if not user.is_active:
             raise serializers.ValidationError("Аккаунт не активирован")
         return {"user": user}
-
-
-class PasswordResetRequestSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):

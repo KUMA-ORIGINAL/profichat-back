@@ -11,14 +11,14 @@ from common.stream_client import chat_client
 
 class UserManager(BaseUserManager):
 
-    def create_user(self, phone_number, password=None):
+    def create_user(self, phone_number, first_name, last_name, password=None):
         """
         Создаёт пользователя с номером телефона и паролем.
         """
         if not phone_number:
             raise ValueError("У пользователя должен быть номер телефона")
 
-        user = self.model(phone_number=phone_number)
+        user = self.model(phone_number=phone_number, first_name=first_name, last_name=last_name)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -92,7 +92,7 @@ class User(AbstractUser):
     is_invited = models.BooleanField(_("Приглашен"), default=False)
     is_active = models.BooleanField(
         _("active"),
-        default=False,
+        default=True,
         help_text=_(
             "Designates whether this user should be treated as active. "
             "Unselect this instead of deleting accounts."

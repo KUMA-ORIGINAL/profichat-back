@@ -40,15 +40,12 @@ class CustomTokenRefreshView(TokenRefreshView):
 
 @extend_schema(tags=['Auth'])
 class RegisterView(APIView):
-    serializer_class = serializers.RegisterSerializer
+    serializer_class = serializers.PhoneNumberSerializer
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             phone_number = serializer.validated_data.get("phone_number")
-            password = serializer.validated_data.get("password")
-            first_name = serializer.validated_data.get("first_name")
-            last_name = serializer.validated_data.get("last_name")
 
             existing_user = User.objects.filter(phone_number=phone_number).first()
             if existing_user and existing_user.is_active:
@@ -56,19 +53,6 @@ class RegisterView(APIView):
 
             code = str(random.randint(1000, 9999))
             otp = OTP.objects.create(phone_number=phone_number, code=code)
-
-            if not existing_user:
-                user = User.objects.create_user(
-                    phone_number=phone_number,
-                    password=password,
-                )
-                user.first_name = first_name
-                user.last_name = last_name
-                user.save()
-            # else:
-            #     user = existing_user
-            #     user.set_password(password)
-            #     user.save()
 
             text = f"Profichat\nКод подтверждения: {code}. Никому не сообщайте его."
             if send_sms(phone=phone_number, text=text, transaction_id=otp.id):
@@ -81,19 +65,19 @@ class RegisterView(APIView):
 
 @extend_schema(tags=['Auth'])
 class VerifyOTPView(APIView):
-    serializer_class = serializers.VerifyOTPSerializer
+    serializer_class = serializers.VerifyOTPWithUserSerializer
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             phone_number = serializer.validated_data.get("phone_number")
             code = serializer.validated_data.get("code")
+            password = serializer.validated_data.get("password")
+            first_name = serializer.validated_data.get("first_name")
+            last_name = serializer.validated_data.get("last_name")
 
             try:
                 otp = OTP.objects.filter(phone_number=phone_number, code=code, is_verified=False).latest('created_at')
-
-                if otp.code != code:
-                    return Response({"error": "Неверный код"}, status=400)
 
                 if otp.is_expired():
                     return Response({"error": "Код истек"}, status=400)
@@ -101,16 +85,18 @@ class VerifyOTPView(APIView):
                 otp.is_verified = True
                 otp.save()
 
-                user = User.objects.get(phone_number=phone_number)
-                if user.is_active:
-                    return Response({"message": "Пользователь уже подтвержден"}, status=200)
+                if User.objects.filter(phone_number=phone_number).exists():
+                    return Response({"error": "Пользователь уже существует"}, status=400)
 
-                user.is_active = True
-                user.save()
-                user.upsert_stream_user()
+                user = User.objects.create_user(
+                    phone_number=phone_number,
+                    first_name=first_name,
+                    last_name=last_name,
+                    password=password,
+                )
 
                 return Response({
-                    "message": "Пользователь подтвержден",
+                    "message": "Пользователь создан и подтвержден",
                     "user": serializers.UserMeSerializer(user).data
                 }, status=200)
 
@@ -124,7 +110,7 @@ class VerifyOTPView(APIView):
 
 @extend_schema(tags=['Auth'])
 class PasswordResetRequestView(APIView):
-    serializer_class = serializers.PasswordResetRequestSerializer  # phone_number
+    serializer_class = serializers.PhoneNumberSerializer
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
