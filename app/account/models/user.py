@@ -11,14 +11,14 @@ from common.stream_client import chat_client
 
 class UserManager(BaseUserManager):
 
-    def create_user(self, phone_number, first_name, last_name, password=None):
+    def create_user(self, phone_number, first_name=None, last_name=None, is_active=True, password=None):
         """
         Создаёт пользователя с номером телефона и паролем.
         """
         if not phone_number:
             raise ValueError("У пользователя должен быть номер телефона")
 
-        user = self.model(phone_number=phone_number, first_name=first_name, last_name=last_name)
+        user = self.model(phone_number=phone_number, first_name=first_name, last_name=last_name, is_active=is_active)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -51,11 +51,13 @@ class User(AbstractUser):
 
     first_name = models.CharField(
         max_length=255,
-        verbose_name='Имя'
+        verbose_name='Имя',
+        blank=True,
     )
     last_name = models.CharField(
         max_length=255,
-        verbose_name='Фамилия'
+        verbose_name='Фамилия',
+        blank=True,
     )
     gender = models.CharField(_("Пол"), max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
