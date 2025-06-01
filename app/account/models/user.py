@@ -53,11 +53,13 @@ class User(AbstractUser):
         max_length=255,
         verbose_name='Имя',
         blank=True,
+        null=True,
     )
     last_name = models.CharField(
         max_length=255,
         verbose_name='Фамилия',
         blank=True,
+        null=True,
     )
     gender = models.CharField(_("Пол"), max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
