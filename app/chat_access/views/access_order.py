@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -51,10 +52,13 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="last-for-specialist/(?P<specialist_id>[^/.]+)")
     def last_for_specialist(self, request, specialist_id=None):
         try:
+            now = timezone.now()
             order = AccessOrder.objects.filter(
                 client=request.user,
-                specialist_id=specialist_id
-            ).order_by("-id").first()
+                specialist_id=specialist_id,
+                payment_status='success',
+                expires_at__gt=now
+            ).order_by('-id').first()
 
             if order is None:
                 return Response(
