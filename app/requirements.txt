@@ -18,3 +18,4 @@ stream-chat==4.23.0
 django-silk==5.3.2
 django-redis==5.4.0
 django-push-notifications[FCM]==3.2.1
+django-phonenumber-field[phonenumberslite]==8.1.0

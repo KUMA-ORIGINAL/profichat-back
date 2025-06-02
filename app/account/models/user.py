@@ -5,6 +5,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import RegexValidator
+from phonenumber_field.modelfields import PhoneNumberField
 
 from common.stream_client import chat_client
 
@@ -65,13 +66,7 @@ class User(AbstractUser):
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
     description = models.TextField(_("Описание"), blank=True, null=True)
     balance = models.DecimalField(_("Баланс"), max_digits=12, decimal_places=2, default=0)
-    phone_number = models.CharField(
-        _("phone number"),
-        max_length=15,
-        validators=[
-            RegexValidator(regex=r'^\+?1?\d{9,15}$', message=_("Enter a valid phone number."))],
-        unique=True,
-    )
+    phone_number = PhoneNumberField(_("phone number"), unique=True, region='KG')
     photo = models.ImageField(
         upload_to='user/photos/%Y/%m/%d/',
         blank=True,
