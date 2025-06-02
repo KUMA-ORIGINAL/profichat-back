@@ -23,4 +23,4 @@ def create_stream_channel(chat: Chat):
 
 def update_channel_extra_data(channel_id: str, data: dict, channel_type: str = "messaging"):
     channel = chat_client.channel(channel_type, channel_id)
-    channel.update(data)
+    channel.update_partial(data)

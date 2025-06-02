@@ -18,15 +18,21 @@ def update_chat_extra_data(chat, now=None, prefetched_orders=None):
         tariff_duration = order.duration_hours or 0
         time_left_seconds = (order.expires_at - now).total_seconds()
         time_left_hours = round(time_left_seconds / 3600, 2)
+        activated_at = order.activated_at
+        expires_at = order.expires_at
     else:
         is_active = False
-        tariff_duration = 0
-        time_left_hours = 0
+        tariff_duration = None
+        time_left_hours = None
+        activated_at = None
+        expires_at = None
 
     update_channel_extra_data(chat.channel_id, {
         'isActive': is_active,
         'tariffDuration': tariff_duration,
-        'timeLeft': time_left_hours
+        'timeLeft': time_left_hours,
+        'activatedAt': activated_at,
+        'expiresAt': expires_at,
     })
 
 
@@ -38,5 +44,7 @@ def update_chat_data_from_order(order):
     update_channel_extra_data(order.chat.channel_id, {
         'isActive': True,
         'tariffDuration': order.duration_hours or 0,
-        'timeLeft': time_left_hours
+        'timeLeft': time_left_hours,
+        'activatedAt': order.activated_at,
+        'expiresAt': order.expires_at,
     })
