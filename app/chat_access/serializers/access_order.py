@@ -2,9 +2,25 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import serializers
 
+from account.models import ProfessionCategory
 from ..models import AccessOrder
 
 User = get_user_model()
+
+
+class ProfessionCategorySerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = ProfessionCategory
+        fields = ['id', 'name']  # Укажите нужные поля
+
+
+class SpecialistSerializer(serializers.ModelSerializer):
+    profession = ProfessionCategorySerializer(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'first_name', 'last_name', 'profession', 'photo')
 
 
 class ClientAccessSerializer(serializers.Serializer):

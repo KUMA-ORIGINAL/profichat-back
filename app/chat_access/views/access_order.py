@@ -4,7 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import AccessOrder
-from ..serializers import AccessOrderSerializer, ClientAccessSerializer, AccessOrderCreateSerializer
+from ..serializers.access_order import AccessOrderSerializer, ClientAccessSerializer, AccessOrderCreateSerializer, \
+    SpecialistSerializer
 from ..services.open_banking import generate_payment_link
 
 
@@ -27,6 +28,8 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         access_order = serializer.save()
 
+        specialist_data = SpecialistSerializer(access_order.specialist).data
+
         if access_order.tariff_type == 'free':
             access_order.payment_status = 'success'
             access_order.activate()  # Активируем доступ
@@ -46,6 +49,7 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         data = {
             'id': access_order.id,
             "payment_url": payment_url,
+            'specialist': specialist_data
         }
         return Response(data, status=status.HTTP_201_CREATED)
 

@@ -86,6 +86,8 @@ class User(AbstractUser):
         on_delete=models.SET_NULL, null=True, blank=True,
         related_name="users"
     )
+    education = models.CharField("Образование", max_length=255, blank=True, null=True)
+    work_experience = models.CharField("Опыт работы", max_length=255, blank=True, null=True)
     inviter = models.ForeignKey("self", verbose_name=_("Реферал (кто пригласил)"), on_delete=models.SET_NULL, null=True,
                                 blank=True)
     is_invited = models.BooleanField(_("Приглашен"), default=False)

@@ -27,7 +27,8 @@ class UserMeSerializer(serializers.ModelSerializer):
 class UserMeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'birthdate', 'description', 'photo')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender',
+                  'birthdate', 'description', 'photo', 'education', 'work_experience' )
 
 
 class ShowInSearchSerializer(serializers.ModelSerializer):
