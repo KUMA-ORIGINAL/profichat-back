@@ -26,5 +26,6 @@ class ApplicationAdmin(BaseModelAdmin):
                 obj.rejection_reason = ''
                 user = obj.user
                 user.role = ROLE_SPECIALIST
+                user.profession = obj.profession
                 user.save()
         super().save_model(request, obj, form, change)
