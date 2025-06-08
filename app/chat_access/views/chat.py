@@ -4,6 +4,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from rest_framework import viewsets, mixins
 from rest_framework.permissions import IsAuthenticated
+
+from account.models import ROLE_SPECIALIST, ROLE_CLIENT
 from ..models import Chat
 from ..serializers import ChatListSerializer, ChatCreateSerializer
 
@@ -52,7 +54,12 @@ class ChatViewSet(viewsets.GenericViewSet,
         user = self.request.user
         access_status = self.request.query_params.get('access_status')
 
-        base_qs = Chat.objects.filter(Q(client=user) | Q(specialist=user)).distinct()
+        if user.role == ROLE_SPECIALIST:
+            base_qs = Chat.objects.filter(specialist=user)
+        elif user.role == ROLE_CLIENT:
+            base_qs = Chat.objects.filter(client=user)
+        else:
+            base_qs = Chat.objects.none()  # если роль не определена — ничего не возвращаем
 
         if access_status == 'active':
             return base_qs.filter(
