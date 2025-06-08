@@ -85,7 +85,8 @@ class VerifyOTPView(APIView):
                 otp.is_verified = True
                 otp.save()
 
-                if User.objects.filter(phone_number=phone_number).exists():
+                existing_user = User.objects.filter(phone_number=phone_number).first()
+                if existing_user and existing_user.is_active:
                     return Response({"error": "Пользователь уже существует"}, status=400)
 
                 user = User.objects.create_user(
