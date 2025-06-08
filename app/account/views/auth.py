@@ -86,8 +86,21 @@ class VerifyOTPView(APIView):
                 otp.save()
 
                 existing_user = User.objects.filter(phone_number=phone_number).first()
-                if existing_user and existing_user.is_active:
-                    return Response({"error": "Пользователь уже существует"}, status=400)
+
+                if existing_user:
+                    if existing_user.is_active:
+                        return Response({"error": "Пользователь уже существует"}, status=400)
+                    else:
+                        existing_user.first_name = first_name
+                        existing_user.last_name = last_name
+                        existing_user.set_password(password)
+                        existing_user.is_active = True
+                        existing_user.save()
+
+                        return Response({
+                            "message": "Пользователь подтвержден и активирован",
+                            "user": serializers.UserMeSerializer(existing_user).data
+                        }, status=200)
 
                 user = User.objects.create_user(
                     phone_number=phone_number,
