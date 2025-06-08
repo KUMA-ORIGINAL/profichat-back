@@ -119,7 +119,7 @@ class User(AbstractUser):
         try:
             chat_client.upsert_user({
                 "id": str(self.id),
-                "phone_number": self.phone_number,
+                "phone_number": str(self.phone_number),
                 "first_name": self.first_name,
                 "last_name": self.last_name,
                 "photo": self.photo.url if self.photo else None,
