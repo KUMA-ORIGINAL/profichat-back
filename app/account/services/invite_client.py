@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from chat_access.services import update_chat_data_from_order
 from .sms import send_sms
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
@@ -47,6 +48,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
         activated_at=timezone.now(),
         expires_at=timezone.now() + timedelta(hours=tariff.duration_hours),
     )
+    update_chat_data_from_order(access_order)
 
     if client.is_active:
         send_chat_invite_push(client, chat)
