@@ -3,7 +3,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from account.models import ProfessionCategory
-from ..models import AccessOrder
+from ..models import AccessOrder, Chat
 
 User = get_user_model()
 
@@ -57,6 +57,7 @@ class ClientAccessSerializer(serializers.Serializer):
 
 class AccessOrderCreateSerializer(serializers.ModelSerializer):
     client = serializers.HiddenField(default=serializers.CurrentUserDefault())
+    channel_id = serializers.CharField(write_only=True)
 
     class Meta:
         model = AccessOrder
@@ -65,8 +66,10 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
             'client',
             'specialist',
             'tariff',
+            'channel_id',
             'chat'
         ]
+        read_only_fields = ['chat']  # Автоматически создаётся
 
     def validate(self, attrs):
         tariff = attrs.get('tariff')
@@ -75,9 +78,9 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
 
         if tariff.tariff_type == 'free':
             if AccessOrder.objects.filter(
-                    client=client,
-                    specialist=specialist,
-                    tariff__tariff_type='free'
+                client=client,
+                specialist=specialist,
+                tariff__tariff_type='free'
             ).exists():
                 raise serializers.ValidationError({
                     'tariff': "Вы уже использовали бесплатный тариф для этого специалиста."
@@ -86,10 +89,29 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        channel_id = validated_data.pop('channel_id')
+        client = validated_data['client']
+        specialist = validated_data['specialist']
+
+        chat, created = Chat.objects.get_or_create(
+            client=client,
+            specialist=specialist,
+            defaults={'channel_id': channel_id}
+        )
+
+        if not created and chat.channel_id != channel_id:
+            raise serializers.ValidationError({
+                'channel_id': 'Чат уже существует с другим channel_id.'
+            })
+
+        validated_data['chat'] = chat
+
+        # Копируем данные из тарифа
         tariff = validated_data['tariff']
         validated_data['duration_hours'] = tariff.duration_hours
         validated_data['tariff_type'] = tariff.tariff_type
         validated_data['price'] = tariff.price
+
         return super().create(validated_data)
 
 
