@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+
 User = get_user_model()
 
 
@@ -24,3 +25,8 @@ class Chat(models.Model):
 
     def __str__(self):
         return f'{self.client} ↔ {self.specialist}'
+
+    def delete(self, *args, **kwargs):
+        from account.services.stream import delete_stream_channel
+        delete_stream_channel(self.channel_id)
+        super().delete(*args, **kwargs)

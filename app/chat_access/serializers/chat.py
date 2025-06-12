@@ -2,6 +2,8 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+
+from account.services import create_stream_channel
 from ..models import Chat, AccessOrder
 
 User = get_user_model()
@@ -84,5 +86,20 @@ class ChatCreateSerializer(serializers.ModelSerializer):
             'id',
             'client',
             'specialist',
-            'channel_id',
         )
+
+    def create(self, validated_data):
+        client = validated_data['client']
+        specialist = validated_data['specialist']
+        channel_id = f"chat_{client.id}_{specialist.id}"
+        chat = Chat.objects.create(
+            client=client,
+            specialist=specialist,
+            channel_id=channel_id,
+        )
+        try:
+            create_stream_channel(chat, 'Привет')
+        except Exception as e:
+            chat.delete()
+            raise serializers.ValidationError(f"Ошибка создания канала в GetStream: {e}")
+        return chat

@@ -12,6 +12,7 @@ from chat_access.services.notifications import send_chat_invite_push
 
 User = get_user_model()
 
+
 def invite_client(phone_number: str, tariff_id: int, specialist: User):
     client = User.objects.filter(phone_number=phone_number).first()
 
