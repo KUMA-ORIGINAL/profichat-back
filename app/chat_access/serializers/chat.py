@@ -86,7 +86,9 @@ class ChatCreateSerializer(serializers.ModelSerializer):
             'id',
             'client',
             'specialist',
+            'channel_id',
         )
+        read_only_fields = ('client', 'channel_id')
 
     def create(self, validated_data):
         client = validated_data['client']
