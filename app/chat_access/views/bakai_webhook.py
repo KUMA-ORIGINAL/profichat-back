@@ -7,7 +7,7 @@ from ..models import AccessOrder
 import logging
 
 from ..services import update_chat_data_from_order
-from ..services.notifications import send_payment_success_push
+from common.notifications import send_payment_success_push
 
 logger = logging.getLogger(__name__)
 

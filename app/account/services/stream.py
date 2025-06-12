@@ -13,6 +13,8 @@ def create_stream_channel(chat, first_message: str = None):
             data={
                 "members": [str(chat.client.id), str(chat.specialist.id)],
                 "chat_id": chat.id,
+                "clientId": chat.client.id,
+                "specialistId": chat.specialist.id,
             },
         )
         channel.create(str(chat.specialist.id))

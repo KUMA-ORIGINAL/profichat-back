@@ -8,7 +8,7 @@ from chat_access.services import update_chat_data_from_order
 from .sms import send_sms
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
-from chat_access.services.notifications import send_chat_invite_push
+from common.notifications import send_chat_invite_push
 
 User = get_user_model()
 

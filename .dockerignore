@@ -1,0 +1,63 @@
+# Python/Django
+*.pyc
+*.pyo
+__pycache__/
+*.pyd
+*.pdb
+
+# Virtualenv
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Django
+*.sqlite3
+db.sqlite3
+*.log
+media/
+staticfiles/
+static/
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# IDE/editor config
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Tests
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Build
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Misc
+*.env
+.env.*

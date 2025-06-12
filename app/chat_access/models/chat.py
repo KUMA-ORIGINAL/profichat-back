@@ -25,8 +25,3 @@ class Chat(models.Model):
 
     def __str__(self):
         return f'{self.client} ↔ {self.specialist}'
-
-    def delete(self, *args, **kwargs):
-        from account.services.stream import delete_stream_channel
-        delete_stream_channel(self.channel_id)
-        super().delete(*args, **kwargs)

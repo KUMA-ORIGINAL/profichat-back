@@ -106,7 +106,6 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
 
         validated_data['chat'] = chat
 
-        # Копируем данные из тарифа
         tariff = validated_data['tariff']
         validated_data['duration_hours'] = tariff.duration_hours
         validated_data['tariff_type'] = tariff.tariff_type

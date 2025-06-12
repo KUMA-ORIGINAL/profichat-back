@@ -2,6 +2,7 @@ from django.contrib import admin
 from unfold.admin import TabularInline
 
 from common.admin import BaseModelAdmin
+from common.notifications import send_application_accepted_push
 from ..models import Application, WorkExperience, ROLE_SPECIALIST
 
 
@@ -21,11 +22,13 @@ class ApplicationAdmin(BaseModelAdmin):
     inlines = [WorkExperienceInline]
 
     def save_model(self, request, obj, form, change):
-        if change:
-            if obj.status == 'accepted':
+        if change and obj.pk:
+            old_obj = type(obj).objects.get(pk=obj.pk)
+            if old_obj.status != obj.status and obj.status == 'accepted':
                 obj.rejection_reason = ''
                 user = obj.user
                 user.role = ROLE_SPECIALIST
                 user.profession = obj.profession
                 user.save()
+                send_application_accepted_push(user, obj)
         super().save_model(request, obj, form, change)
