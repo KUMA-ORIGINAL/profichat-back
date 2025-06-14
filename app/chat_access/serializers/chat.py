@@ -100,7 +100,7 @@ class ChatCreateSerializer(serializers.ModelSerializer):
             channel_id=channel_id,
         )
         try:
-            create_stream_channel(chat, 'Привет')
+            create_stream_channel(chat)
         except Exception as e:
             chat.delete()
             raise serializers.ValidationError(f"Ошибка создания канала в GetStream: {e}")
