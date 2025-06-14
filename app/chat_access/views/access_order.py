@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from ..models import AccessOrder
 from ..serializers.access_order import AccessOrderSerializer, ClientAccessSerializer, AccessOrderCreateSerializer, \
     SpecialistSerializer
+from ..services import update_chat_data_from_order
 from ..services.open_banking import generate_payment_link
 
 
@@ -32,7 +33,9 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
 
         if access_order.tariff_type == 'free':
             access_order.payment_status = 'success'
-            access_order.activate()  # Активируем доступ
+            access_order.activate()
+
+            update_chat_data_from_order(access_order)
 
             return Response({
                 'id': access_order.id,
