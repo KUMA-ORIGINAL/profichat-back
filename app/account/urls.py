@@ -15,6 +15,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('users/me/', views.UserMeViewSet.as_view(), name='user-me'),
     path('users/show-in-search/', views.UpdateShowInSearchView.as_view(), name='update-show-in-search'),
+    path('users/me/update-invite-greeting/', views.UpdateInviteGreetingView.as_view(), name='update-invite-greeting'),
 
     path("auth/register/", views.RegisterView.as_view(), name="register"),
     path("auth/login/", views.LoginView.as_view(), name="login"),

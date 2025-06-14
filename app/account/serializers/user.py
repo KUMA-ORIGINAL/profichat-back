@@ -17,7 +17,7 @@ class UserMeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'balance', 'birthdate', 'description',
-                  'photo', 'role', 'application_status', 'show_in_search', 'profession')
+                  'photo', 'role', 'application_status', 'show_in_search', 'invite_greeting', 'profession')
 
     def get_application_status(self, obj):
         last_application = Application.objects.filter(user=obj).order_by('-created_at').first()
@@ -36,3 +36,8 @@ class ShowInSearchSerializer(serializers.ModelSerializer):
         model = User
         fields = ('show_in_search',)
 
+
+class InviteGreetingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('invite_greeting',)

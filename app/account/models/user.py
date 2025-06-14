@@ -100,6 +100,11 @@ class User(AbstractUser):
         ),
     )
     show_in_search = models.BooleanField(default=True, verbose_name="Показывать в поиске")
+    invite_greeting = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Приветственный текст для приглашения"
+    )
 
     username = None
     USERNAME_FIELD = "phone_number"
