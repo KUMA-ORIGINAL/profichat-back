@@ -32,5 +32,5 @@ def update_chat_data_from_order(order):
     update_channel_extra_data(order.chat.channel_id, {
         'activatedAt': str(order.activated_at),
         # 'expiresAt': str(order.expires_at),
-        'expiresAt': expires_at,
+        'expiresAt': str(expires_at),
     })
