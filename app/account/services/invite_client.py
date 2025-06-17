@@ -21,7 +21,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
             phone_number=phone_number,
             is_active=False
         )
-        invite_link = f"https://example.com/complete-registration?phone={client.phone_number}"
+        invite_link = f"https://profigram.site/profigramlinks/specialist/{specialist.id}"
         text = f"{specialist.get_full_name()} пригласил в Profigram. Завершите регистрацию по ссылке: {invite_link}"
         send_sms(phone=client.phone_number, text=text)
 
