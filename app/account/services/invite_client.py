@@ -16,15 +16,6 @@ User = get_user_model()
 def invite_client(phone_number: str, tariff_id: int, specialist: User):
     client = User.objects.filter(phone_number=phone_number).first()
 
-    if not client:
-        client = User.objects.create_user(
-            phone_number=phone_number,
-            is_active=False
-        )
-        invite_link = f"https://profigram.site/profigramlinks/specialist/{specialist.id}"
-        text = f"{specialist.get_full_name()} пригласил в Profigram. Завершите регистрацию по ссылке: {invite_link}"
-        send_sms(phone=client.phone_number, text=text)
-
     chat = Chat.objects.filter(
         client=client,
         specialist=specialist,
@@ -50,6 +41,15 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
         expires_at=timezone.now() + timedelta(hours=tariff.duration_hours),
     )
     update_chat_data_from_order(access_order)
+
+    if not client:
+        client = User.objects.create_user(
+            phone_number=phone_number,
+            is_active=False
+        )
+        invite_link = f"https://profigram.site/r/{chat.channel_id}"
+        text = f"{specialist.first_name} {specialist.last_name[0]} приглашает вас в Profigram — приложение для консультаций. Завершите регистрацию:  {invite_link}"
+        send_sms(phone=client.phone_number, text=text)
 
     if client.is_active:
         send_chat_invite_push(client, chat)
