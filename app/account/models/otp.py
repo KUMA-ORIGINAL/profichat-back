@@ -2,9 +2,11 @@ from django.db import models
 from django.utils import timezone
 from datetime import timedelta
 
+from phonenumber_field.modelfields import PhoneNumberField
+
 
 class OTP(models.Model):
-    phone_number = models.CharField(max_length=20)
+    phone_number = PhoneNumberField("phone number")
     code = models.CharField(max_length=6)
     created_at = models.DateTimeField(auto_now_add=True)
     is_verified = models.BooleanField(default=False)

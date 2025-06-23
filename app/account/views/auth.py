@@ -28,6 +28,7 @@ class CustomTokenRefreshView(TokenRefreshView):
     pass
 
 
+@extend_schema(tags=['Auth'])
 class SendSMSCodeView(APIView):
     serializer_class = serializers.PhoneNumberSerializer
 
@@ -92,7 +93,7 @@ class VerifyOTPView(APIView):
                     is_verified=False
                 )
 
-                if timezone.now() - obj.created_at > timedelta(minutes=5):
+                if obj.is_expired():
                     return Response({"error": "Код просрочен"}, status=400)
 
                 obj.is_verified = True
@@ -109,7 +110,6 @@ class VerifyOTPView(APIView):
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         })
-
 
 #
 # @extend_schema(tags=['Auth'])
