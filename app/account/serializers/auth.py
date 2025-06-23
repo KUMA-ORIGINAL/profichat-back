@@ -11,14 +11,6 @@ class PhoneNumberSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 
 
-class VerifyOTPWithUserSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    code = serializers.CharField()
-    password = serializers.CharField()
-    first_name = serializers.CharField()
-    last_name = serializers.CharField()
-
-
 class LoginSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True)
