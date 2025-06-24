@@ -54,7 +54,7 @@ class SendSMSCodeView(APIView):
                 )
                 logger.info(f"Created new verification code with ID {otp.id} for phone {phone_number}")
 
-            text = f"<#> Profigram\nКод подтверждения: {code}. Никому не сообщайте его. \n{app_signature}"
+            text = f"<![CDATA[<#> Profigram \nКод подтверждения - {code} \n{app_signature} \nНикому не сообщайте его.]]>"
             if not send_sms(phone=phone_number, text=text, transaction_id=otp.id):
                 return Response(
                     {"error": "Не удалось отправить SMS"},
