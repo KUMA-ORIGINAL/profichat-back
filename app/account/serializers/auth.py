@@ -9,6 +9,7 @@ class VerifyOTPSerializer(serializers.Serializer):
 
 class PhoneNumberSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
+    app_signature = serializers.CharField()
 
 
 class LoginSerializer(serializers.Serializer):

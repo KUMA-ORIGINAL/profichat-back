@@ -38,6 +38,7 @@ class SendSMSCodeView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         phone_number = serializer.validated_data.get("phone_number")
+        app_signature = serializer.validated_data.get("app_signature")
 
         try:
             with transaction.atomic():
@@ -53,7 +54,7 @@ class SendSMSCodeView(APIView):
                 )
                 logger.info(f"Created new verification code with ID {otp.id} for phone {phone_number}")
 
-            text = f"Profigram\nКод подтверждения: {code}. Никому не сообщайте его."
+            text = f"<#> Profigram\nКод подтверждения: {code}. Никому не сообщайте его. \n{app_signature}"
             if not send_sms(phone=phone_number, text=text, transaction_id=otp.id):
                 return Response(
                     {"error": "Не удалось отправить SMS"},
