@@ -56,7 +56,7 @@ def send_sms(
                 return False
 
             if parsed['status'] != '0':
-                logger.warning(f"[SMS API ERROR] Статус: {parsed['status']}, Телефон: {phone} {response.text}")
+                logger.warning(f"[SMS API ERROR] Статус: {parsed['status']}, Телефон: {phone}")
                 return False
 
             logger.info(f"[SMS OK] Сообщение отправлено на {phone}, ID: {parsed['id']}")
