@@ -23,6 +23,17 @@ class UserMeViewSet(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
+    @extend_schema(
+        summary='Деактивация профиля (псевдо-удаление)',
+        description='Помечает профиль пользователя как неактивный (is_active=False).',
+        responses={204: None}
+    )
+    def delete(self, request, *args, **kwargs):
+        user = self.get_object()
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 @extend_schema(tags=['Users Me'])
 class UpdateShowInSearchView(APIView):
