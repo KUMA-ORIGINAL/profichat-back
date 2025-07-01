@@ -1,6 +1,8 @@
+from django.conf import settings
 from django.urls import path, include
 from push_notifications.api.rest_framework import GCMDeviceAuthorizedViewSet
 from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from . import views
 
@@ -29,3 +31,8 @@ urlpatterns = [
     path('register-fcm/', views.RegisterFCMTokenView.as_view(), name='register-fcm'),
     path('invite-client/', views.InviteClientView.as_view(), name='invite-client'),
 ]
+
+if settings.DEBUG:
+    urlpatterns += [
+        path('auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    ]

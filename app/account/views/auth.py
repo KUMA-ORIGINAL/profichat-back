@@ -9,6 +9,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -24,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 @extend_schema(tags=["Auth"])
 class CustomTokenRefreshView(TokenRefreshView):
-    """Обновление access токена по refresh токену"""
     pass
 
 
@@ -101,17 +101,34 @@ class VerifyOTPView(APIView):
                 obj.save()
                 logger.info(f"SMS code verified successfully for phone {phone_number}, verification ID {obj.id}")
 
-                user, created = User.objects.get_or_create(phone_number=phone_number)
+                phone_number = self.normalize_phone(phone_number)
+                try:
+                    user = User.objects.get(phone_number=phone_number)
+                except User.DoesNotExist:
+                    user = User.objects.create(phone_number=phone_number)
+
+                tokens = OutstandingToken.objects.filter(user=user)
+                for token in tokens:
+                    try:
+                        BlacklistedToken.objects.get_or_create(token=token)
+                    except Exception:
+                        pass
+                refresh = RefreshToken.for_user(user)
 
         except OTP.DoesNotExist:
             return Response({"error": "Неверный код"}, status=400)
 
-        refresh = RefreshToken.for_user(user)
         return Response({
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         })
 
+    @staticmethod
+    def normalize_phone(phone):
+        phone = phone.strip().replace(' ', '')
+        if not phone.startswith('+'):
+            phone = '+' + phone
+        return phone
 #
 # @extend_schema(tags=['Auth'])
 # class PasswordResetRequestView(APIView):

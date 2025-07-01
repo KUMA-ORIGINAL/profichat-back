@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'django_filters',
     'corsheaders',
     "push_notifications",
+    'rest_framework_simplejwt.token_blacklist',
 
     'account',
     'common',
@@ -238,6 +239,7 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
     "AUTH_HEADER_TYPES": ("Bearer",),
     'UPDATE_LAST_LOGIN': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 DJOSER = {
