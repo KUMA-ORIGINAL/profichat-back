@@ -232,14 +232,13 @@ REST_FRAMEWORK = {
         'djangorestframework_camel_case.parser.CamelCaseMultiPartParser',
         'djangorestframework_camel_case.parser.CamelCaseJSONParser',
     ),
+    'EXCEPTION_HANDLER': 'account.exceptions.custom_exception_handler',
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
     "AUTH_HEADER_TYPES": ("Bearer",),
-    'UPDATE_LAST_LOGIN': True,
-    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 DJOSER = {
