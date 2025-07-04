@@ -15,7 +15,8 @@ User = get_user_model()
 
 def send_invite_sms(client, specialist, chat):
     invite_link = f"https://profigram.site/r/{chat.channel_id}"
-    text = f"{specialist.first_name} {specialist.last_name[0]}. приглашает Вас в приложение для консультаций. Завершите регистрацию: {invite_link}"
+    last_initial = specialist.last_name[0] + '.' if specialist.last_name else ''
+    text = f"{specialist.first_name} {last_initial} приглашает Вас в приложение для консультаций. Завершите регистрацию: {invite_link}"
     send_sms(phone=client.phone_number, text=text)
 
 
@@ -38,7 +39,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
             specialist=specialist,
             channel_id=f"chat_{client.id}_{specialist.id}"
         )
-        create_stream_channel(chat)
+        create_stream_channel(chat=chat, first_message=specialist.invite_greeting)
 
     tariff = Tariff.objects.get(id=tariff_id)
     access_order = AccessOrder.objects.create(
