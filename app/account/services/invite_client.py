@@ -26,7 +26,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
     if not client:
         client = User.objects.create_user(
             phone_number=phone_number,
-            is_active=False
+            is_active=True
         )
 
     chat = Chat.objects.filter(
