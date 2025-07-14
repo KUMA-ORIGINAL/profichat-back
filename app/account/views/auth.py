@@ -55,7 +55,7 @@ class SendSMSCodeView(APIView):
                 logger.info(f"Created new verification code with ID {otp.id} for phone {phone_number}")
 
             text = f"<![CDATA[<#> Код подтверждения - {code} \n{app_signature} \nНикому не сообщайте его.]]>"
-            if not send_sms(phone=phone_number, text=text, transaction_id=otp.id):
+            if not send_sms(phone=phone_number, text=text):
                 return Response(
                     {"error": "Не удалось отправить SMS"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -88,22 +88,22 @@ class VerifyOTPView(APIView):
 
         try:
             with transaction.atomic():
-                # obj = OTP.objects.select_for_update().get(
-                #     phone_number=phone_number,
-                #     code=code,
-                #     is_verified=False
-                # )
-                #
-                # if obj.is_expired():
-                #     return Response({"error": "Код просрочен"}, status=400)
-                #
-                # obj.is_verified = True
-                # obj.save()
-                # logger.info(f"SMS code verified successfully for phone {phone_number}, verification ID {obj.id}")
+                obj = OTP.objects.select_for_update().get(
+                    phone_number=phone_number,
+                    code=code,
+                    is_verified=False
+                )
+
+                if obj.is_expired():
+                    return Response({"error": "Код просрочен"}, status=400)
+
+                obj.is_verified = True
+                obj.save()
+                logger.info(f"SMS code verified successfully for phone {phone_number}, verification ID {obj.id}")
 
                 phone_number = self.normalize_phone(phone_number)
                 try:
-                    user = User.objects.get(phone_number=phone_number)
+                    user = User.objects.get(phone_number=phone_number, is_active=True)
                 except User.DoesNotExist:
                     user = User.objects.create(phone_number=phone_number)
 

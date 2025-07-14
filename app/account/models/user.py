@@ -66,7 +66,7 @@ class User(AbstractUser):
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
     description = models.TextField(_("Описание"), blank=True, null=True)
     balance = models.DecimalField(_("Баланс"), max_digits=12, decimal_places=2, default=0)
-    phone_number = PhoneNumberField(_("phone number"), unique=True, region='KG')
+    phone_number = PhoneNumberField(_("phone number"), unique=False, region='KG')
     photo = models.ImageField(
         upload_to='user/photos/%Y/%m/%d/',
         blank=True,
@@ -106,8 +106,7 @@ class User(AbstractUser):
         verbose_name="Приветственный текст для приглашения"
     )
 
-    username = None
-    USERNAME_FIELD = "phone_number"
+    USERNAME_FIELD = "username"
     REQUIRED_FIELDS = []  # Required fields when creating a superuser
 
     objects = UserManager()
