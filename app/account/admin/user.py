@@ -38,7 +38,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
     list_per_page = 20
 
     fieldsets = (
-        (None, {"fields": ("phone_number", "password")}),
+        (None, {"fields": ("phone_number", 'username', "password")}),
         (
             _("Personal info"),
             {

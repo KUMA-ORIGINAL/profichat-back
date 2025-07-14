@@ -12,28 +12,34 @@ from common.stream_client import chat_client
 
 class UserManager(BaseUserManager):
 
-    def create_user(self, phone_number, first_name=None, last_name=None, is_active=True, password=None):
-        """
-        Создаёт пользователя с номером телефона и паролем.
-        """
-        if not phone_number:
-            raise ValueError("У пользователя должен быть номер телефона")
+    def create_user(self, username, phone_number=None, first_name=None, last_name=None, is_active=True, password=None, **extra_fields):
+        if not username:
+            # генерируем username если не передан
+            import uuid
+            username = f"user_{uuid.uuid4().hex[:10]}"
 
-        user = self.model(phone_number=phone_number, first_name=first_name, last_name=last_name, is_active=is_active)
+        user = self.model(
+            phone_number=phone_number,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            is_active=is_active,
+            **extra_fields
+        )
         user.set_password(password)
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, phone_number, password):
-        """
-        Создаёт суперпользователя.
-        """
-        user = self.create_user(phone_number, password)
-        user.is_admin = True
-        user.is_staff = True
-        user.is_superuser = True
-        user.save(using=self._db)
-        return user
+    def create_superuser(self,username=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+        return self.create_user(
+            username=username,
+            password=password,
+            **extra_fields
+        )
+
 
 
 ROLE_CLIENT = 'client'
@@ -66,7 +72,7 @@ class User(AbstractUser):
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
     description = models.TextField(_("Описание"), blank=True, null=True)
     balance = models.DecimalField(_("Баланс"), max_digits=12, decimal_places=2, default=0)
-    phone_number = PhoneNumberField(_("phone number"), unique=False, region='KG')
+    phone_number = PhoneNumberField(_("phone number"), unique=False, region='KG', null=True)
     photo = models.ImageField(
         upload_to='user/photos/%Y/%m/%d/',
         blank=True,

@@ -15,8 +15,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from ..models import OTP
 from account import serializers
-from ..services import send_sms
-
+from ..services import send_sms, generate_unique_username
 
 User = get_user_model()
 
@@ -105,7 +104,12 @@ class VerifyOTPView(APIView):
                 try:
                     user = User.objects.get(phone_number=phone_number, is_active=True)
                 except User.DoesNotExist:
-                    user = User.objects.create(phone_number=phone_number)
+                    username = generate_unique_username()
+                    user = User.objects.create(
+                        username=username,
+                        phone_number=phone_number,
+                        is_active=True
+                    )
 
                 tokens = OutstandingToken.objects.filter(user=user)
                 for token in tokens:

@@ -31,7 +31,8 @@ class UserMeViewSet(generics.RetrieveUpdateAPIView):
     def delete(self, request, *args, **kwargs):
         user = self.get_object()
         user.is_active = False
-        user.save(update_fields=['is_active'])
+        user.phone_number = None
+        user.save(update_fields=['is_active', 'phone_number'])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
