@@ -40,6 +40,22 @@ class SendSMSCodeView(APIView):
         app_signature = serializer.validated_data.get("app_signature")
 
         try:
+            last_otp = OTP.objects.filter(
+                phone_number=phone_number
+            ).order_by('-created_at').first()
+
+            now = timezone.now()
+            if last_otp and last_otp.created_at > now - timedelta(seconds=60):
+                seconds_passed = (now - last_otp.created_at).total_seconds()
+                seconds_left = int(60 - seconds_passed)
+                return Response(
+                    {
+                        "error": "Код уже был отправлен недавно. Подождите минуту.",
+                        "seconds_left": max(0, seconds_left)
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS
+                )
+
             with transaction.atomic():
                 OTP.objects.filter(
                     phone_number=phone_number,
