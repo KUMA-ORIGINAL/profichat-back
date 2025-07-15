@@ -2,12 +2,17 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 
 from account.services import send_system_message_once
-from chat_access.models import Chat
 from ..serializers import StreamSystemMessageSerializer
 
 
 class StreamSystemMessageViewSet(viewsets.ViewSet):
     """
+        ALLOWED_TYPES = [
+            'tariffProvided',
+            'tariffExpired',
+            'tariffActivated',
+            'chatBlocked'
+        ]
         POST /api/stream/send_system_message/
         {
             "channel_id": 123,
