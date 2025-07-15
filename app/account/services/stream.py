@@ -45,21 +45,28 @@ def delete_stream_channel(channel_id):
         logger.warning(f"[Stream] Ошибка удаления канала: {e}")
 
 
-ALLOWED_TYPES = ['tariffExpired', 'chatBlocked']
+ALLOWED_TYPES = [
+    'tariffProvided',
+    'tariffExpired',
+    'tariffActivated',
+    'chatBlocked'
+]
+
 DEFAULT_TEXTS = {
+    'tariffProvided': "Доступ по тарифу предоставлен.",
     'tariffExpired': "Срок действия тарифа истёк.",
+    'tariffActivated': "Тариф активирован.",
     'chatBlocked': "Чат заблокирован.",
 }
 
 
 def send_system_message_once(channel_id, custom_type: str, text: str = None):
     """
-    Отправляет системное сообщение в канал Stream, если такого типа ещё не было.
-    custom_type: 'tariffExpired' или 'chatBlocked'
+    Отправляет системное сообщение в канал Stream, если такого типа ещё не было последним.
+    custom_type: один из ALLOWED_TYPES
     text: если не задан, используется дефолтное сообщение
     Возвращает True если отправлено, False если не отправлено
     """
-
     if custom_type not in ALLOWED_TYPES:
         logger.warning(f"[Stream] Недопустимый тип system message: {custom_type}")
         return False
@@ -68,39 +75,37 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
         text = DEFAULT_TEXTS[custom_type]
 
     try:
-        # Создаём канал с указанием created_by_id
         channel = chat_client.channel("messaging", channel_id, data={
-            'created_by_id': 'system'  # или используйте ID реального пользователя
+            'created_by_id': 'system'
         })
 
-        messages = channel.query(limit=50)['messages']
+        # Получаем только последнее сообщение
+        messages = channel.query(limit=1, sort=[{'field': 'created_at', 'direction': -1}])['messages']
 
-        # Проверяем все возможные места, где может храниться custom_type
-        for msg in messages:
+        if messages:
+            msg = messages[0]
             if msg.get('type') == 'system':
-                # Проверяем разные варианты хранения custom_type
                 msg_custom_type = (
-                        msg.get('custom_type') or
-                        msg.get('extraData', {}).get('customType') or
-                        msg.get('extraData', {}).get('custom_type')
+                    msg.get('custom_type') or
+                    msg.get('customType') or
+                    msg.get('extraData', {}).get('customType') or
+                    msg.get('extraData', {}).get('custom_type')
                 )
-
                 if msg_custom_type == custom_type:
-                    logger.info(f"[Stream] System message '{custom_type}' уже отправлено для канала {channel_id}")
+                    logger.info(f"[Stream] System message '{custom_type}' уже последнее в канале {channel_id}")
                     return False
 
         message_data = {
             'text': text,
             'type': 'system',
-            'custom_type': custom_type,  # Основное поле
+            'custom_type': custom_type,
             'extraData': {
-                'customType': custom_type,  # Дублируем для совместимости
+                'customType': custom_type,
                 'custom_type': custom_type
             }
         }
 
         channel.send_message(message_data, user_id='system')
-
         logger.info(f"[Stream] System message '{custom_type}' отправлено в канал {channel_id}")
         return True
 

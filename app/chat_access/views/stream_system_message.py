@@ -10,7 +10,7 @@ class StreamSystemMessageViewSet(viewsets.ViewSet):
     """
         POST /api/stream/send_system_message/
         {
-            "chat_id": 123,
+            "channel_id": 123,
             "custom_type": "tariffExpired",
             "text": "Необязательный текст"
         }
@@ -22,25 +22,17 @@ class StreamSystemMessageViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        chat_id = data['chat_id']
+        channel_id = data['channel_id']
         custom_type = data['custom_type']
         text = data.get('text')
 
-        if not chat_id or not custom_type:
+        if not channel_id or not custom_type:
             return Response(
-                {"success": False, "error": "chat_id and custom_type are required"},
+                {"success": False, "error": "channel_id and custom_type are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            chat = Chat.objects.get(id=chat_id)
-        except Chat.DoesNotExist:
-            return Response(
-                {"success": False, "error": "Chat not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        result = send_system_message_once(chat.channel_id, custom_type, text)
+        result = send_system_message_once(channel_id, custom_type, text)
         if result:
             return Response({"success": True})
         else:
