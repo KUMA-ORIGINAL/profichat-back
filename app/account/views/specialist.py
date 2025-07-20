@@ -1,6 +1,6 @@
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema
-from rest_framework import viewsets
+from rest_framework import viewsets, permissions
 from rest_framework.filters import SearchFilter
 from rest_framework.permissions import AllowAny
 from rest_framework.pagination import PageNumberPagination
@@ -23,7 +23,6 @@ class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.filter(role='specialist', show_in_search=True).prefetch_related(
         Prefetch('tariffs', queryset=Tariff.objects.filter(is_active=True))
     )
-    permission_classes = [AllowAny]
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_class = SpecialistFilter
     search_fields = ['first_name', 'last_name']
@@ -33,3 +32,8 @@ class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == 'list':
             return SpecialistListSerializer
         return SpecialistSerializer
+
+    def get_permissions(self):
+        if self.action == 'list':
+            return [permissions.AllowAny]
+        return [permissions.IsAuthenticated]
