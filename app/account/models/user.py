@@ -73,6 +73,7 @@ class User(AbstractUser):
     description = models.TextField(_("Описание"), blank=True, null=True)
     balance = models.DecimalField(_("Баланс"), max_digits=12, decimal_places=2, default=0)
     phone_number = PhoneNumberField(_("phone number"), unique=False, region='KG', null=True)
+    old_phone_number = PhoneNumberField(_("Старый номер телефона"), unique=False, region='KG', null=True, blank=True)
     photo = models.ImageField(
         upload_to='user/photos/%Y/%m/%d/',
         blank=True,
