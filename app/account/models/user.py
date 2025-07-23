@@ -12,7 +12,7 @@ from common.stream_client import chat_client
 
 class UserManager(BaseUserManager):
 
-    def create_user(self, username, phone_number=None, first_name=None, last_name=None, is_active=True, password=None, **extra_fields):
+    def create_user(self, username=None, phone_number=None, first_name=None, last_name=None, is_active=True, password=None, **extra_fields):
         if not username:
             # генерируем username если не передан
             import uuid
