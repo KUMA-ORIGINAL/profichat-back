@@ -21,12 +21,19 @@ def send_invite_sms(client, specialist, chat):
 
 def invite_client(phone_number: str, tariff_id: int, specialist: User):
     client = User.objects.filter(phone_number=phone_number).first()
+    is_new_client = False
 
     if not client:
         client = User.objects.create_user(
             phone_number=phone_number,
-            is_active=True
+            is_active=True  # теперь всегда True
         )
+        is_new_client = True
+    else:
+        # Для уже существующего пользователя — убедимся, что is_active=True
+        if not client.is_active:
+            client.is_active = True
+            client.save(update_fields=['is_active'])
 
     chat = Chat.objects.filter(
         client=client,
@@ -54,9 +61,10 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
     )
     update_chat_data_from_order(access_order)
 
-    if client.is_active:
-        send_chat_invite_push(client, chat)
-    else:
+    # Для новых пользователей — только SMS, для существующих — push
+    if is_new_client:
         send_invite_sms(client, specialist, chat)
+    else:
+        send_chat_invite_push(client, chat)
 
     return chat
