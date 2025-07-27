@@ -148,6 +148,11 @@ class User(AbstractUser):
         super().save(*args, **kwargs)
         self.upsert_stream_user()
 
-    def delete(self, using=None, keep_parents=False):
+    def delete(self, using=None, keep_parents=False, hard=False):
         self.delete_stream_user()
-        return super().delete(using=using, keep_parents=keep_parents)
+        if hard:
+            return super().delete(using=using, keep_parents=keep_parents)
+        self.is_active = False
+        self.old_phone_number = self.phone_number
+        self.phone_number = None
+        self.save(update_fields=['is_active', 'phone_number', 'old_phone_number'])
