@@ -73,3 +73,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
             },
         ),
     )
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            obj.delete()  # вызовет ваш кастомный метод "мягкого удаления"
