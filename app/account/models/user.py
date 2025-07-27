@@ -128,6 +128,7 @@ class User(AbstractUser):
 
     def upsert_stream_user(self) -> None:
         try:
+            # Попытка обновления/создания пользователя
             chat_client.upsert_user({
                 "id": str(self.id),
                 "phone_number": str(self.phone_number),
@@ -136,7 +137,22 @@ class User(AbstractUser):
                 "photo": self.photo.url if self.photo else None,
             })
         except Exception as e:
-            logging.error("Ошибка при синхронизации пользователя с GetStream: %s", e)
+            error_message = str(e)
+            if "was deleted" in error_message:
+                # Пользователь был удалён, пробуем создать заново
+                try:
+                    chat_client.create_user({
+                        "id": str(self.id),
+                        "phone_number": str(self.phone_number),
+                        "first_name": self.first_name,
+                        "last_name": self.last_name,
+                        "photo": self.photo.url if self.photo else None,
+                    })
+                    logging.info("Пользователь %s был пересоздан в GetStream.", self.id)
+                except Exception as ex:
+                    logging.error("Ошибка при создании удалённого пользователя в GetStream: %s", ex)
+            else:
+                logging.error("Ошибка при синхронизации пользователя с GetStream: %s", e)
 
     def delete_stream_user(self):
         try:

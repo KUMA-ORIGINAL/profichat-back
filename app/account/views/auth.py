@@ -149,6 +149,7 @@ class VerifyOTPView(APIView):
         if not phone.startswith('+'):
             phone = '+' + phone
         return phone
+
 #
 # @extend_schema(tags=['Auth'])
 # class PasswordResetRequestView(APIView):
