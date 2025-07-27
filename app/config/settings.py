@@ -151,7 +151,8 @@ firebase_app = firebase_admin.initialize_app()
 
 PUSH_NOTIFICATIONS_SETTINGS = {
     "FIREBASE_APP": firebase_app,
-    "UPDATE_ON_DUPLICATE_REG_ID": True
+    "UPDATE_ON_DUPLICATE_REG_ID": True,
+    "FCM_ERROR_TIMEOUT": 10,
 }
 
 STREAM_API_KEY=env("STREAM_API_KEY")

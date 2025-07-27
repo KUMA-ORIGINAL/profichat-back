@@ -6,18 +6,41 @@ logger = logging.getLogger(__name__)
 
 
 def send_push(user, title, message, extra=None, log_prefix="[Push]"):
-    device = GCMDevice.objects.filter(user=user, active=True).first()
-    if not device:
+    devices = GCMDevice.objects.filter(user=user, active=True)
+
+    if not devices.exists():
         logger.info(f"{log_prefix} Нет активных устройств для пользователя {user}")
-        return
+        return False
 
-    logger.info(f"{log_prefix} Отправка push пользователю {user}: {message}")
+    success_count = 0
 
-    device.send_message(
-        message,
-        title=title,
-        extra=extra or {}
-    )
+    for device in devices:
+        try:
+            logger.info(f"{log_prefix} Отправка push пользователю {user}: {message}")
+
+            result = device.send_message(
+                message,
+                title=title,
+                extra=extra or {},
+                # Критично для iOS - звук по умолчанию
+                sound="default",
+                # Для iOS - badge
+                badge=1,
+                # Дополнительные параметры
+                content_available=True,
+                # Приоритет для iOS
+                priority="high"
+            )
+
+            logger.info(f"{log_prefix} Результат отправки: {result}")
+            success_count += 1
+
+        except Exception as e:
+            logger.error(f"{log_prefix} Ошибка отправки push пользователю {user}: {e}")
+            # Не деактивируем сразу, может быть временная ошибка
+            continue
+
+    return success_count > 0
 
 
 def send_payment_success_push(user, access_order):
