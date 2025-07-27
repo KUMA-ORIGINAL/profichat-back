@@ -1,5 +1,4 @@
 import logging
-
 from push_notifications.models import GCMDevice
 
 logger = logging.getLogger(__name__)
@@ -7,37 +6,34 @@ logger = logging.getLogger(__name__)
 
 def send_push(user, title, message, extra=None, log_prefix="[Push]"):
     devices = GCMDevice.objects.filter(user=user, active=True)
-
     if not devices.exists():
         logger.info(f"{log_prefix} Нет активных устройств для пользователя {user}")
         return False
 
     success_count = 0
 
+    # Собираем extra-данные
+    push_extra = dict(extra) if extra else {}
+    # Стандартные параметры для iOS
+    push_extra.update({
+        "sound": "default",         # звук по умолчанию (iOS)
+        "badge": 1,                 # бейдж на иконке (iOS)
+        "content_available": True,  # для фонового обновления (iOS)
+        "priority": "high",         # приоритет для FCM
+    })
+
     for device in devices:
         try:
             logger.info(f"{log_prefix} Отправка push пользователю {user}: {message}")
-
             result = device.send_message(
                 message,
                 title=title,
-                extra=extra or {},
-                # Критично для iOS - звук по умолчанию
-                sound="default",
-                # Для iOS - badge
-                badge=1,
-                # Дополнительные параметры
-                content_available=True,
-                # Приоритет для iOS
-                priority="high"
+                extra=push_extra,
             )
-
             logger.info(f"{log_prefix} Результат отправки: {result}")
             success_count += 1
-
         except Exception as e:
             logger.error(f"{log_prefix} Ошибка отправки push пользователю {user}: {e}")
-            # Не деактивируем сразу, может быть временная ошибка
             continue
 
     return success_count > 0
