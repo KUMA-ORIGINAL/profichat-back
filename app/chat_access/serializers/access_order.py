@@ -77,14 +77,23 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
         specialist = attrs.get('specialist')
 
         if tariff.tariff_type == 'free':
-            if AccessOrder.objects.filter(
-                client=client,
-                specialist=specialist,
-                tariff__tariff_type='free'
-            ).exists():
-                raise serializers.ValidationError({
-                    'tariff': "Вы уже использовали бесплатный тариф для этого специалиста."
-                })
+            # ищем существующий free-заказ у этого клиента/специалиста
+            free_order = (
+                AccessOrder.objects
+                .filter(client=client, specialist=specialist, tariff__tariff_type='free')
+                .first()
+            )
+            if free_order:
+                # если он ещё активен — запрещаем
+                if free_order.is_active:
+                    raise serializers.ValidationError(
+                        {'tariff': 'Ваш бесплатный тариф ещё активен.'}
+                    )
+                # если уже истёк — тоже запрещаем (только один free за всё время)
+                else:
+                    raise serializers.ValidationError(
+                        {'tariff': 'Бесплатный тариф уже был использован для этого специалиста.'}
+                    )
 
         return attrs
 
