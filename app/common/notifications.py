@@ -82,7 +82,10 @@ def send_chat_invite_push(user, chat):
     message = "Вас пригласили в чат со специалистом"
     extra = {
         "chat_id": str(chat.id),
-        "type": "chat_invite"
+        "type": "chat_invite",
+        "channel_id": str(chat.channel_id),
+        "sender_name": str(user.get_full_name()),  # или другое поле имени отправителя
+        "sender_id": str(user.id)
     }
     return send_push(user, title, message, extra, log_prefix="[Push][Chat]")
 
