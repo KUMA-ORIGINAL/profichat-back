@@ -112,6 +112,10 @@ class User(AbstractUser):
         null=True,
         verbose_name="Приветственный текст для приглашения"
     )
+    can_call = models.BooleanField(
+        _("Можно ли звонить этому пользователю"),
+        default=True
+    )
 
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = []  # Required fields when creating a superuser
@@ -135,6 +139,7 @@ class User(AbstractUser):
                 "first_name": self.first_name,
                 "last_name": self.last_name,
                 "photo": self.photo.url if self.photo else None,
+                'can_call': self.can_call,
             })
         except Exception as e:
             error_message = str(e)
@@ -147,6 +152,7 @@ class User(AbstractUser):
                         "first_name": self.first_name,
                         "last_name": self.last_name,
                         "photo": self.photo.url if self.photo else None,
+                        'can_call': self.can_call,
                     })
                     logging.info("Пользователь %s был пересоздан в GetStream.", self.id)
                 except Exception as ex:

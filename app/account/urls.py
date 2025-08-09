@@ -18,6 +18,7 @@ urlpatterns = [
     path('users/me/', views.UserMeViewSet.as_view(), name='user-me'),
     path('users/show-in-search/', views.UpdateShowInSearchView.as_view(), name='update-show-in-search'),
     path('users/me/update-invite-greeting/', views.UpdateInviteGreetingView.as_view(), name='update-invite-greeting'),
+    path('users/me/can-call/', views.UpdateCanCallView.as_view(), name='update-can-call'),
 
     # path("auth/register/", views.R    egisterView.as_view(), name="register"),
     path("auth/sms/send/", views.SendSMSCodeView.as_view(), name="send_sms_code"),
