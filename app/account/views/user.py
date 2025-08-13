@@ -39,6 +39,11 @@ class UpdateShowInSearchView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ShowInSearchSerializer
 
+    def get(self, request, format=None):
+        user = request.user
+        serializer = self.serializer_class(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def patch(self, request):
         user = request.user
         serializer = self.serializer_class(user, data=request.data, partial=True)
@@ -52,11 +57,6 @@ class UpdateShowInSearchView(APIView):
 class UpdateInviteGreetingView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InviteGreetingSerializer
-
-    def get(self, request, format=None):
-        user = request.user
-        serializer = self.serializer_class(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request):
         user = request.user
