@@ -2,7 +2,6 @@ from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets, permissions
 from rest_framework.filters import SearchFilter
-from rest_framework.permissions import AllowAny
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 

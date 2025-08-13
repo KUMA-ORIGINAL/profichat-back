@@ -79,7 +79,16 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
             'created_by_id': 'system'
         })
 
-        # Получаем только последнее сообщение
+        try:
+            if hasattr(channel, 'updatePartial'):
+                channel.updatePartial(set={'lastTariffStatusMessage': custom_type})
+            elif hasattr(channel, 'update_partial'):
+                channel.update_partial(set={'lastTariffStatusMessage': custom_type})
+            elif hasattr(channel, 'update'):
+                channel.update({'set': {'lastTariffStatusMessage': custom_type}})
+        except Exception as e_update:
+            logger.debug(f"[Stream] Не удалось обновить lastTariffStatusMessage: {e_update}")
+
         messages = channel.query(limit=1, sort=[{'field': 'created_at', 'direction': -1}])['messages']
 
         if messages:
