@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 
 from .. import serializers
-from ..serializers import ShowInSearchSerializer, InviteGreetingSerializer, UpdateCanCallSerializer
+from ..serializers import ShowInSearchSerializer, InviteGreetingSerializer, CanCallSerializer
 
 User = get_user_model()
 
@@ -53,6 +53,11 @@ class UpdateInviteGreetingView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = InviteGreetingSerializer
 
+    def get(self, request, format=None):
+        user = request.user
+        serializer = self.serializer_class(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def patch(self, request):
         user = request.user
         serializer = self.serializer_class(user, data=request.data, partial=True)
@@ -65,7 +70,12 @@ class UpdateInviteGreetingView(APIView):
 @extend_schema(tags=['Users Me'])
 class UpdateCanCallView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = UpdateCanCallSerializer
+    serializer_class = CanCallSerializer
+
+    def get(self, request, format=None):
+        user = request.user
+        serializer = self.serializer_class(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request):
         user = request.user

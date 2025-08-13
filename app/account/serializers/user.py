@@ -43,7 +43,7 @@ class InviteGreetingSerializer(serializers.ModelSerializer):
         fields = ('invite_greeting',)
 
 
-class UpdateCanCallSerializer(serializers.ModelSerializer):
+class CanCallSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('can_call',)
