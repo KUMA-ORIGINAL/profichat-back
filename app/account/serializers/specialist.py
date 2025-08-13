@@ -17,7 +17,7 @@ class SpecialistSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "first_name", "last_name", "phone_number", "photo",
-                  'description', "profession", 'channel_id', 'tariffs', 'work_schedules']
+                  'description', 'can_call', "profession", 'channel_id', 'tariffs', 'work_schedules']
 
     def get_channel_id(self, obj):
         request = self.context.get('request')
