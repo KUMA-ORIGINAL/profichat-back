@@ -51,4 +51,4 @@ class Tariff(models.Model):
 
     def delete(self, using=None, keep_parents=False):
         self.is_archive = True
-        self.save(update_fields=['is_active'])
+        self.save(update_fields=['is_archive'])
