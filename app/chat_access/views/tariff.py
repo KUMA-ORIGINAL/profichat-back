@@ -10,4 +10,4 @@ class TariffViewSet(viewsets.ModelViewSet):
     serializer_class = TariffSerializer
 
     def get_queryset(self):
-        return Tariff.objects.filter(is_active=True, specialist=self.request.user)
+        return Tariff.objects.filter(is_archive=False, specialist=self.request.user)

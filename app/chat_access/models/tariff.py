@@ -27,6 +27,7 @@ class Tariff(models.Model):
         default=False,
         verbose_name="Активный"
     )
+    is_archive = models.BooleanField(default=False)
     tariff_type = models.CharField(
         max_length=255,
         choices=TARIFF_TYPE_CHOICES,
@@ -49,6 +50,5 @@ class Tariff(models.Model):
         verbose_name_plural = "Тарифы"
 
     def delete(self, using=None, keep_parents=False):
-        """Мягкое удаление: просто ставим is_active = False."""
-        self.is_active = False
+        self.is_archive = True
         self.save(update_fields=['is_active'])
