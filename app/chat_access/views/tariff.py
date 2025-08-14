@@ -5,7 +5,7 @@ from ..serializers import TariffSerializer
 
 
 class TariffViewSet(viewsets.ModelViewSet):
-    queryset = Tariff.objects.all()
+    queryset = Tariff.objects.filter(is_active=True)
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = TariffSerializer
 

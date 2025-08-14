@@ -47,3 +47,8 @@ class Tariff(models.Model):
     class Meta:
         verbose_name = "Тариф"
         verbose_name_plural = "Тарифы"
+
+    def delete(self, using=None, keep_parents=False):
+        """Мягкое удаление: просто ставим is_active = False."""
+        self.is_active = False
+        self.save(update_fields=['is_active'])
