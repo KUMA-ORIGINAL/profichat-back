@@ -5,9 +5,9 @@ from ..serializers import TariffSerializer
 
 
 class TariffViewSet(viewsets.ModelViewSet):
-    queryset = Tariff.objects.filter(is_active=True)
+    queryset = Tariff.objects.all()
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     serializer_class = TariffSerializer
 
     def get_queryset(self):
-        return Tariff.objects.filter(specialist=self.request.user)
+        return Tariff.objects.filter(is_active=True, specialist=self.request.user)
