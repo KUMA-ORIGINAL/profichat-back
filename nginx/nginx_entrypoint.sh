@@ -20,4 +20,18 @@ if [ "$get_certs_lower" = "true" ]; then
         sleep 2
     fi
 
+    folder_path="/etc/letsencrypt/live/imagegpt.operator.kg"
+    # If path exists then let certbot rewrite nginx config
+    if [ -d "$folder_path" ]; then
+        certbot -n --nginx -d "imagegpt.operator.kg"
+        nginx -s stop
+        # Need time for stop
+        sleep 2
+    # Else get certs and rewrite nginx config
+    else
+        certbot --nginx --email "$CERTBOT_EMAIL" --agree-tos --no-eff-email -d "imagegpt.operator.kg"
+        nginx -s stop
+        sleep 2
+    fi
+
 fi
