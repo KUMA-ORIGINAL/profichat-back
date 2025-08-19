@@ -112,8 +112,12 @@ class User(AbstractUser):
         null=True,
         verbose_name="Приветственный текст для приглашения"
     )
-    can_call = models.BooleanField(
-        _("Можно ли звонить этому пользователю"),
+    can_audio_call = models.BooleanField(
+        _("Можно ли звонить пользователю (АУДИО)"),
+        default=True
+    )
+    can_video_call = models.BooleanField(
+        _("Можно ли звонить пользователю (ВИДЕО)"),
         default=True
     )
 
@@ -139,7 +143,8 @@ class User(AbstractUser):
                 "first_name": self.first_name,
                 "last_name": self.last_name,
                 "photo": self.photo.url if self.photo else None,
-                'can_call': self.can_call,
+                'can_audio_call': self.can_audio_call,
+                'can_video_call': self.can_video_call,
             })
         except Exception as e:
             error_message = str(e)
@@ -152,7 +157,8 @@ class User(AbstractUser):
                         "first_name": self.first_name,
                         "last_name": self.last_name,
                         "photo": self.photo.url if self.photo else None,
-                        'can_call': self.can_call,
+                        'can_audio_call': self.can_audio_call,
+                        'can_video_call': self.can_video_call,
                     })
                     logging.info("Пользователь %s был пересоздан в GetStream.", self.id)
                 except Exception as ex:

@@ -44,7 +44,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
             {
                 "fields": (
                     "first_name", "last_name", "birthdate", "gender", 'balance', 'profession',
-                    "photo", 'role', 'show_in_search', 'inviter', 'is_invited', 'invite_greeting', 'can_call')}),
+                    "photo", 'role', 'show_in_search', 'inviter', 'is_invited', 'invite_greeting', 'can_audio_call', 'can_video_call')}),
         (
             _("Permissions"),
             {
