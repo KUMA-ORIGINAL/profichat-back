@@ -18,6 +18,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - mynet
+
 
   database:
     image: postgres:16
@@ -36,6 +39,9 @@ services:
         limits:
           cpus: '1'
           memory: 1G
+    networks:
+      - mynet
+
 
   redis:
     image: redis
@@ -50,6 +56,9 @@ services:
       interval: 1s
       timeout: 3s
       retries: 5
+    networks:
+      - mynet
+
 
   nginx:
     build: nginx
@@ -64,6 +73,8 @@ services:
       - certs:/etc/letsencrypt
     depends_on:
       - backend
+    networks:
+      - mynet
 
 volumes:
   database-storage:
@@ -71,3 +82,7 @@ volumes:
   static_volume:
   media_volume:
   certs:
+
+networks:
+  mynet:
+    external: true
