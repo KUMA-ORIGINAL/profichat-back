@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from django.core.validators import RegexValidator
 from phonenumber_field.modelfields import PhoneNumberField
 
+from account.models import WorkSchedule
 from common.stream_client import chat_client
 
 
@@ -134,22 +135,35 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
+    def get_work_schedule_data(self):
+        """Собираем расписание пользователя для sync с GetStream"""
+        schedules = WorkSchedule.objects.filter(user_id=self.id)
+        return [
+            {
+                "id": ws.id,
+                "dayOfWeek": ws.day_of_week,
+                "fromTime": ws.from_time.isoformat(),
+                "toTime": ws.to_time.isoformat(),
+            }
+            for ws in schedules
+        ]
+
     def upsert_stream_user(self) -> None:
+        """Создаёт/обновляет пользователя в Stream вместе с расписанием"""
         try:
-            # Попытка обновления/создания пользователя
             chat_client.upsert_user({
                 "id": str(self.id),
                 "phone_number": str(self.phone_number),
                 "first_name": self.first_name,
                 "last_name": self.last_name,
                 "photo": self.photo.url if self.photo else None,
-                'can_audio_call': self.can_audio_call,
-                'can_video_call': self.can_video_call,
+                "can_audio_call": self.can_audio_call,
+                "can_video_call": self.can_video_call,
+                "work_schedule": self.get_work_schedule_data(),  # <-- ВАЖНО
             })
         except Exception as e:
             error_message = str(e)
             if "was deleted" in error_message:
-                # Пользователь был удалён, пробуем создать заново
                 try:
                     chat_client.create_user({
                         "id": str(self.id),
@@ -157,8 +171,9 @@ class User(AbstractUser):
                         "first_name": self.first_name,
                         "last_name": self.last_name,
                         "photo": self.photo.url if self.photo else None,
-                        'can_audio_call': self.can_audio_call,
-                        'can_video_call': self.can_video_call,
+                        "can_audio_call": self.can_audio_call,
+                        "can_video_call": self.can_video_call,
+                        "work_schedule": self.get_work_schedule_data(),
                     })
                     logging.info("Пользователь %s был пересоздан в GetStream.", self.id)
                 except Exception as ex:
@@ -174,6 +189,7 @@ class User(AbstractUser):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
+        # Автоматическая синхронизация в GetStream при любом изменении
         self.upsert_stream_user()
 
     def delete(self, using=None, keep_parents=False, hard=False):
