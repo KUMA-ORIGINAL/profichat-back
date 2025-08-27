@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 
 from .. import serializers
 from ..serializers import ShowInSearchSerializer, InviteGreetingSerializer, CanCallSerializer
+from ..services import broadcast_user_update
 
 User = get_user_model()
 
@@ -22,6 +23,10 @@ class UserMeViewSet(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        broadcast_user_update(user)
 
     @extend_schema(
         summary='Деактивация профиля (псевдо-удаление)',
@@ -49,6 +54,7 @@ class UpdateShowInSearchView(APIView):
         serializer = self.serializer_class(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            broadcast_user_update(user)
             return Response({'detail': 'Поле "show_in_search" обновлено успешно.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -63,6 +69,7 @@ class UpdateInviteGreetingView(APIView):
         serializer = self.serializer_class(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            broadcast_user_update(user)
             return Response({'detail': 'Поле "invite_greeting" обновлено успешно.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -82,5 +89,6 @@ class UpdateCanCallView(APIView):
         serializer = self.serializer_class(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            broadcast_user_update(user)
             return Response({'detail': 'Поле обновлено успешно.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

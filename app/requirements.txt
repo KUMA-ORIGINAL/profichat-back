@@ -19,3 +19,9 @@ django-silk==5.3.2
 django-redis==5.4.0
 django-push-notifications[FCM]==3.2.1
 django-phonenumber-field[phonenumbers]==8.1.0
+
+channels==4.2.0
+channels-redis==4.2.1
+daphne==4.1.2
+uvicorn==0.34.0
+websockets==14.2

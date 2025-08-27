@@ -37,6 +37,7 @@ CSRF_COOKIE_HTTPONLY = True  # Защита от кражи CSRF токенов
 
 
 INSTALLED_APPS = [
+    'daphne',
     'modeltranslation',
     'unfold',
     "unfold.contrib.filters",
@@ -56,6 +57,7 @@ INSTALLED_APPS = [
     'corsheaders',
     "push_notifications",
     'rest_framework_simplejwt.token_blacklist',
+    'channels',
 
     'account',
     'common',
@@ -99,6 +101,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
 
 DATABASES = {
     'default': {
@@ -200,6 +203,16 @@ CACHES = {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }
     }
+}
+
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": ['redis://redis:6379/2'],  # Используем другой слот Redis (например, /2)
+        },
+    },
 }
 
 
