@@ -14,17 +14,24 @@ def generate_unique_username():
     return f"user_{uuid.uuid4().hex[:10]}"
 
 
-def broadcast_user_update(user: User):
-    """Отправить обновлённые данные пользователя во все чаты, где он есть"""
-    data = UserMeSerializer(user).data  # бери сериализатор, который выдаёт публичные поля
-    chats = Chat.objects.filter(client=user) | Chat.objects.filter(specialist=user)
+def broadcast_user_update(user, changes=None):
+    """
+    Отправить обновлённые данные пользователя во все чаты, где он состоит.
+    changes -- iterable с именами изменённых полей (или словарь old/new при желании)
+    """
+    payload = {
+        "user": UserMeSerializer(user).data,
+        "changes": list(changes) if changes else [],
+    }
 
+    chats = Chat.objects.filter(client=user) | Chat.objects.filter(specialist=user)
     layer = get_channel_layer()
+
     for chat in chats:
         async_to_sync(layer.group_send)(
-            f"chat_{chat.id}",
+            f"chat_{chat.channel_id}",
             {
                 "type": "user_update",
-                "user": data,
+                **payload,
             }
         )

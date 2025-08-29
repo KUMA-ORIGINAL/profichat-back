@@ -4,7 +4,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.chat_id = self.scope['url_route']['kwargs']['chat_id']
+        self.chat_id = self.scope['url_route']['kwargs']['channel_id']
         self.group_name = f"chat_{self.chat_id}"
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
@@ -32,4 +32,5 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(json.dumps({
             "type": "user_update",
             "user": event["user"],
+            "changes": event.get("changes"),
         }))

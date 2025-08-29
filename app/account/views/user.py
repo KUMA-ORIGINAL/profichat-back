@@ -26,7 +26,10 @@ class UserMeViewSet(generics.RetrieveUpdateAPIView):
 
     def perform_update(self, serializer):
         user = serializer.save()
-        broadcast_user_update(user)
+        broadcast_user_update(
+            user,
+            changes=serializer.validated_data.keys(),
+        )
 
     @extend_schema(
         summary='Деактивация профиля (псевдо-удаление)',
@@ -54,7 +57,10 @@ class UpdateShowInSearchView(APIView):
         serializer = self.serializer_class(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            broadcast_user_update(user)
+            broadcast_user_update(
+                user,
+                changes=serializer.validated_data.keys(),
+            )
             return Response({'detail': 'Поле "show_in_search" обновлено успешно.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -69,7 +75,10 @@ class UpdateInviteGreetingView(APIView):
         serializer = self.serializer_class(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            broadcast_user_update(user)
+            broadcast_user_update(
+                user,
+                changes=serializer.validated_data.keys(),
+            )
             return Response({'detail': 'Поле "invite_greeting" обновлено успешно.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -89,6 +98,9 @@ class UpdateCanCallView(APIView):
         serializer = self.serializer_class(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            broadcast_user_update(user)
+            broadcast_user_update(
+                user,
+                changes=serializer.validated_data.keys(),
+            )
             return Response({'detail': 'Поле обновлено успешно.'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
