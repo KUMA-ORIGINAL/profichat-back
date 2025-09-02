@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from ..models import WorkSchedule
 from ..serializers import WorkScheduleSerializer
+from ..services import broadcast_user_update
 
 
 @extend_schema(tags=['Work Schedule'])
@@ -23,10 +24,18 @@ class WorkScheduleViewSet(viewsets.GenericViewSet,
         serializer = self.get_serializer(data=request.data, many=is_many)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        # отправка после сохранения
+        broadcast_user_update(request.user, changes=["schedule"])
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_create(self, serializer):
         serializer.save()
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        # отправка после обновления
+        broadcast_user_update(self.request.user, changes=["schedule"])
+        return instance
 
     @action(detail=False, methods=['put', 'patch'], url_path='bulk-update')
     def bulk_update(self, request):
@@ -45,5 +54,9 @@ class WorkScheduleViewSet(viewsets.GenericViewSet,
                 updated_items.append(serializer.data)
             except Exception as e:
                 errors.append({'id': item_data.get('id'), 'error': str(e)})
+
+        # отправляем обновление 1 раз после всего bulk обновления
+        if updated_items:
+            broadcast_user_update(request.user, changes=["schedule"])
 
         return Response({'updated': updated_items, 'errors': errors})

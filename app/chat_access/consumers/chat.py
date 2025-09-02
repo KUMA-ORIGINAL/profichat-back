@@ -32,5 +32,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send(json.dumps({
             "type": "user_update",
             "user": event["user"],
+            "schedule": event["schedule"],
             "changes": event.get("changes"),
         }))
