@@ -135,19 +135,6 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
-    def get_work_schedule_data(self):
-        """Собираем расписание пользователя для sync с GetStream"""
-        schedules = WorkSchedule.objects.filter(user_id=self.id)
-        return [
-            {
-                "id": ws.id,
-                "dayOfWeek": ws.day_of_week,
-                "fromTime": ws.from_time.isoformat(),
-                "toTime": ws.to_time.isoformat(),
-            }
-            for ws in schedules
-        ]
-
     def upsert_stream_user(self) -> None:
         """Создаёт/обновляет пользователя в Stream вместе с расписанием"""
         try:
@@ -157,9 +144,6 @@ class User(AbstractUser):
                 "first_name": self.first_name,
                 "last_name": self.last_name,
                 "photo": self.photo.url if self.photo else None,
-                "can_audio_call": self.can_audio_call,
-                "can_video_call": self.can_video_call,
-                "work_schedule": self.get_work_schedule_data(),  # <-- ВАЖНО
             })
         except Exception as e:
             error_message = str(e)
@@ -171,9 +155,6 @@ class User(AbstractUser):
                         "first_name": self.first_name,
                         "last_name": self.last_name,
                         "photo": self.photo.url if self.photo else None,
-                        "can_audio_call": self.can_audio_call,
-                        "can_video_call": self.can_video_call,
-                        "work_schedule": self.get_work_schedule_data(),
                     })
                     logging.info("Пользователь %s был пересоздан в GetStream.", self.id)
                 except Exception as ex:
