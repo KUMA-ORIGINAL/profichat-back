@@ -2,24 +2,11 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 
 from account.services import send_system_message_once
+from ..models import Chat
 from ..serializers import StreamSystemMessageSerializer
 
 
 class StreamSystemMessageViewSet(viewsets.ViewSet):
-    """
-        ALLOWED_TYPES = [
-            'tariffProvided',
-            'tariffExpired',
-            'tariffActivated',
-            'chatBlocked'
-        ]
-        POST /api/stream/send_system_message/
-        {
-            "channel_id": 123,
-            "custom_type": "tariffExpired",
-            "text": "Необязательный текст"
-        }
-    """
     serializer_class = StreamSystemMessageSerializer
 
     def create(self, request):
@@ -31,17 +18,23 @@ class StreamSystemMessageViewSet(viewsets.ViewSet):
         custom_type = data['custom_type']
         text = data.get('text')
 
-        if not channel_id or not custom_type:
+        # === Получаем чат ===
+        try:
+            chat = Chat.objects.select_related("client", "specialist").get(channel_id=channel_id)
+        except Chat.DoesNotExist:
             return Response(
-                {"success": False, "error": "channel_id and custom_type are required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"success": False, "error": "Chat not found"},
+                status=status.HTTP_404_NOT_FOUND
             )
 
+        client_name = chat.client.get_full_name()
+        specialist_name = chat.specialist.get_full_name()
+
+        # === Отправляем системное сообщение ===
         result = send_system_message_once(channel_id, custom_type, text)
-        if result:
-            return Response({"success": True})
-        else:
-            return Response(
-                {"success": False, "error": "Message was already sent or invalid type"},
-                status=status.HTTP_200_OK
-            )
+
+        return Response({
+            "success": bool(result),
+            "client_name": client_name,
+            "specialist_name": specialist_name
+        })
