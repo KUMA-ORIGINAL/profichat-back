@@ -1,5 +1,6 @@
 import logging
 
+from chat_access.models import Chat
 from common.stream_client import chat_client
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,17 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
         logger.warning(f"[Stream] Недопустимый тип system message: {custom_type}")
         return False
 
+    try:
+        chat = Chat.objects.select_related("client", "specialist").get(channel_id=channel_id)
+        client_name = chat.client.get_full_name()
+        specialist_name = chat.specialist.get_full_name()
+    except Chat.DoesNotExist:
+        logger.warning(f"[Stream] Чат с channel_id {channel_id} не найден")
+        return False
+    except Exception as e:
+        logger.warning(f"[Stream] Ошибка получения данных чата: {e}")
+        return False
+
     if not text:
         text = DEFAULT_TEXTS[custom_type]
 
@@ -90,10 +102,10 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
             msg = messages[0]
             if msg.get('type') == 'system':
                 msg_custom_type = (
-                    msg.get('custom_type') or
-                    msg.get('customType') or
-                    msg.get('extraData', {}).get('customType') or
-                    msg.get('extraData', {}).get('custom_type')
+                        msg.get('custom_type') or
+                        msg.get('customType') or
+                        msg.get('extraData', {}).get('customType') or
+                        msg.get('extraData', {}).get('custom_type')
                 )
                 if msg_custom_type == custom_type:
                     logger.info(f"[Stream] System message '{custom_type}' уже последнее в канале {channel_id}")
@@ -105,7 +117,9 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
             'custom_type': custom_type,
             'extraData': {
                 'customType': custom_type,
-                'custom_type': custom_type
+                'custom_type': custom_type,
+                'client_name': client_name,
+                'specialist_name': specialist_name
             }
         }
 
