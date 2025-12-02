@@ -10,6 +10,8 @@ router.register('payment/webhook', views.PaymentWebhookViewSet, basename='paymen
 router.register(r'chats', views.ChatViewSet, basename='chat')
 router.register(r'stream/send-system-message', views.StreamSystemMessageViewSet, basename='stream-system-message')
 
+router.register(r'specialist/orders', views.SpecialistAccessOrderViewSet, basename='specialist-orders')
+
 
 urlpatterns = [
     path('', include(router.urls)),
