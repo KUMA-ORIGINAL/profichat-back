@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_view, extend_schema
 from rest_framework import viewsets, permissions, mixins
 from rest_framework import filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -13,6 +14,11 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 100
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary='Получение истории заказов специалиста с фильтрацией и пагинацией'
+    )
+)
 class SpecialistAccessOrderViewSet(viewsets.GenericViewSet,
                                    mixins.ListModelMixin,):
     """
