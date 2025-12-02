@@ -30,7 +30,7 @@ class SpecialistAccessOrderViewSet(viewsets.GenericViewSet,
 
     # Фильтры и поиск
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
-    filterset_fields = ['payment_status', 'tariff', 'activated_at', 'expires_at']
+    filterset_fields = ['payment_status', 'tariff', 'activated_at', 'expires_at', 'client']
     search_fields = ['client__username', 'client__first_name', 'client__last_name']
     ordering_fields = ['created_at', 'activated_at', 'expires_at', 'price']
     ordering = ['-created_at']  # сортировка по умолчанию
