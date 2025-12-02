@@ -1,3 +1,4 @@
+import django_filters
 from drf_spectacular.utils import extend_schema_view, extend_schema, OpenApiParameter
 from rest_framework import viewsets, permissions, mixins
 from rest_framework import filters
