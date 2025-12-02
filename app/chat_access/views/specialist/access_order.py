@@ -1,4 +1,4 @@
-from drf_spectacular.utils import extend_schema_view, extend_schema
+from drf_spectacular.utils import extend_schema_view, extend_schema, OpenApiParameter
 from rest_framework import viewsets, permissions, mixins
 from rest_framework import filters
 from django_filters.rest_framework import DjangoFilterBackend
@@ -16,7 +16,14 @@ class StandardResultsSetPagination(PageNumberPagination):
 
 @extend_schema_view(
     list=extend_schema(
-        summary='Получение истории заказов специалиста с фильтрацией и пагинацией'
+        parameters=[
+            OpenApiParameter(name="payment_status", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="tariff", type=int, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="activated_at", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="expires_at", type=str, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="client", type=int, location=OpenApiParameter.QUERY),
+        ],
+        summary='Получение истории заказов специалиста'
     )
 )
 class SpecialistAccessOrderViewSet(viewsets.GenericViewSet,
@@ -28,7 +35,6 @@ class SpecialistAccessOrderViewSet(viewsets.GenericViewSet,
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
 
-    # Фильтры и поиск
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
     filterset_fields = ['payment_status', 'tariff', 'activated_at', 'expires_at', 'client']
     search_fields = ['client__username', 'client__first_name', 'client__last_name']
