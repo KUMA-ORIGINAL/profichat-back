@@ -15,5 +15,5 @@ class GetStreamTokenView(APIView):
 
     def get(self, request):
         user = request.user
-        token = chat_client.create_token(str(user.id))  # Генерация токена
-        return Response({"stream_token": token})
+        stream_token = chat_client.create_token(str(user.id))  # Генерация токена
+        return Response({"stream_token": stream_token})

@@ -13,6 +13,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from common.stream_client import chat_client
 from ..models import OTP
 from account import serializers
 from ..services import send_sms, generate_unique_username
@@ -136,12 +137,15 @@ class VerifyOTPView(APIView):
                         pass
                 refresh = RefreshToken.for_user(user)
 
+                stream_token = chat_client.create_token(str(user.id))
+
         except OTP.DoesNotExist:
             return Response({"error": "Неверный код"}, status=400)
 
         return Response({
             "refresh": str(refresh),
             "access": str(refresh.access_token),
+            "stream_token": stream_token
         })
 
     @staticmethod
