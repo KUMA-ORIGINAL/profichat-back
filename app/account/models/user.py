@@ -10,6 +10,8 @@ from phonenumber_field.modelfields import PhoneNumberField
 from .work_schedule import WorkSchedule
 from common.stream_client import chat_client
 
+logger = logging.getLogger(__name__)
+
 
 class UserManager(BaseUserManager):
 
@@ -41,7 +43,12 @@ class UserManager(BaseUserManager):
             **extra_fields
         )
 
-
+STREAM_SYNC_FIELDS = {
+    "first_name",
+    "last_name",
+    "phone_number",
+    "photo",
+}
 
 ROLE_CLIENT = 'client'
 ROLE_SPECIALIST = 'specialist'
@@ -135,49 +142,92 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
-    def upsert_stream_user(self) -> None:
-        """Создаёт/обновляет пользователя в Stream вместе с расписанием"""
-        try:
-            chat_client.upsert_user({
-                "id": str(self.id),
-                "phone_number": str(self.phone_number),
-                "first_name": self.first_name,
-                "last_name": self.last_name,
-                "photo": self.photo.url if self.photo else None,
-            })
-        except Exception as e:
-            error_message = str(e)
-            if "was deleted" in error_message:
-                try:
-                    chat_client.create_user({
-                        "id": str(self.id),
-                        "phone_number": str(self.phone_number),
-                        "first_name": self.first_name,
-                        "last_name": self.last_name,
-                        "photo": self.photo.url if self.photo else None,
-                    })
-                    logging.info("Пользователь %s был пересоздан в GetStream.", self.id)
-                except Exception as ex:
-                    logging.error("Ошибка при создании удалённого пользователя в GetStream: %s", ex)
-            else:
-                logging.error("Ошибка при синхронизации пользователя с GetStream: %s", e)
+        # -----------------------------
+        # Stream sync logic
+        # -----------------------------
 
-    def delete_stream_user(self):
+    def _get_stream_payload(self) -> dict:
+        """Формирует payload для Stream"""
+        data = {
+            "id": str(self.id),
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+        }
+
+        if self.phone_number:
+            data["phone_number"] = str(self.phone_number)
+
+        if self.photo:
+            data["photo"] = self.photo.url
+
+        return data
+
+    def upsert_stream_user(self) -> None:
+        """Создаёт или обновляет пользователя в Stream"""
+        payload = self._get_stream_payload()
+
+        try:
+            chat_client.upsert_user(payload)
+            logger.info("Stream user synced: %s", self.id)
+
+        except Exception as e:
+            message = str(e).lower()
+
+            if "deleted" in message:
+                self._recreate_stream_user(payload)
+            else:
+                logger.exception(
+                    "Stream sync failed for user %s", self.id
+                )
+
+    def _recreate_stream_user(self, payload: dict) -> None:
+        """Пересоздаёт пользователя, если он был удалён в Stream"""
+        try:
+            chat_client.create_user(payload)
+            logger.info("Stream user recreated: %s", self.id)
+        except Exception:
+            logger.exception(
+                "Failed to recreate Stream user %s", self.id
+            )
+
+    def delete_stream_user(self) -> None:
+        """Удаляет пользователя из Stream"""
         try:
             chat_client.delete_user(str(self.id))
-        except Exception as e:
-            logging.error("Ошибка при удалении пользователя из GetStream: %s", e)
+            logger.info("Stream user deleted: %s", self.id)
+        except Exception:
+            logger.exception(
+                "Failed to delete Stream user %s", self.id
+            )
+
+        # -----------------------------
+        # Django overrides
+        # -----------------------------
 
     def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+
         super().save(*args, **kwargs)
-        # Автоматическая синхронизация в GetStream при любом изменении
-        self.upsert_stream_user()
+
+        if not update_fields or STREAM_SYNC_FIELDS.intersection(update_fields):
+            self.upsert_stream_user()
 
     def delete(self, using=None, keep_parents=False, hard=False):
-        self.delete_stream_user()
+        """
+        hard=True  → полное удаление + удаление из Stream
+        hard=False → soft delete (Stream не трогаем)
+        """
         if hard:
+            self.delete_stream_user()
             return super().delete(using=using, keep_parents=keep_parents)
+
+        # soft delete
         self.is_active = False
         self.old_phone_number = self.phone_number
         self.phone_number = None
-        self.save(update_fields=['is_active', 'phone_number', 'old_phone_number'])
+
+        self.save(update_fields=[
+            "is_active",
+            "phone_number",
+            "old_phone_number",
+        ])
