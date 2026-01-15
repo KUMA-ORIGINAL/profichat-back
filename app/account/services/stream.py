@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta, datetime, timezone
 
 from chat_access.models import Chat
 from common.stream_client import chat_client
@@ -60,14 +61,10 @@ DEFAULT_TEXTS = {
     'chatBlocked': "Чат заблокирован.",
 }
 
+COOLDOWN_SECONDS = 600  # 10 минут
+
 
 def send_system_message_once(channel_id, custom_type: str, text: str = None):
-    """
-    Отправляет системное сообщение в канал Stream, если такого типа ещё не было последним.
-    custom_type: один из ALLOWED_TYPES
-    text: если не задан, используется дефолтное сообщение
-    Возвращает True если отправлено, False если не отправлено
-    """
     if custom_type not in ALLOWED_TYPES:
         logger.warning(f"[Stream] Недопустимый тип system message: {custom_type}")
         return False
@@ -79,9 +76,6 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
     except Chat.DoesNotExist:
         logger.warning(f"[Stream] Чат с channel_id {channel_id} не найден")
         return False
-    except Exception as e:
-        logger.warning(f"[Stream] Ошибка получения данных чата: {e}")
-        return False
 
     if not text:
         text = DEFAULT_TEXTS[custom_type]
@@ -91,26 +85,39 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
             'created_by_id': 'system'
         })
 
-        try:
-            channel.update_partial({'lastTariffStatusMessage': custom_type})
-        except Exception as e_update:
-            logger.info(f"[Stream] Не удалось обновить lastTariffStatusMessage: {e_update}")
+        # 🔹 Получаем последние system-сообщения
+        response = channel.query(
+            limit=20,
+            sort=[{'field': 'created_at', 'direction': -1}]
+        )
 
-        messages = channel.query(limit=1, sort=[{'field': 'created_at', 'direction': -1}])['messages']
+        now = datetime.now(timezone.utc)
 
-        if messages:
-            msg = messages[0]
-            if msg.get('type') == 'system':
-                msg_custom_type = (
-                        msg.get('custom_type') or
-                        msg.get('customType') or
-                        msg.get('extraData', {}).get('customType') or
-                        msg.get('extraData', {}).get('custom_type')
+        for msg in response.get('messages', []):
+            if msg.get('type') != 'system':
+                continue
+
+            msg_custom_type = (
+                msg.get('custom_type') or
+                msg.get('customType') or
+                msg.get('extraData', {}).get('customType') or
+                msg.get('extraData', {}).get('custom_type')
+            )
+
+            if msg_custom_type == custom_type:
+                created_at = datetime.fromisoformat(
+                    msg['created_at'].replace('Z', '+00:00')
                 )
-                if msg_custom_type == custom_type:
-                    logger.info(f"[Stream] System message '{custom_type}' уже последнее в канале {channel_id}")
-                    return False
 
+                if now - created_at < timedelta(seconds=COOLDOWN_SECONDS):
+                    logger.info(
+                        f"[Stream] System message '{custom_type}' уже отправлялось "
+                        f"{(now - created_at).seconds}s назад → пропуск"
+                    )
+                    return False
+                break
+
+        # 🔹 Отправляем сообщение
         message_data = {
             'text': text,
             'type': 'system',
