@@ -117,7 +117,6 @@ def send_system_message_once(channel_id, custom_type: str, text: str = None):
                     return False
                 break
 
-        # 🔹 Отправляем сообщение
         message_data = {
             'text': text,
             'type': 'system',

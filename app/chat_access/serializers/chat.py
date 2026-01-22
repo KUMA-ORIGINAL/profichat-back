@@ -93,15 +93,24 @@ class ChatCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         client = validated_data['client']
         specialist = validated_data['specialist']
+
         channel_id = f"chat_{client.id}_{specialist.id}"
-        chat = Chat.objects.create(
+
+        chat, created = Chat.objects.get_or_create(
             client=client,
             specialist=specialist,
-            channel_id=channel_id,
+            defaults={
+                "channel_id": channel_id,
+            }
         )
-        try:
-            create_stream_channel(chat)
-        except Exception as e:
-            chat.delete()
-            raise serializers.ValidationError(f"Ошибка создания канала в GetStream: {e}")
+
+        if created:
+            try:
+                create_stream_channel(chat)
+            except Exception as e:
+                chat.delete()
+                raise serializers.ValidationError(
+                    f"Ошибка создания канала в GetStream: {e}"
+                )
+
         return chat
