@@ -19,7 +19,7 @@ class SpecialistPagination(PageNumberPagination):
 
 @extend_schema(tags=['Specialist'])
 class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = User.objects.filter(role='specialist', show_in_search=True).prefetch_related(
+    queryset = User.objects.filter(role='specialist', show_in_search=True, is_active=True).prefetch_related(
         Prefetch('tariffs', queryset=Tariff.objects.filter(is_active=True))
     )
     filter_backends = [DjangoFilterBackend, SearchFilter]
