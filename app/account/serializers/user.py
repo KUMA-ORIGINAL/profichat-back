@@ -7,7 +7,7 @@ from ..models import User, Application
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'photo')
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'middle_name', 'photo')
 
 
 class UserMeSerializer(serializers.ModelSerializer):
@@ -16,7 +16,7 @@ class UserMeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender', 'balance', 'birthdate', 'description',
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'middle_name', 'gender', 'balance', 'birthdate', 'description',
                   'photo', 'role', 'application_status', 'show_in_search', 'invite_greeting',
                   'can_audio_call', 'can_video_call', 'education', 'work_experience', 'profession')
 
@@ -28,7 +28,7 @@ class UserMeSerializer(serializers.ModelSerializer):
 class UserMeUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'first_name', 'last_name', 'gender',
+        fields = ('id', 'phone_number', 'first_name', 'last_name', 'middle_name', 'gender',
                   'birthdate', 'description', 'photo', 'education', 'work_experience', 'profession')
 
 

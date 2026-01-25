@@ -76,6 +76,12 @@ class User(AbstractUser):
         blank=True,
         null=True,
     )
+    middle_name = models.CharField(
+        max_length=255,
+        verbose_name='Отчество',
+        blank=True,
+        null=True,
+    )
     gender = models.CharField(_("Пол"), max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
     description = models.TextField(_("Описание"), blank=True, null=True)
@@ -152,6 +158,7 @@ class User(AbstractUser):
             "id": str(self.id),
             "first_name": self.first_name,
             "last_name": self.last_name,
+            "middle_name": self.middle_name,
         }
 
         if self.phone_number:
