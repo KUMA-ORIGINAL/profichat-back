@@ -27,6 +27,10 @@ class Tariff(models.Model):
         default=False,
         verbose_name="Активный"
     )
+    is_public = models.BooleanField(
+        default=False,
+        verbose_name="Виден клиентам"
+    )
     is_archive = models.BooleanField(default=False)
     tariff_type = models.CharField(
         max_length=255,
