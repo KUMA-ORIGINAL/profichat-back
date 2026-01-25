@@ -11,6 +11,8 @@ class TariffSpecialistSerializer(serializers.ModelSerializer):
             'name',
             'price',
             'duration_hours',
+            'is_active',
+            'is_public',
             'tariff_type',
         ]
 
