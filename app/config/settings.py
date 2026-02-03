@@ -167,6 +167,10 @@ SMS_SENDER=env("SMS_SENDER")
 
 PAYMENT_API_TOKEN = env('PAYMENT_API_TOKEN')
 
+TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN', default='')
+TELEGRAM_CHAT_ID = env('TELEGRAM_CHAT_ID', default='')
+TELEGRAM_THREAD_ID = env('TELEGRAM_THREAD_ID', default=None)
+
 LANGUAGES = (
     ('ru', 'Russian'),
     ('en', 'English'),

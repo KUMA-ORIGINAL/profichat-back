@@ -27,6 +27,7 @@ class ChatListSerializer(serializers.ModelSerializer):
     companion = serializers.SerializerMethodField()
     user_role = serializers.SerializerMethodField()
     last_access_order = serializers.SerializerMethodField()
+    specialist_note = serializers.SerializerMethodField()
 
     class Meta:
         model = Chat
@@ -36,7 +37,8 @@ class ChatListSerializer(serializers.ModelSerializer):
             'channel_id',
             'created_at',
             'user_role',
-            'last_access_order'
+            'last_access_order',
+            'specialist_note'
         )
 
     @extend_schema_field(UserShortSerializer)
@@ -54,6 +56,13 @@ class ChatListSerializer(serializers.ModelSerializer):
             return "client"
         elif obj.specialist == user:
             return "specialist"
+        return None
+
+    def get_specialist_note(self, obj):
+        """Заметка видна только специалисту"""
+        user = self.context['request'].user
+        if obj.specialist == user:
+            return obj.specialist_note or ''
         return None
 
     @extend_schema_field(AccessOrderShortSerializer)

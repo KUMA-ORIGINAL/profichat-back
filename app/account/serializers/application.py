@@ -25,4 +25,15 @@ class ApplicationSerializer(serializers.ModelSerializer):
         for work_data in work_experiences_data:
             WorkExperience.objects.create(application=application, **work_data)
 
+        # Отправляем уведомление в Telegram о новой заявке на специалиста
+        from common.telegram_notifier import notify_specialist_application
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            notify_specialist_application(application)
+        except Exception as e:
+            logger.error(f"Failed to send Telegram notification for application {application.id}: {str(e)}")
+
         return application
+

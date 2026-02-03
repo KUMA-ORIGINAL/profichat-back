@@ -25,8 +25,14 @@ class InviteClientView(APIView):
 
         phone_number = serializer.validated_data['phone_number']
         tariff_id = serializer.validated_data['tariff_id']
+        note = serializer.validated_data.get('note', '')
         specialist = request.user
 
-        chat = invite_client(phone_number=phone_number, tariff_id=tariff_id, specialist=specialist)
+        chat = invite_client(
+            phone_number=phone_number, 
+            tariff_id=tariff_id, 
+            specialist=specialist,
+            note=note
+        )
 
         return Response(ChatListSerializer(chat, context={'request': request}).data, status=201)

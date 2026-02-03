@@ -128,6 +128,13 @@ class VerifyOTPView(APIView):
                         phone_number=phone_number,
                         is_active=True
                     )
+                    
+                    # Отправляем уведомление в Telegram о новом клиенте
+                    from common.telegram_notifier import notify_new_client_registration
+                    try:
+                        notify_new_client_registration(user)
+                    except Exception as e:
+                        logger.error(f"Failed to send Telegram notification for new user {user.id}: {str(e)}")
 
                 tokens = OutstandingToken.objects.filter(user=user)
                 for token in tokens:

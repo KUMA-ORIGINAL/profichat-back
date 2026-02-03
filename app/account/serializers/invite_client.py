@@ -6,6 +6,7 @@ from chat_access.models import Tariff
 class InviteClientSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     tariff_id = serializers.IntegerField()
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
     def validate_tariff_id(self, value):
         if not Tariff.objects.filter(id=value).exists():

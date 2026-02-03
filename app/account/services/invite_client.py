@@ -19,7 +19,7 @@ def send_invite_sms(client, specialist, chat):
     send_sms(phone=client.phone_number, text=text)
 
 
-def invite_client(phone_number: str, tariff_id: int, specialist: User):
+def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str = None):
     client = User.objects.filter(phone_number=phone_number).first()
     is_new_client = False
 
@@ -43,9 +43,15 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User):
         chat = Chat.objects.create(
             client=client,
             specialist=specialist,
-            channel_id=f"chat_{client.id}_{specialist.id}"
+            channel_id=f"chat_{client.id}_{specialist.id}",
+            specialist_note=note or ''
         )
         create_stream_channel(chat=chat, first_message=specialist.invite_greeting)
+    else:
+        # Обновляем заметку, если чат уже существует
+        if note is not None:
+            chat.specialist_note = note
+            chat.save(update_fields=['specialist_note'])
 
     tariff = Tariff.objects.get(id=tariff_id)
     access_order = AccessOrder.objects.create(

@@ -7,7 +7,6 @@ from django.utils.translation import gettext_lazy as _
 from django.core.validators import RegexValidator
 from phonenumber_field.modelfields import PhoneNumberField
 
-from .work_schedule import WorkSchedule
 from common.stream_client import chat_client
 
 logger = logging.getLogger(__name__)

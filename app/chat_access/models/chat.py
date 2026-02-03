@@ -15,6 +15,9 @@ class Chat(models.Model):
     channel_id = models.CharField(
         max_length=255, unique=True, verbose_name='Channel ID в GetStream'
     )
+    specialist_note = models.TextField(
+        blank=True, null=True, verbose_name='Заметка специалиста о клиенте'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
