@@ -2,12 +2,12 @@ from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
-from rest_framework import viewsets, mixins
+from rest_framework import viewsets, mixins, exceptions
 from rest_framework.permissions import IsAuthenticated
 
 from account.models import ROLE_SPECIALIST, ROLE_CLIENT
 from ..models import Chat
-from ..serializers import ChatListSerializer, ChatCreateSerializer
+from ..serializers import ChatListSerializer, ChatCreateSerializer, ChatUpdateSerializer
 
 
 @extend_schema(tags=['Chats'])
@@ -38,7 +38,8 @@ from ..serializers import ChatListSerializer, ChatCreateSerializer
 )
 class ChatViewSet(viewsets.GenericViewSet,
                   mixins.ListModelMixin,
-                  mixins.CreateModelMixin):
+                  mixins.CreateModelMixin,
+                  mixins.UpdateModelMixin):
     """
     ViewSet для чатов.
     """
@@ -48,7 +49,14 @@ class ChatViewSet(viewsets.GenericViewSet,
     def get_serializer_class(self):
         if self.action == 'create':
             return ChatCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return ChatUpdateSerializer
         return ChatListSerializer
+
+    def update(self, request, *args, **kwargs):
+        if request.user.role != ROLE_SPECIALIST:
+            raise exceptions.PermissionDenied("Только специалисты могут редактировать заметки")
+        return super().update(request, *args, **kwargs)
 
     def get_queryset(self):
         user = self.request.user

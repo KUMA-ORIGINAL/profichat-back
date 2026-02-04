@@ -122,4 +122,11 @@ class ChatCreateSerializer(serializers.ModelSerializer):
                     f"Ошибка создания канала в GetStream: {e}"
                 )
 
+
         return chat
+
+
+class ChatUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Chat
+        fields = ('specialist_note',)
