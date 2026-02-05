@@ -1,12 +1,16 @@
+import logging
+
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
-from account.services import create_stream_channel
+from account.services import create_stream_channel, update_channel_extra_data
 from ..models import Chat, AccessOrder
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
 
 
 class AccessOrderShortSerializer(serializers.ModelSerializer):
@@ -121,8 +125,6 @@ class ChatCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"Ошибка создания канала в GetStream: {e}"
                 )
-
-
         return chat
 
 
@@ -130,3 +132,21 @@ class ChatUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
         fields = ('specialist_note',)
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+
+        # обновляем extra_data канала в GetStream
+        try:
+            update_channel_extra_data(
+                channel_id=instance.channel_id,
+                data=validated_data,
+            )
+        except Exception as e:
+            # логируем, но не ломаем API
+            logger.exception("GetStream update failed")
+            raise serializers.ValidationError(
+                f"Ошибка обновления канала в GetStream: {e}"
+            )
+
+        return instance

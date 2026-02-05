@@ -17,6 +17,7 @@ def create_stream_channel(chat, first_message: str = None):
                 "chat_id": chat.id,
                 "clientId": chat.client.id,
                 "specialistId": chat.specialist.id,
+                'specialist_note': chat.specialist_note
             },
         )
         channel.create(str(chat.specialist.id))
@@ -33,7 +34,11 @@ def create_stream_channel(chat, first_message: str = None):
         logger.warning(f"[Stream] Ошибка создания канала: {e}")
 
 
-def update_channel_extra_data(channel_id: str, data: dict, channel_type: str = "messaging"):
+def update_channel_extra_data(
+    channel_id: str,
+    data: dict,
+    channel_type: str = "messaging",
+):
     channel = chat_client.channel(channel_type, channel_id)
     channel.update_partial(data)
 
