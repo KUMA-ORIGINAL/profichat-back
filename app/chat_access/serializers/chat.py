@@ -131,7 +131,7 @@ class ChatCreateSerializer(serializers.ModelSerializer):
 class ChatUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
-        fields = ('specialist_note',)
+        fields = ('specialist_note', 'client_can_send_voice')
 
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)

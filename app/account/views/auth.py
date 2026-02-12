@@ -129,7 +129,6 @@ class VerifyOTPView(APIView):
                         is_active=True
                     )
                     
-                    # Отправляем уведомление в Telegram о новом клиенте
                     from common.telegram_notifier import notify_new_client_registration
                     try:
                         notify_new_client_registration(user)

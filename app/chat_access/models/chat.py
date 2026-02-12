@@ -1,11 +1,12 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 
+from common.models import BaseModel
 
 User = get_user_model()
 
 
-class Chat(models.Model):
+class Chat(BaseModel):
     client = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='chats_as_client'
     )
@@ -18,7 +19,10 @@ class Chat(models.Model):
     specialist_note = models.TextField(
         blank=True, null=True, verbose_name='Заметка специалиста о клиенте'
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    client_can_send_voice = models.BooleanField(
+        default=True,
+        verbose_name="Клиент может отправлять голосовые"
+    )
 
     class Meta:
         unique_together = ('client', 'specialist')
