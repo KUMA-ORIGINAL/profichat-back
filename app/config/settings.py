@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+import sentry_sdk
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -169,6 +170,16 @@ SMS_SENDER=env("SMS_SENDER")
 PAYMENT_API_TOKEN = env('PAYMENT_API_TOKEN')
 
 MEDCRM_API_KEY = env('MEDCRM_API_KEY', default='')
+
+SENTRY_DSN = env('SENTRY_DSN', default='')
+if SENTRY_DSN and not DEBUG:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        traces_sample_rate=0.2,
+        profiles_sample_rate=0.1,
+        send_default_pii=True,
+        environment="production",
+    )
 
 TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN', default='')
 TELEGRAM_CHAT_ID = env('TELEGRAM_CHAT_ID', default='')

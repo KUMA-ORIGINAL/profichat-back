@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 
     path('api/health/', views.health_check, name='health_check'),
+    path('api/sentry-debug/', views.trigger_error),
 
     path('api/', include('account.urls')),
     path('api/', include('chat_access.urls')),
