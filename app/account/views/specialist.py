@@ -19,13 +19,27 @@ class SpecialistPagination(PageNumberPagination):
 
 @extend_schema(tags=['Specialist'])
 class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = User.objects.filter(role='specialist', show_in_search=True, is_active=True).prefetch_related(
-        Prefetch('tariffs', queryset=Tariff.objects.filter(is_active=True, is_archive=False)),
-    )
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_class = SpecialistFilter
     search_fields = ['first_name', 'last_name']
     pagination_class = SpecialistPagination
+
+    def get_queryset(self):
+        base_qs = User.objects.filter(
+            role='specialist',
+            is_active=True
+        ).prefetch_related(
+            Prefetch(
+                'tariffs',
+                queryset=Tariff.objects.filter(is_active=True, is_archive=False)
+            )
+        )
+
+        # только для списка применяем show_in_search
+        if self.action == 'list':
+            return base_qs.filter(show_in_search=True)
+
+        return base_qs
 
     def get_serializer_class(self):
         if self.action == 'list':

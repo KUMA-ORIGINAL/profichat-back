@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     'common',
     'chat_access',
     'payouts',
+    'integrations',
 ]
 
 MIDDLEWARE = [
@@ -166,6 +167,8 @@ SMS_PASSWORD=env("SMS_PASSWORD")
 SMS_SENDER=env("SMS_SENDER")
 
 PAYMENT_API_TOKEN = env('PAYMENT_API_TOKEN')
+
+MEDCRM_API_KEY = env('MEDCRM_API_KEY', default='')
 
 TELEGRAM_BOT_TOKEN = env('TELEGRAM_BOT_TOKEN', default='')
 TELEGRAM_CHAT_ID = env('TELEGRAM_CHAT_ID', default='')
