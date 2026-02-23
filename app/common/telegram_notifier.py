@@ -1,50 +1,57 @@
 import logging
+import time
+
 import requests
 from django.conf import settings
 from django.utils import timezone
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+MAX_RETRIES = 3
+BACKOFF_BASE = 1.5
+TIMEOUT = 10
+
 
 def send_telegram_notification(message: str) -> bool:
-    """
-    Отправляет уведомление в Telegram.
-    
-    Args:
-        message: Текст сообщения для отправки
-        
-    Returns:
-        bool: True если сообщение отправлено успешно, False в противном случае
-    """
     bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', None)
     chat_id = getattr(settings, 'TELEGRAM_CHAT_ID', None)
     thread_id = getattr(settings, 'TELEGRAM_THREAD_ID', None)
-    
+
     if not bot_token or not chat_id:
         logger.warning("Telegram bot token or chat ID not configured. Skipping notification.")
         return False
-    
+
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    
+
     payload = {
         'chat_id': chat_id,
         'text': message,
-        'parse_mode': 'HTML'
+        'parse_mode': 'HTML',
     }
-    
-    # Добавляем thread_id если он указан (для топиков/форумов)
     if thread_id:
         payload['message_thread_id'] = thread_id
-    
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        logger.info(f"Telegram notification sent successfully: {message[:50]}...")
-        return True
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to send Telegram notification: {str(e)}")
-        return False
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = requests.post(url, json=payload, timeout=TIMEOUT)
+
+            if response.status_code == 429:
+                retry_after = int(response.json().get('parameters', {}).get('retry_after', 2))
+                logger.warning("Telegram rate-limited, retry after %ds (attempt %d/%d)", retry_after, attempt, MAX_RETRIES)
+                time.sleep(retry_after)
+                continue
+
+            response.raise_for_status()
+            logger.info("Telegram notification sent (attempt %d): %s…", attempt, message[:50])
+            return True
+
+        except requests.exceptions.RequestException as e:
+            logger.error("Telegram send failed (attempt %d/%d): %s", attempt, MAX_RETRIES, e)
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_BASE ** attempt)
+
+    logger.error("Telegram notification failed after %d attempts: %s…", MAX_RETRIES, message[:80])
+    return False
 
 
 def notify_new_client_registration(user) -> bool:

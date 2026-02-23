@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -8,7 +9,9 @@ from .sms import send_sms
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
 from common.notifications import send_chat_invite_push
+from common.telegram_notifier import notify_new_client_registration
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -26,9 +29,13 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
     if not client:
         client = User.objects.create_user(
             phone_number=phone_number,
-            is_active=True  # теперь всегда True
+            is_active=True,
         )
         is_new_client = True
+        try:
+            notify_new_client_registration(client)
+        except Exception as e:
+            logger.error("Failed to send Telegram notification for invited user %s: %s", client.id, e)
     else:
         # Для уже существующего пользователя — убедимся, что is_active=True
         if not client.is_active:
