@@ -2,7 +2,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
-import sentry_sdk
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -173,6 +172,7 @@ MEDCRM_API_KEY = env('MEDCRM_API_KEY', default='')
 
 SENTRY_DSN = env('SENTRY_DSN', default='')
 if SENTRY_DSN and not DEBUG:
+    import sentry_sdk
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         traces_sample_rate=0.2,
