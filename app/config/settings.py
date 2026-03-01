@@ -397,6 +397,11 @@ UNFOLD = {
                         "icon": "chat",
                         "link": reverse_lazy("admin:chat_access_chat_changelist"),
                     },
+                    {
+                        "title": _("Доставки приглашений"),
+                        "icon": "mark_email_read",
+                        "link": reverse_lazy("admin:account_invitedelivery_changelist"),
+                    },
                 ],
             },
             {

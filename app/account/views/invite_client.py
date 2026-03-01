@@ -1,9 +1,14 @@
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from account.serializers.invite_client import InviteClientSerializer
+from account.models import InviteDelivery
+from account.serializers.invite_client import (
+    InviteClientSerializer,
+    InviteDeliverySerializer,
+    InviteDeliveryListQuerySerializer,
+)
 from account.services.invite_client import invite_client
 from chat_access.serializers import ChatListSerializer
 
@@ -28,7 +33,7 @@ class InviteClientView(APIView):
         note = serializer.validated_data.get('note', '')
         specialist = request.user
 
-        chat = invite_client(
+        chat, _delivery = invite_client(
             phone_number=phone_number, 
             tariff_id=tariff_id, 
             specialist=specialist,
@@ -36,3 +41,34 @@ class InviteClientView(APIView):
         )
 
         return Response(ChatListSerializer(chat, context={'request': request}).data, status=201)
+
+
+class InviteDeliveryStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="История доставки приглашений",
+        description=(
+            "Возвращает историю отправок приглашений (SMS/Push) по текущему специалисту. "
+            "Можно отфильтровать по chat_id."
+        ),
+        parameters=[
+            OpenApiParameter(name="chat_id", type=int, required=False, location=OpenApiParameter.QUERY),
+            OpenApiParameter(name="limit", type=int, required=False, location=OpenApiParameter.QUERY),
+        ],
+        responses={200: InviteDeliverySerializer(many=True)},
+    )
+    def get(self, request):
+        query_serializer = InviteDeliveryListQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+
+        chat_id = query_serializer.validated_data.get("chat_id")
+        limit = query_serializer.validated_data.get("limit", 20)
+
+        queryset = InviteDelivery.objects.filter(specialist=request.user)
+        if chat_id is not None:
+            queryset = queryset.filter(chat_id=chat_id)
+
+        deliveries = queryset.select_related("chat", "client").order_by("-created_at")[:limit]
+        data = InviteDeliverySerializer(deliveries, many=True).data
+        return Response(data)

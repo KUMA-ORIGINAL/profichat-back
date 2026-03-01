@@ -124,7 +124,7 @@ class MedCRMInviteClientView(APIView):
 
         existing_client = User.objects.filter(phone_number=client_phone).exists()
 
-        chat = invite_client(
+        chat, delivery = invite_client(
             phone_number=client_phone,
             tariff_id=tariff_id,
             specialist=specialist,
@@ -138,6 +138,15 @@ class MedCRMInviteClientView(APIView):
             "channel_id": chat.channel_id,
             "client_id": client.id,
             "is_new_client": not existing_client,
+            "invite_delivery": {
+                "id": delivery.id,
+                "created_at": delivery.created_at,
+                "channel": delivery.channel,
+                "status": delivery.status,
+                "provider_status": delivery.provider_status,
+                "error_message": delivery.error_message,
+                "is_new_client": delivery.is_new_client,
+            },
         }
 
         logger.info(

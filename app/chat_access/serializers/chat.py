@@ -32,6 +32,7 @@ class ChatListSerializer(serializers.ModelSerializer):
     user_role = serializers.SerializerMethodField()
     last_access_order = serializers.SerializerMethodField()
     specialist_note = serializers.SerializerMethodField()
+    latest_invite_delivery = serializers.SerializerMethodField()
 
     class Meta:
         model = Chat
@@ -42,7 +43,8 @@ class ChatListSerializer(serializers.ModelSerializer):
             'created_at',
             'user_role',
             'last_access_order',
-            'specialist_note'
+            'specialist_note',
+            'latest_invite_delivery',
         )
 
     @extend_schema_field(UserShortSerializer)
@@ -88,6 +90,25 @@ class ChatListSerializer(serializers.ModelSerializer):
         if last_active_order:
             return AccessOrderShortSerializer(last_active_order).data
         return None
+
+    def get_latest_invite_delivery(self, obj):
+        user = self.context['request'].user
+        if obj.specialist != user:
+            return None
+
+        latest_delivery = obj.invite_deliveries.order_by('-created_at').first()
+        if not latest_delivery:
+            return None
+
+        return {
+            "id": latest_delivery.id,
+            "created_at": latest_delivery.created_at,
+            "channel": latest_delivery.channel,
+            "status": latest_delivery.status,
+            "provider_status": latest_delivery.provider_status,
+            "error_message": latest_delivery.error_message,
+            "is_new_client": latest_delivery.is_new_client,
+        }
 
 
 class ChatCreateSerializer(serializers.ModelSerializer):

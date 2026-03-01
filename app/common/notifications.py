@@ -5,15 +5,23 @@ from push_notifications.models import GCMDevice
 logger = logging.getLogger(__name__)
 
 
-def send_push(user, title, message, extra=None, log_prefix="[Push]"):
+def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta=False):
     """Простая отправка push-уведомления для Android и iOS"""
     devices = GCMDevice.objects.filter(user=user, active=True)
 
     if not devices.exists():
         logger.info(f"{log_prefix} Нет активных устройств для пользователя {user}")
+        if return_meta:
+            return {
+                "ok": False,
+                "success_count": 0,
+                "device_count": 0,
+                "error_message": "Нет активных устройств",
+            }
         return False
 
     success_count = 0
+    error_messages = []
 
     for device in devices:
         try:
@@ -65,9 +73,18 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]"):
 
         except Exception as e:
             logger.error(f"{log_prefix} Ошибка отправки push: {e}")
+            error_messages.append(str(e))
             continue
 
-    return success_count > 0
+    result = success_count > 0
+    if return_meta:
+        return {
+            "ok": result,
+            "success_count": success_count,
+            "device_count": devices.count(),
+            "error_message": "; ".join(error_messages),
+        }
+    return result
 
 
 def send_payment_success_push(user, access_order):
@@ -77,7 +94,7 @@ def send_payment_success_push(user, access_order):
     return send_push(user, title, message, extra, log_prefix="[Push][Payment]")
 
 
-def send_chat_invite_push(user, chat):
+def send_chat_invite_push(user, chat, return_meta=False):
     title = "Новый чат"
     message = "Вас пригласили в чат со специалистом"
     extra = {
@@ -87,7 +104,14 @@ def send_chat_invite_push(user, chat):
         "sender_name": str(user.get_full_name()),  # или другое поле имени отправителя
         "sender_id": str(user.id)
     }
-    return send_push(user, title, message, extra, log_prefix="[Push][Chat]")
+    return send_push(
+        user,
+        title,
+        message,
+        extra,
+        log_prefix="[Push][Chat]",
+        return_meta=return_meta,
+    )
 
 
 def send_application_accepted_push(user, application):
