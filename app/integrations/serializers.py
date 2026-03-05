@@ -38,7 +38,7 @@ class MedCRMInviteClientSerializer(serializers.Serializer):
 
 
 class MedCRMInviteResponseSerializer(serializers.Serializer):
-    class InviteDeliverySerializer(serializers.Serializer):
+    class MedCRMInviteDeliverySerializer(serializers.Serializer):
         id = serializers.IntegerField()
         created_at = serializers.DateTimeField()
         channel = serializers.CharField()
@@ -51,4 +51,4 @@ class MedCRMInviteResponseSerializer(serializers.Serializer):
     channel_id = serializers.CharField()
     client_id = serializers.IntegerField()
     is_new_client = serializers.BooleanField()
-    invite_delivery = InviteDeliverySerializer()
+    invite_delivery = MedCRMInviteDeliverySerializer()
