@@ -45,6 +45,7 @@ class InviteClientView(APIView):
 
 class InviteDeliveryStatusView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = InviteDeliverySerializer
 
     @extend_schema(
         summary="История доставки приглашений",
@@ -56,7 +57,7 @@ class InviteDeliveryStatusView(APIView):
             OpenApiParameter(name="chat_id", type=int, required=False, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="limit", type=int, required=False, location=OpenApiParameter.QUERY),
         ],
-        responses={200: InviteDeliverySerializer(many=True)},
+        # responses={200: InviteDeliverySerializer(many=True)},
     )
     def get(self, request):
         query_serializer = InviteDeliveryListQuerySerializer(data=request.query_params)

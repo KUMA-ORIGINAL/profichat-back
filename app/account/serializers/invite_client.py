@@ -1,7 +1,10 @@
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 
 from account.models import InviteDelivery
 from chat_access.models import Tariff
+
+User = get_user_model()
 
 
 class InviteClientSerializer(serializers.Serializer):
@@ -15,12 +18,25 @@ class InviteClientSerializer(serializers.Serializer):
         return value
 
 
+class ClientShortSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "full_name",
+            "phone_number",
+        )
+
+
 class InviteDeliverySerializer(serializers.ModelSerializer):
+    client = ClientShortSerializer(read_only=True)
+
     class Meta:
         model = InviteDelivery
         fields = (
             "id",
             "created_at",
+            'client',
             "channel",
             "status",
             "is_new_client",
