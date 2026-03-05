@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib.auth import get_user_model
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,12 +9,12 @@ from rest_framework.views import APIView
 from account.models.user import ROLE_SPECIALIST
 from account.services.invite_client import invite_client
 from chat_access.models import Tariff
-from integrations.authentication import MedCRMApiKeyAuthentication
-from integrations.permissions import IsMedCRMAuthenticated
+from integrations.medcrm.authentication import MedCRMApiKeyAuthentication
+from integrations.medcrm.permissions import IsMedCRMAuthenticated
 from integrations.serializers import (
-    MedCRMTariffSerializer,
     MedCRMInviteClientSerializer,
     MedCRMInviteResponseSerializer,
+    MedCRMTariffSerializer,
 )
 
 logger = logging.getLogger(__name__)

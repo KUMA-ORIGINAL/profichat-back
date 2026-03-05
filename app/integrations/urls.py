@@ -1,18 +1,44 @@
 from django.urls import path
 
-from . import views
+from .views import (
+    MedCRMInviteClientView,
+    MedCRMTariffsView,
+    TelegramAuthStartView,
+    TelegramAuthStatusView,
+    TelegramAuthWebhookView,
+)
 
 app_name = "integrations"
 
 urlpatterns = [
     path(
+        "telegram/auth/start/",
+        TelegramAuthStartView.as_view(),
+        name="telegram-auth-start",
+    ),
+    path(
+        "telegram/auth/status/",
+        TelegramAuthStatusView.as_view(),
+        name="telegram-auth-status",
+    ),
+    path(
+        "telegram/auth/webhook/",
+        TelegramAuthWebhookView.as_view(),
+        name="telegram-auth-webhook",
+    ),
+    path(
+        "telegram/auth/webhook/<str:webhook_secret>/",
+        TelegramAuthWebhookView.as_view(),
+        name="telegram-auth-webhook-secret",
+    ),
+    path(
         "medcrm/tariffs/",
-        views.MedCRMTariffsView.as_view(),
+        MedCRMTariffsView.as_view(),
         name="medcrm-tariffs",
     ),
     path(
         "medcrm/invite-client/",
-        views.MedCRMInviteClientView.as_view(),
+        MedCRMInviteClientView.as_view(),
         name="medcrm-invite-client",
     ),
 ]

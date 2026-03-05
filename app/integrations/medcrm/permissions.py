@@ -1,6 +1,6 @@
 from rest_framework.permissions import BasePermission
 
-from integrations.authentication import APIKeyUser
+from integrations.medcrm.authentication import APIKeyUser
 
 
 class IsMedCRMAuthenticated(BasePermission):
