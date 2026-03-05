@@ -23,7 +23,6 @@ class ClientShortSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             "id",
-            "full_name",
             "phone_number",
         )
 
