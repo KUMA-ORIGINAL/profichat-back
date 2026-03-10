@@ -28,7 +28,6 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-@extend_schema(tags=["Auth"])
 class CustomTokenRefreshSerializer(TokenRefreshSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
