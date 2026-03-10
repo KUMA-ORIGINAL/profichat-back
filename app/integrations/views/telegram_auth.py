@@ -12,8 +12,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
-from rest_framework_simplejwt.tokens import RefreshToken
 
+from account.services.token_lifetime import build_refresh_for_user
 from account.services.user import generate_unique_username
 from common.stream_client import chat_client
 from integrations.serializers import (
@@ -77,7 +77,7 @@ def _blacklist_user_tokens(user):
 
 def _issue_auth_payload_for_user(user):
     _blacklist_user_tokens(user)
-    refresh = RefreshToken.for_user(user)
+    refresh = build_refresh_for_user(user)
     stream_token = chat_client.create_token(str(user.id))
     return {
         "status": STATUS_COMPLETED,

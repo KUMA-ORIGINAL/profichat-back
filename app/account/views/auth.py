@@ -10,13 +10,18 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from common.stream_client import chat_client
 from ..models import OTP
 from account import serializers
 from ..services import send_sms, generate_unique_username
+from ..services.token_lifetime import (
+    build_refresh_for_user,
+    get_short_access_token_lifetime,
+    should_use_short_token_lifetime,
+)
 
 User = get_user_model()
 
@@ -24,8 +29,21 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(tags=["Auth"])
+class CustomTokenRefreshSerializer(TokenRefreshSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        refresh = self.token_class(attrs["refresh"])
+        user_id = refresh.get("user_id")
+        if should_use_short_token_lifetime(user_id):
+            access_token = refresh.access_token
+            access_token.set_exp(lifetime=get_short_access_token_lifetime())
+            data["access"] = str(access_token)
+        return data
+
+
+@extend_schema(tags=["Auth"])
 class CustomTokenRefreshView(TokenRefreshView):
-    pass
+    serializer_class = CustomTokenRefreshSerializer
 
 
 @extend_schema(tags=['Auth'])
@@ -141,7 +159,7 @@ class VerifyOTPView(APIView):
                         BlacklistedToken.objects.get_or_create(token=token)
                     except Exception:
                         pass
-                refresh = RefreshToken.for_user(user)
+                refresh = build_refresh_for_user(user)
 
                 stream_token = chat_client.create_token(str(user.id))
 
