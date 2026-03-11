@@ -18,7 +18,7 @@ from ..models import OTP
 from account import serializers
 from ..services import send_sms, generate_unique_username
 from ..services.token_lifetime import (
-    build_refresh_for_user,
+    build_token_pair_for_user,
     get_short_access_token_lifetime,
     should_use_short_token_lifetime,
 )
@@ -158,7 +158,7 @@ class VerifyOTPView(APIView):
                         BlacklistedToken.objects.get_or_create(token=token)
                     except Exception:
                         pass
-                refresh = build_refresh_for_user(user)
+                refresh, access_token = build_token_pair_for_user(user)
 
                 stream_token = chat_client.create_token(str(user.id))
 
@@ -167,7 +167,7 @@ class VerifyOTPView(APIView):
 
         return Response({
             "refresh": str(refresh),
-            "access": str(refresh.access_token),
+            "access": str(access_token),
             "stream_token": stream_token
         })
 

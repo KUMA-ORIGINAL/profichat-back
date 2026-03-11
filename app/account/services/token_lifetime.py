@@ -23,5 +23,12 @@ def build_refresh_for_user(user):
     refresh = RefreshToken.for_user(user)
     if should_use_short_token_lifetime(user.id):
         refresh.set_exp(lifetime=get_short_refresh_token_lifetime())
-        refresh.access_token.set_exp(lifetime=get_short_access_token_lifetime())
     return refresh
+
+
+def build_token_pair_for_user(user):
+    refresh = build_refresh_for_user(user)
+    access_token = refresh.access_token
+    if should_use_short_token_lifetime(user.id):
+        access_token.set_exp(lifetime=get_short_access_token_lifetime())
+    return refresh, access_token
