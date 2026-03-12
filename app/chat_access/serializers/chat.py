@@ -123,6 +123,9 @@ class ChatCreateSerializer(serializers.ModelSerializer):
             'channel_id',
         )
         read_only_fields = ('client', 'channel_id')
+        # Отключаем авто-UniqueTogetherValidator:
+        # если чат уже есть, вернем существующий через get_or_create в create().
+        validators = []
 
     def create(self, validated_data):
         client = validated_data['client']
