@@ -15,7 +15,31 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Application
-        fields = ['id', 'user', 'first_name', 'last_name', 'profession', 'education', 'work_experiences', 'created_at']
+        fields = [
+            'id',
+            'user',
+            'first_name',
+            'last_name',
+            'profession',
+            'custom_profession',
+            'education',
+            'work_experiences',
+            'created_at',
+        ]
+
+    def validate(self, attrs):
+        profession = attrs.get('profession')
+        custom_profession = (attrs.get('custom_profession') or '').strip()
+
+        if not profession and not custom_profession:
+            raise serializers.ValidationError({
+                "profession": "Выберите профессию из списка или укажите свой вариант."
+            })
+
+        if custom_profession:
+            attrs['custom_profession'] = custom_profession
+
+        return attrs
 
     def create(self, validated_data):
         work_experiences_data = validated_data.pop('work_experiences')

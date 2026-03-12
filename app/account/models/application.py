@@ -33,6 +33,12 @@ class Application(models.Model):
         related_name="applications",
         verbose_name=_("Профессия"),
     )
+    custom_profession = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_("Профессия (свой вариант)")
+    )
     user = models.ForeignKey(
         to='User',
         on_delete=models.CASCADE,
@@ -45,7 +51,8 @@ class Application(models.Model):
         verbose_name_plural = _("Заявки")
 
     def __str__(self):
-        return f"{self.last_name} {self.first_name} - {self.profession}"
+        profession_name = self.profession.name if self.profession else self.custom_profession
+        return f"{self.last_name} {self.first_name} - {profession_name or 'Профессия не указана'}"
 
 
 class WorkExperience(models.Model):

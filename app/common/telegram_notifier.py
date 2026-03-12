@@ -94,11 +94,13 @@ def notify_specialist_application(application) -> bool:
     # Конвертируем время в локальный часовой пояс
     local_time = timezone.localtime(application.created_at)
     
+    profession_text = application.profession.name if application.profession else (application.custom_profession or 'Не указана')
+
     message = (
         f"📋 <b>Новая заявка на специалиста!</b>\n\n"
         f"👤 ФИО: {application.last_name} {application.first_name}\n"
         f"🎓 Образование: {application.education}\n"
-        f"💼 Профессия: {application.profession.name if application.profession else 'Не указана'}\n"
+        f"💼 Профессия: {profession_text}\n"
         f"📝 Опыт работы:\n{work_exp_text}\n"
         f"🆔 ID заявки: {application.id}\n"
         f"👤 Пользователь ID: {application.user.id if application.user else 'Не указан'}\n"

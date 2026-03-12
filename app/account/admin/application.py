@@ -13,9 +13,9 @@ class WorkExperienceInline(TabularInline):
 
 @admin.register(Application)
 class ApplicationAdmin(BaseModelAdmin):
-    list_display = ("id", "first_name", "last_name", 'profession', 'status', "created_at", 'detail_link')
+    list_display = ("id", "first_name", "last_name", 'profession', 'custom_profession', 'status', "created_at", 'detail_link')
     list_display_links = ("id", "first_name")
-    search_fields = ("first_name", "last_name", "profession", "education")
+    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "education")
     list_filter = ("profession", "created_at", 'status')
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
