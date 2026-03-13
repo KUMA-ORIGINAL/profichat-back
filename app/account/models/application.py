@@ -33,6 +33,14 @@ class Application(models.Model):
         related_name="applications",
         verbose_name=_("Профессия"),
     )
+    organization = models.ForeignKey(
+        to='Organization',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="applications",
+        verbose_name=_("Организация"),
+    )
     custom_profession = models.CharField(
         max_length=255,
         null=True,

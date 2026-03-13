@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from ..models import Application, WorkExperience
+from ..models import Application, WorkExperience, Organization
 
 
 class WorkExperienceSerializer(serializers.ModelSerializer):
@@ -12,6 +12,11 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
 class ApplicationSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     work_experiences = WorkExperienceSerializer(many=True)
+    organization = serializers.PrimaryKeyRelatedField(
+        queryset=Organization.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = Application
@@ -21,6 +26,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'profession',
+            'organization',
             'custom_profession',
             'education',
             'work_experiences',

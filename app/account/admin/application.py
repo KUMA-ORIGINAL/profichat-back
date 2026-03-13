@@ -13,10 +13,10 @@ class WorkExperienceInline(TabularInline):
 
 @admin.register(Application)
 class ApplicationAdmin(BaseModelAdmin):
-    list_display = ("id", "first_name", "last_name", 'profession', 'custom_profession', 'status', "created_at", 'detail_link')
+    list_display = ("id", "first_name", "last_name", 'profession', 'custom_profession', 'organization', 'status', "created_at", 'detail_link')
     list_display_links = ("id", "first_name")
-    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "education")
-    list_filter = ("profession", "created_at", 'status')
+    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "organization__name", "education")
+    list_filter = ("profession", "organization", "created_at", 'status')
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
     inlines = [WorkExperienceInline]
@@ -29,6 +29,8 @@ class ApplicationAdmin(BaseModelAdmin):
                 user = obj.user
                 user.role = ROLE_SPECIALIST
                 user.profession = obj.profession
+                if obj.organization:
+                    user.organization = obj.organization
                 user.save()
                 send_application_accepted_push(user, obj)
         super().save_model(request, obj, form, change)

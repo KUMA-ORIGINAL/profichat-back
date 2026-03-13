@@ -468,6 +468,11 @@ UNFOLD = {
                         "icon": "person",
                         "link": reverse_lazy("admin:account_user_changelist"),
                     },
+                    {
+                        "title": _("Организации"),
+                        "icon": "business",
+                        "link": reverse_lazy("admin:account_organization_changelist"),
+                    },
                 ],
             },
             {

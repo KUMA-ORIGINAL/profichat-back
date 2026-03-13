@@ -101,6 +101,7 @@ def notify_specialist_application(application) -> bool:
         f"👤 ФИО: {application.last_name} {application.first_name}\n"
         f"🎓 Образование: {application.education}\n"
         f"💼 Профессия: {profession_text}\n"
+        f"🏢 Организация: {application.organization.name if application.organization else 'Не указана'}\n"
         f"📝 Опыт работы:\n{work_exp_text}\n"
         f"🆔 ID заявки: {application.id}\n"
         f"👤 Пользователь ID: {application.user.id if application.user else 'Не указан'}\n"
