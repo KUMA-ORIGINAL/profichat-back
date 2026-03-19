@@ -95,13 +95,14 @@ def notify_specialist_application(application) -> bool:
     local_time = timezone.localtime(application.created_at)
     
     profession_text = application.profession.name if application.profession else (application.custom_profession or 'Не указана')
+    organization_text = application.organization.name if application.organization else (application.custom_organization or 'Не указана')
 
     message = (
         f"📋 <b>Новая заявка на специалиста!</b>\n\n"
         f"👤 ФИО: {application.last_name} {application.first_name}\n"
         f"🎓 Образование: {application.education}\n"
         f"💼 Профессия: {profession_text}\n"
-        f"🏢 Организация: {application.organization.name if application.organization else 'Не указана'}\n"
+        f"🏢 Организация: {organization_text}\n"
         f"📝 Опыт работы:\n{work_exp_text}\n"
         f"🆔 ID заявки: {application.id}\n"
         f"👤 Пользователь ID: {application.user.id if application.user else 'Не указан'}\n"

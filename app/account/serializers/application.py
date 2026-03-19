@@ -28,6 +28,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'profession',
             'organization',
             'custom_profession',
+            'custom_organization',
             'education',
             'work_experiences',
             'created_at',
@@ -44,6 +45,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
         if custom_profession:
             attrs['custom_profession'] = custom_profession
+
+        custom_organization = (attrs.get('custom_organization') or '').strip()
+        if custom_organization:
+            attrs['custom_organization'] = custom_organization
 
         return attrs
 

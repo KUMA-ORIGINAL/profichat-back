@@ -47,6 +47,12 @@ class Application(models.Model):
         blank=True,
         verbose_name=_("Профессия (свой вариант)")
     )
+    custom_organization = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        verbose_name=_("Организация (свой вариант)")
+    )
     user = models.ForeignKey(
         to='User',
         on_delete=models.CASCADE,
