@@ -1,16 +1,9 @@
-import logging
-
-from django.utils import timezone
-from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
-from account.services import create_stream_channel, update_channel_extra_data
 from ..models import Chat, AccessOrder
 
 User = get_user_model()
-
-logger = logging.getLogger(__name__)
 
 
 class AccessOrderShortSerializer(serializers.ModelSerializer):
@@ -28,11 +21,12 @@ class UserShortSerializer(serializers.ModelSerializer):
 
 
 class ChatListSerializer(serializers.ModelSerializer):
-    companion = serializers.SerializerMethodField()
-    user_role = serializers.SerializerMethodField()
-    last_access_order = serializers.SerializerMethodField()
-    specialist_note = serializers.SerializerMethodField()
-    latest_invite_delivery = serializers.SerializerMethodField()
+    companion = UserShortSerializer()
+    user_role = serializers.CharField()
+    last_access_order = AccessOrderShortSerializer(allow_null=True)
+    specialist_note = serializers.CharField(allow_null=True)
+    latest_invite_delivery = serializers.DictField(allow_null=True)
+    should_reply = serializers.BooleanField()
 
     class Meta:
         model = Chat
@@ -45,70 +39,8 @@ class ChatListSerializer(serializers.ModelSerializer):
             'last_access_order',
             'specialist_note',
             'latest_invite_delivery',
+            'should_reply',
         )
-
-    @extend_schema_field(UserShortSerializer)
-    def get_companion(self, obj):
-        user = self.context['request'].user
-        if obj.client == user:
-            return UserShortSerializer(obj.specialist).data
-        elif obj.specialist == user:
-            return UserShortSerializer(obj.client).data
-        return None
-
-    def get_user_role(self, obj):
-        user = self.context['request'].user
-        if obj.client == user:
-            return "client"
-        elif obj.specialist == user:
-            return "specialist"
-        return None
-
-    def get_specialist_note(self, obj):
-        """Заметка видна только специалисту"""
-        user = self.context['request'].user
-        if obj.specialist == user:
-            return obj.specialist_note or ''
-        return None
-
-    @extend_schema_field(AccessOrderShortSerializer)
-    def get_last_access_order(self, obj):
-        user = self.context['request'].user
-
-        # Доступ только клиенту
-        if obj.client != user:
-            return None
-
-        now = timezone.now()
-
-        last_active_order = obj.access_orders.filter(
-            client=user,
-            payment_status='success',
-            expires_at__gt=now
-        ).order_by('-created_at').first()
-
-        if last_active_order:
-            return AccessOrderShortSerializer(last_active_order).data
-        return None
-
-    def get_latest_invite_delivery(self, obj):
-        user = self.context['request'].user
-        if obj.specialist != user:
-            return None
-
-        latest_delivery = obj.invite_deliveries.order_by('-created_at').first()
-        if not latest_delivery:
-            return None
-
-        return {
-            "id": latest_delivery.id,
-            "created_at": latest_delivery.created_at,
-            "channel": latest_delivery.channel,
-            "status": latest_delivery.status,
-            "provider_status": latest_delivery.provider_status,
-            "error_message": latest_delivery.error_message,
-            "is_new_client": latest_delivery.is_new_client,
-        }
 
 
 class ChatCreateSerializer(serializers.ModelSerializer):
@@ -127,50 +59,8 @@ class ChatCreateSerializer(serializers.ModelSerializer):
         # если чат уже есть, вернем существующий через get_or_create в create().
         validators = []
 
-    def create(self, validated_data):
-        client = validated_data['client']
-        specialist = validated_data['specialist']
-
-        channel_id = f"chat_{client.id}_{specialist.id}"
-
-        chat, created = Chat.objects.get_or_create(
-            client=client,
-            specialist=specialist,
-            defaults={
-                "channel_id": channel_id,
-            }
-        )
-
-        if created:
-            try:
-                create_stream_channel(chat)
-            except Exception as e:
-                chat.delete()
-                raise serializers.ValidationError(
-                    f"Ошибка создания канала в GetStream: {e}"
-                )
-        return chat
-
 
 class ChatUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Chat
         fields = ('specialist_note', 'client_can_send_voice')
-
-    def update(self, instance, validated_data):
-        instance = super().update(instance, validated_data)
-
-        # обновляем extra_data канала в GetStream
-        try:
-            update_channel_extra_data(
-                channel_id=instance.channel_id,
-                data=validated_data,
-            )
-        except Exception as e:
-            # логируем, но не ломаем API
-            logger.exception("GetStream update failed")
-            raise serializers.ValidationError(
-                f"Ошибка обновления канала в GetStream: {e}"
-            )
-
-        return instance

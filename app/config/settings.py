@@ -263,7 +263,7 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_RENDERER_CLASSES': (
         'djangorestframework_camel_case.render.CamelCaseJSONRenderer',
-        'djangorestframework_camel_case.render.CamelCaseBrowsableAPIRenderer',
+        # 'djangorestframework_camel_case.render.CamelCaseBrowsableAPIRenderer',
     ),
     'DEFAULT_PARSER_CLASSES': (
         'djangorestframework_camel_case.parser.CamelCaseFormParser',
@@ -436,6 +436,11 @@ UNFOLD = {
                 "separator": True,
                 "collapsible": False,
                 "items": [
+                    {
+                        "title": _("История уведомлений"),
+                        "icon": "notifications",
+                        "link": reverse_lazy("admin:account_notification_changelist"),
+                    },
                     # {
                     #     "title": "Apple (APNS)",
                     #     "icon": "apple",

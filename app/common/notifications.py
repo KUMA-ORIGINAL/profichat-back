@@ -1,4 +1,6 @@
 import logging
+
+from django.utils import timezone
 from firebase_admin import messaging
 from push_notifications.models import GCMDevice
 
@@ -87,11 +89,66 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta
     return result
 
 
+def create_notification(user, title, message, notification_type, payload=None):
+    # Импорт внутри функции, чтобы избежать циклических импортов при старте приложения.
+    from account.models import Notification
+
+    return Notification.objects.create(
+        recipient=user,
+        notification_type=notification_type,
+        title=title,
+        message=message,
+        payload=payload or {},
+    )
+
+
+def notify_user(
+    user,
+    title,
+    message,
+    notification_type,
+    payload=None,
+    log_prefix="[Notify]",
+    return_meta=False,
+):
+    notification = create_notification(
+        user=user,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+        payload=payload,
+    )
+
+    push_result = send_push(
+        user=user,
+        title=title,
+        message=message,
+        extra=payload or {},
+        log_prefix=log_prefix,
+        return_meta=True,
+    )
+    if push_result.get("ok"):
+        notification.pushed_at = timezone.now()
+        notification.save(update_fields=["pushed_at", "updated_at"])
+
+    if return_meta:
+        push_result["notification_id"] = notification.id
+        return push_result
+    return push_result.get("ok", False)
+
+
 def send_payment_success_push(user, access_order):
     title = "Оплата прошла успешно"
     message = f"Доступ по тарифу '{access_order.tariff.name}' активирован."
     extra = {"order_id": str(access_order.id)}
-    return send_push(user, title, message, extra, log_prefix="[Push][Payment]")
+    return notify_user(
+        user=user,
+        title=title,
+        message=message,
+        notification_type="payment_success",
+        payload=extra,
+        log_prefix="[Push][Payment]",
+    )
 
 
 def send_chat_invite_push(user, chat, return_meta=False):
@@ -104,11 +161,12 @@ def send_chat_invite_push(user, chat, return_meta=False):
         "sender_name": str(user.get_full_name()),  # или другое поле имени отправителя
         "sender_id": str(user.id)
     }
-    return send_push(
-        user,
-        title,
-        message,
-        extra,
+    return notify_user(
+        user=user,
+        title=title,
+        message=message,
+        notification_type="chat_invite",
+        payload=extra,
         log_prefix="[Push][Chat]",
         return_meta=return_meta,
     )
@@ -121,4 +179,11 @@ def send_application_accepted_push(user, application):
         "application_id": str(application.id),
         "type": "application_accepted"
     }
-    return send_push(user, title, message, extra, log_prefix="[Push][Application]")
+    return notify_user(
+        user=user,
+        title=title,
+        message=message,
+        notification_type="application_accepted",
+        payload=extra,
+        log_prefix="[Push][Application]",
+    )

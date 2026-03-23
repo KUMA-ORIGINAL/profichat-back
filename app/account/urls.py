@@ -1,17 +1,18 @@
 from django.conf import settings
 from django.urls import path, include
 from push_notifications.api.rest_framework import GCMDeviceAuthorizedViewSet
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from . import views
 
-router = DefaultRouter()
+router = SimpleRouter()
 router.register('profession-categories', views.ProfessionCategoryViewSet, basename='profession-categories')
 router.register('organizations', views.OrganizationViewSet, basename='organizations')
 router.register('specialists', views.SpecialistViewSet, basename='specialist')
 router.register('apply', views.ApplicationCreateViewSet, basename='application-create'),
 router.register(r'work-schedules', views.WorkScheduleViewSet, basename='work-schedule')
+router.register(r'notifications', views.NotificationViewSet, basename='notifications')
 router.register(r'device/gcm', GCMDeviceAuthorizedViewSet)
 
 urlpatterns = [
