@@ -11,6 +11,7 @@ from account.serializers.invite_client import (
 )
 from account.services.invite_client import invite_client
 from chat_access.serializers import ChatListSerializer
+from chat_access.services import build_chat_list_item, get_should_reply_map
 
 
 class InviteClientView(APIView):
@@ -40,7 +41,12 @@ class InviteClientView(APIView):
             note=note
         )
 
-        return Response(ChatListSerializer(chat, context={'request': request}).data, status=201)
+        chat_payload = build_chat_list_item(
+            chat,
+            specialist,
+            should_reply_map=get_should_reply_map([chat], specialist),
+        )
+        return Response(ChatListSerializer(chat_payload, context={'request': request}).data, status=201)
 
 
 class InviteDeliveryStatusView(APIView):
