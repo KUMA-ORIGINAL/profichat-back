@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
 from account.models import InviteDelivery
-from chat_access.models import AccessOrder, Chat, Tariff
+from chat_access.models import AccessOrder, Chat, FavoriteChat, Tariff
 
 User = get_user_model()
 
@@ -274,4 +274,97 @@ class ChatCommandTests(ChatBaseTestCase):
             format="json",
         )
 
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class FavoriteChatTests(ChatBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.outsider = User.objects.create_user(
+            username="client_outsider",
+            password="pass",
+            role=ROLE_CLIENT,
+        )
+        self.outsider_specialist = User.objects.create_user(
+            username="specialist_outsider",
+            password="pass",
+            role=ROLE_SPECIALIST,
+        )
+
+    @patch("chat_access.views.chat.sync_favorite_by_to_stream")
+    def test_specialist_can_add_favorite_by_channel_id(self, sync_mock):
+        self.client.force_authenticate(user=self.specialist_user)
+        response = self.client.post(
+            reverse("chat-add-favorite"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["channel_id"], self.chat.channel_id)
+        self.assertTrue(FavoriteChat.objects.filter(user=self.specialist_user, chat=self.chat).exists())
+        sync_mock.assert_called_once_with(self.chat)
+
+    @patch("chat_access.views.chat.sync_favorite_by_to_stream")
+    def test_specialist_add_favorite_is_idempotent(self, sync_mock):
+        FavoriteChat.objects.create(user=self.specialist_user, chat=self.chat)
+        self.client.force_authenticate(user=self.specialist_user)
+
+        response = self.client.post(
+            reverse("chat-add-favorite"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(FavoriteChat.objects.filter(user=self.specialist_user, chat=self.chat).count(), 1)
+        sync_mock.assert_called_once_with(self.chat)
+
+    def test_add_favorite_denies_non_specialist(self):
+        self.client.force_authenticate(user=self.outsider)
+        response = self.client.post(
+            reverse("chat-add-favorite"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_specialist_can_list_favorite_channel_ids(self):
+        FavoriteChat.objects.create(user=self.specialist_user, chat=self.chat)
+        self.client.force_authenticate(user=self.specialist_user)
+
+        response = self.client.get(reverse("chat-favorites"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["channel_ids"], [self.chat.channel_id])
+
+    @patch("chat_access.views.chat.sync_favorite_by_to_stream")
+    def test_specialist_can_remove_favorite(self, sync_mock):
+        FavoriteChat.objects.create(user=self.specialist_user, chat=self.chat)
+        self.client.force_authenticate(user=self.specialist_user)
+
+        response = self.client.post(
+            reverse("chat-remove-favorite"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "success")
+        self.assertTrue(response.data["deleted"])
+        self.assertFalse(FavoriteChat.objects.filter(user=self.specialist_user, chat=self.chat).exists())
+        sync_mock.assert_called_once_with(self.chat)
+
+    def test_remove_favorite_denies_non_member_specialist(self):
+        self.client.force_authenticate(user=self.outsider_specialist)
+        response = self.client.post(
+            reverse("chat-remove-favorite"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_client_cannot_list_favorites(self):
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(reverse("chat-favorites"))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
