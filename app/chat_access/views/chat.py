@@ -8,19 +8,21 @@ from rest_framework.response import Response
 
 from account.models import ROLE_SPECIALIST, ROLE_CLIENT
 from account.models import InviteDelivery
-from ..models import AccessOrder, Chat, FavoriteChat
+from ..models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from ..serializers import (
     ChatListSerializer,
     ChatCreateSerializer,
     ChatUpdateSerializer,
     FavoriteChatRequestSerializer,
     FavoriteChatSerializer,
+    BlockedChatSerializer,
 )
 from rest_framework.decorators import action
 from ..services import (
     build_chat_list_item,
     create_or_get_chat,
     get_should_reply_map,
+    sync_blocked_by_to_stream,
     sync_favorite_by_to_stream,
     update_chat_and_stream,
 )
@@ -77,6 +79,10 @@ class ChatViewSet(viewsets.GenericViewSet,
     def _ensure_specialist_for_favorites(self, user):
         if user.role != ROLE_SPECIALIST:
             raise exceptions.PermissionDenied("Только специалисты могут работать с избранными чатами")
+
+    def _ensure_specialist_for_blacklist(self, user):
+        if user.role != ROLE_SPECIALIST:
+            raise exceptions.PermissionDenied("Только специалисты могут работать с черным списком")
 
     def list(self, request, *args, **kwargs):
         chats = list(self.get_queryset())
@@ -168,6 +174,70 @@ class ChatViewSet(viewsets.GenericViewSet,
             chat=chat,
         ).delete()
         sync_favorite_by_to_stream(chat)
+        return Response({"status": "success", "deleted": bool(deleted)})
+
+    @extend_schema(
+        summary="Get blacklisted chat channel ids",
+        description="Возвращает channelId чатов, которые текущий специалист добавил в черный список.",
+    )
+    @action(detail=False, methods=["get"], url_path="blacklist")
+    def blacklist(self, request):
+        self._ensure_specialist_for_blacklist(request.user)
+        blocked_channel_ids = list(
+            BlockedChat.objects.filter(user=request.user)
+            .select_related("chat")
+            .values_list("chat__channel_id", flat=True)
+        )
+        return Response({"channel_ids": blocked_channel_ids})
+
+    @extend_schema(
+        request=FavoriteChatRequestSerializer,
+        summary="Add chat to blacklist",
+        responses={200: BlockedChatSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="blacklist/add")
+    def add_blacklist(self, request):
+        self._ensure_specialist_for_blacklist(request.user)
+        serializer = FavoriteChatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        channel_id = serializer.validated_data["channel_id"]
+        chat = Chat.objects.filter(
+            channel_id=channel_id,
+        ).filter(
+            Q(client=request.user) | Q(specialist=request.user)
+        ).first()
+        if not chat:
+            raise exceptions.NotFound("Чат не найден или недоступен")
+
+        blocked, _ = BlockedChat.objects.get_or_create(user=request.user, chat=chat)
+        sync_blocked_by_to_stream(chat)
+        return Response(BlockedChatSerializer(blocked).data)
+
+    @extend_schema(
+        request=FavoriteChatRequestSerializer,
+        summary="Remove chat from blacklist",
+    )
+    @action(detail=False, methods=["post"], url_path="blacklist/remove")
+    def remove_blacklist(self, request):
+        self._ensure_specialist_for_blacklist(request.user)
+        serializer = FavoriteChatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        channel_id = serializer.validated_data["channel_id"]
+        chat = Chat.objects.filter(
+            channel_id=channel_id,
+        ).filter(
+            Q(client=request.user) | Q(specialist=request.user)
+        ).first()
+        if not chat:
+            raise exceptions.NotFound("Чат не найден или недоступен")
+
+        deleted, _ = BlockedChat.objects.filter(
+            user=request.user,
+            chat=chat,
+        ).delete()
+        sync_blocked_by_to_stream(chat)
         return Response({"status": "success", "deleted": bool(deleted)})
 
     def get_queryset(self):

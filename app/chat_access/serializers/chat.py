@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
-from ..models import Chat, AccessOrder, FavoriteChat
+from ..models import Chat, AccessOrder, BlockedChat, FavoriteChat
 
 User = get_user_model()
 
@@ -75,4 +75,12 @@ class FavoriteChatSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FavoriteChat
+        fields = ("id", "channel_id", "created_at")
+
+
+class BlockedChatSerializer(serializers.ModelSerializer):
+    channel_id = serializers.CharField(source="chat.channel_id", read_only=True)
+
+    class Meta:
+        model = BlockedChat
         fields = ("id", "channel_id", "created_at")

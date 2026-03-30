@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
 from account.models import InviteDelivery
-from chat_access.models import AccessOrder, Chat, FavoriteChat, Tariff
+from chat_access.models import AccessOrder, BlockedChat, Chat, FavoriteChat, Tariff
 
 User = get_user_model()
 
@@ -368,3 +368,72 @@ class FavoriteChatTests(ChatBaseTestCase):
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-favorites"))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class BlacklistChatTests(ChatBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.outsider_specialist = User.objects.create_user(
+            username="specialist_outsider_for_blacklist",
+            password="pass",
+            role=ROLE_SPECIALIST,
+        )
+
+    @patch("chat_access.views.chat.sync_blocked_by_to_stream")
+    def test_specialist_can_add_chat_to_blacklist(self, sync_mock):
+        self.client.force_authenticate(user=self.specialist_user)
+        response = self.client.post(
+            reverse("chat-add-blacklist"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["channel_id"], self.chat.channel_id)
+        self.assertTrue(BlockedChat.objects.filter(user=self.specialist_user, chat=self.chat).exists())
+        sync_mock.assert_called_once_with(self.chat)
+
+    @patch("chat_access.views.chat.sync_blocked_by_to_stream")
+    def test_specialist_can_remove_chat_from_blacklist(self, sync_mock):
+        BlockedChat.objects.create(user=self.specialist_user, chat=self.chat)
+        self.client.force_authenticate(user=self.specialist_user)
+        response = self.client.post(
+            reverse("chat-remove-blacklist"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "success")
+        self.assertTrue(response.data["deleted"])
+        self.assertFalse(BlockedChat.objects.filter(user=self.specialist_user, chat=self.chat).exists())
+        sync_mock.assert_called_once_with(self.chat)
+
+    def test_specialist_can_list_blacklist(self):
+        BlockedChat.objects.create(user=self.specialist_user, chat=self.chat)
+        self.client.force_authenticate(user=self.specialist_user)
+        response = self.client.get(reverse("chat-blacklist"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["channel_ids"], [self.chat.channel_id])
+
+    def test_client_cannot_manage_blacklist(self):
+        self.client.force_authenticate(user=self.client_user)
+        add_response = self.client.post(
+            reverse("chat-add-blacklist"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        list_response = self.client.get(reverse("chat-blacklist"))
+
+        self.assertEqual(add_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(list_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_specialist_cannot_remove_blacklist(self):
+        self.client.force_authenticate(user=self.outsider_specialist)
+        response = self.client.post(
+            reverse("chat-remove-blacklist"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
