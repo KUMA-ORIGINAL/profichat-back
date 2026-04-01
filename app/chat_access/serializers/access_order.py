@@ -9,10 +9,9 @@ User = get_user_model()
 
 
 class ProfessionCategorySerializer(serializers.ModelSerializer):
-
     class Meta:
         model = ProfessionCategory
-        fields = ['id', 'name']  # Укажите нужные поля
+        fields = ["id", "name"]
 
 
 class SpecialistSerializer(serializers.ModelSerializer):
@@ -20,11 +19,11 @@ class SpecialistSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'first_name', 'last_name', 'profession', 'photo')
+        fields = ("id", "first_name", "last_name", "profession", "photo")
 
 
 class ClientAccessSerializer(serializers.Serializer):
-    id = serializers.IntegerField(source='client.id')
+    id = serializers.IntegerField(source="client.id")
     full_name = serializers.SerializerMethodField()
     photo = serializers.SerializerMethodField()
     tariff_duration = serializers.SerializerMethodField()
@@ -34,9 +33,9 @@ class ClientAccessSerializer(serializers.Serializer):
         return f"{obj.client.first_name} {obj.client.last_name}"
 
     def get_photo(self, obj):
-        request = self.context.get('request')
-        photo = getattr(obj.client, 'photo', None)
-        if photo and hasattr(photo, 'url'):
+        request = self.context.get("request")
+        photo = getattr(obj.client, "photo", None)
+        if photo and hasattr(photo, "url"):
             if request:
                 return request.build_absolute_uri(photo.url)
             return photo.url
@@ -62,63 +61,72 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccessOrder
         fields = [
-            'id',
-            'client',
-            'specialist',
-            'tariff',
-            'channel_id',
-            'chat'
+            "id",
+            "client",
+            "specialist",
+            "tariff",
+            "channel_id",
+            "chat",
         ]
-        read_only_fields = ['chat']  # Автоматически создаётся
+        read_only_fields = ["chat"]
 
     def validate(self, attrs):
-        tariff = attrs.get('tariff')
-        client = attrs.get('client')
-        specialist = attrs.get('specialist')
+        tariff = attrs.get("tariff")
+        client = attrs.get("client")
+        specialist = attrs.get("specialist")
 
-        if tariff.tariff_type == 'free':
-            # ищем существующий free-заказ у этого клиента/специалиста
+        if tariff.tariff_type == "free":
             free_order = (
-                AccessOrder.objects
-                .filter(client=client, specialist=specialist, tariff__tariff_type='free')
-                .first()
+                AccessOrder.objects.filter(
+                    client=client,
+                    specialist=specialist,
+                    tariff__tariff_type="free",
+                ).first()
             )
             if free_order:
-                # если он ещё активен — запрещаем
                 if free_order.is_active:
                     raise serializers.ValidationError(
-                        {'tariff': 'Ваш бесплатный тариф ещё активен.'}
+                        {"tariff": "Ваш бесплатный тариф еще активен."}
                     )
-                # если уже истёк — тоже запрещаем (только один free за всё время)
-                else:
-                    raise serializers.ValidationError(
-                        {'tariff': 'Бесплатный тариф уже был использован для этого специалиста.'}
-                    )
+                raise serializers.ValidationError(
+                    {"tariff": "Бесплатный тариф уже был использован для этого специалиста."}
+                )
 
         return attrs
 
     def create(self, validated_data):
-        channel_id = validated_data.pop('channel_id')
-        client = validated_data['client']
-        specialist = validated_data['specialist']
+        channel_id = validated_data.pop("channel_id")
+        client = validated_data["client"]
+        specialist = validated_data["specialist"]
 
         chat, created = Chat.objects.get_or_create(
             client=client,
             specialist=specialist,
-            defaults={'channel_id': channel_id}
+            defaults={"channel_id": channel_id},
         )
 
         if not created and chat.channel_id != channel_id:
-            raise serializers.ValidationError({
-                'channel_id': 'Чат уже существует с другим channel_id.'
-            })
+            raise serializers.ValidationError(
+                {"channel_id": "Чат уже существует с другим channel_id."}
+            )
 
-        validated_data['chat'] = chat
+        if not created:
+            update_fields = []
+            if chat.deleted_by_client_at is not None:
+                chat.deleted_by_client_at = None
+                update_fields.append("deleted_by_client_at")
+            if chat.deleted_by_specialist_at is not None:
+                chat.deleted_by_specialist_at = None
+                update_fields.append("deleted_by_specialist_at")
+            if update_fields:
+                chat.save(update_fields=update_fields)
 
-        tariff = validated_data['tariff']
-        validated_data['duration_hours'] = tariff.duration_hours
-        validated_data['tariff_type'] = tariff.tariff_type
-        validated_data['price'] = tariff.price
+        validated_data["chat"] = chat
+
+        tariff = validated_data["tariff"]
+        validated_data["duration_hours"] = tariff.duration_hours
+        validated_data["tariff_type"] = tariff.tariff_type
+        validated_data["price"] = tariff.price
 
         return super().create(validated_data)
 
@@ -131,27 +139,31 @@ class AccessOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccessOrder
         fields = [
-            'id',
-            'client',
-            'specialist',
-            'specialist_name',
-            'tariff',
-            'tariff_type',
-            'price',
-            'payment_status',
-            'created_at',
-            'activated_at',
-            'expires_at',
-            'is_active',
+            "id",
+            "client",
+            "specialist",
+            "specialist_name",
+            "tariff",
+            "tariff_type",
+            "price",
+            "payment_status",
+            "created_at",
+            "activated_at",
+            "expires_at",
+            "is_active",
         ]
         read_only_fields = (
-            'created_at',
-            'activated_at',
-            'expires_at',
-            'is_active',
-            'duration_hours',
-            'specialist_name',
+            "created_at",
+            "activated_at",
+            "expires_at",
+            "is_active",
+            "duration_hours",
+            "specialist_name",
         )
 
     def get_specialist_name(self, obj):
         return obj.specialist.get_full_name() or obj.specialist.username
+
+
+class CancelSubscriptionByChannelSerializer(serializers.Serializer):
+    channel_id = serializers.CharField(max_length=255)

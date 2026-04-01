@@ -24,6 +24,17 @@ class Chat(BaseModel):
         verbose_name="Клиент может отправлять голосовые"
     )
 
+    deleted_by_client_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        db_index=True,
+    )
+    deleted_by_specialist_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        db_index=True,
+    )
+
     class Meta:
         unique_together = ('client', 'specialist')
         ordering = ['-created_at']

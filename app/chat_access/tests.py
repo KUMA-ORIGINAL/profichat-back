@@ -437,3 +437,177 @@ class BlacklistChatTests(ChatBaseTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class ChatSoftDeleteTests(ChatBaseTestCase):
+    @patch("chat_access.services.chat_list.chat_client")
+    def test_client_cannot_soft_delete_chat(self, chat_client_mock):
+        chat_client_mock.query_channels.return_value = {"channels": []}
+
+        self.client.force_authenticate(user=self.client_user)
+        delete_response = self.client.post(
+            reverse("chat-soft-delete"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @patch("chat_access.services.chat_list.chat_client")
+    def test_specialist_soft_delete_hides_chat_only_for_specialist(self, chat_client_mock):
+        chat_client_mock.query_channels.return_value = {"channels": []}
+
+        self.client.force_authenticate(user=self.specialist_user)
+        delete_response = self.client.post(
+            reverse("chat-soft-delete"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+
+        specialist_list_response = self.client.get(reverse("chat-list"))
+        self.assertEqual(specialist_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(specialist_list_response.data), 0)
+
+        self.client.force_authenticate(user=self.client_user)
+        client_list_response = self.client.get(reverse("chat-list"))
+        self.assertEqual(client_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(client_list_response.data), 1)
+
+    @patch("chat_access.services.chat_list.chat_client")
+    @patch("chat_access.services.chat_commands.create_stream_channel")
+    def test_create_chat_restores_soft_deleted_chat(self, create_stream_channel_mock, chat_client_mock):
+        chat_client_mock.query_channels.return_value = {"channels": []}
+
+        self.client.force_authenticate(user=self.specialist_user)
+        self.client.post(
+            reverse("chat-soft-delete"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.client.force_authenticate(user=self.client_user)
+        recreate_response = self.client.post(
+            reverse("chat-list"),
+            data={"specialist": self.specialist_user.id},
+            format="json",
+        )
+        self.assertEqual(recreate_response.status_code, status.HTTP_201_CREATED)
+
+        list_response = self.client.get(reverse("chat-list"))
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data), 1)
+        create_stream_channel_mock.assert_not_called()
+
+
+class AccessOrderCancelSubscriptionTests(ChatBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.tariff = Tariff.objects.create(
+            name="Paid plan",
+            price=100,
+            duration_hours=24,
+            tariff_type="paid",
+            specialist=self.specialist_user,
+        )
+
+    @patch("chat_access.views.access_order.update_chat_data_from_order")
+    def test_client_can_cancel_active_subscription(self, update_chat_data_from_order_mock):
+        now = timezone.now()
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(hours=1),
+            expires_at=now + timedelta(hours=2),
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            reverse("access-orders-cancel-subscription", kwargs={"pk": order.id}),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "cancelled")
+        self.assertLessEqual(order.expires_at, timezone.now())
+        update_chat_data_from_order_mock.assert_called_once_with(order)
+
+    def test_cannot_cancel_inactive_subscription(self):
+        now = timezone.now()
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(days=2),
+            expires_at=now - timedelta(days=1),
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            reverse("access-orders-cancel-subscription", kwargs={"pk": order.id}),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("chat_access.views.access_order.update_chat_data_from_order")
+    def test_client_can_cancel_active_subscription_by_channel_id(self, update_chat_data_from_order_mock):
+        now = timezone.now()
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(hours=1),
+            expires_at=now + timedelta(hours=2),
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            reverse("access-orders-cancel-subscription-by-channel"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "cancelled")
+        self.assertEqual(response.data["channel_id"], self.chat.channel_id)
+        update_chat_data_from_order_mock.assert_called_once_with(order)
+
+    def test_cancel_subscription_by_channel_is_idempotent(self):
+        now = timezone.now()
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(hours=1),
+            expires_at=now + timedelta(hours=2),
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        first_response = self.client.post(
+            reverse("access-orders-cancel-subscription-by-channel"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+        second_response = self.client.post(
+            reverse("access-orders-cancel-subscription-by-channel"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.data["status"], "success")
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.data["status"], "already_cancelled")
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "cancelled")

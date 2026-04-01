@@ -70,6 +70,10 @@ class FavoriteChatRequestSerializer(serializers.Serializer):
     channel_id = serializers.CharField(max_length=255)
 
 
+class SoftDeleteChatRequestSerializer(serializers.Serializer):
+    channel_id = serializers.CharField(max_length=255)
+
+
 class FavoriteChatSerializer(serializers.ModelSerializer):
     channel_id = serializers.CharField(source="chat.channel_id", read_only=True)
 

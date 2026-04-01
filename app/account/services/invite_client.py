@@ -79,6 +79,17 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
             chat.specialist_note = note
             chat.save(update_fields=["specialist_note"])
 
+        if not chat_created:
+            restore_fields = []
+            if chat.deleted_by_client_at is not None:
+                chat.deleted_by_client_at = None
+                restore_fields.append("deleted_by_client_at")
+            if chat.deleted_by_specialist_at is not None:
+                chat.deleted_by_specialist_at = None
+                restore_fields.append("deleted_by_specialist_at")
+            if restore_fields:
+                chat.save(update_fields=restore_fields)
+
         tariff = Tariff.objects.get(id=tariff_id)
         activated_at = timezone.now()
         access_order = AccessOrder.objects.create(

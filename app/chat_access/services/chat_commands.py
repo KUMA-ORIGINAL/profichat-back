@@ -17,6 +17,16 @@ def create_or_get_chat(client, specialist):
         except Exception as exc:
             chat.delete()
             raise serializers.ValidationError(f"Ошибка создания канала в GetStream: {exc}")
+    else:
+        update_fields = []
+        if chat.deleted_by_client_at is not None:
+            chat.deleted_by_client_at = None
+            update_fields.append("deleted_by_client_at")
+        if chat.deleted_by_specialist_at is not None:
+            chat.deleted_by_specialist_at = None
+            update_fields.append("deleted_by_specialist_at")
+        if update_fields:
+            chat.save(update_fields=update_fields)
     return chat
 
 
