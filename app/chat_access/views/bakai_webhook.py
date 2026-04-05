@@ -25,10 +25,18 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
             order_id = payload.get('operation_id')  # Идентификатор заказа
             new_payment_status = payload.get('operation_state')  # Новый статус оплаты
 
-            logger.info(f'Получен webhook: {payload}')
+            logger.info(
+                "Получен webhook: operation_id=%s operation_state=%s",
+                order_id,
+                new_payment_status,
+            )
 
             if not order_id or not new_payment_status:
-                logger.warning("Недостаточно данных в webhook: %s", payload)
+                logger.warning(
+                    "Недостаточно данных в webhook: operation_id=%s operation_state=%s",
+                    order_id,
+                    new_payment_status,
+                )
                 return Response({'error': 'Недостаточно данных'}, status=status.HTTP_400_BAD_REQUEST)
 
             try:

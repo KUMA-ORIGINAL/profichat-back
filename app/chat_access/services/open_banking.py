@@ -1,6 +1,6 @@
-import requests
 import logging
 
+import requests
 from django.conf import settings
 
 PAYMENT_API_URL = "https://pay.operator.kg/api/v1/payments/make-payment-link/"
@@ -15,7 +15,7 @@ def generate_payment_link(access_order):
         "transaction_id": str(access_order.id),
         "comment": f"Оплата заказа #{access_order.id} hospital",
         "redirect_url": f"https://profigram.site/profigramlinks/specialist/{access_order.specialist_id}",
-        'token': PAYMENT_API_TOKEN,
+        "token": PAYMENT_API_TOKEN,
     }
 
     headers = {
@@ -27,11 +27,17 @@ def generate_payment_link(access_order):
 
         if response.status_code == 200:
             data = response.json()
-            return data.get('pay_url')
-        else:
-            logger.error(f"Ошибка создания платёжной ссылки. Код: {response.status_code}, Ответ: {response.content}")
-            return None
+            return data.get("pay_url")
 
-    except Exception as e:
-        logger.error(f"Ошибка при запросе к платежному сервису: {str(e)}", exc_info=True)
+        logger.error(
+            "Payment link creation failed: order_id=%s status=%s body_preview=%s",
+            access_order.id,
+            response.status_code,
+            response.text[:300],
+        )
         return None
+
+    except Exception:
+        logger.exception("Payment link request failed for order_id=%s", access_order.id)
+        return None
+

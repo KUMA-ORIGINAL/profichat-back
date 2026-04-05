@@ -298,11 +298,11 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} - {asctime} - {module} - {name} - {message}',
+            'format': '{levelname} - {asctime} - {name} - {module} - {message}',
             'style': '{',
         },
         'simple': {
-            'format': '{levelname} - {asctime} - {module} - {message}',
+            'format': '{levelname} - {asctime} - {name} - {message}',
             'style': '{',
         },
     },
@@ -314,20 +314,24 @@ LOGGING = {
         },
         'file': {
             'level': 'INFO',  # Логи с уровнем DEBUG и выше будут записываться в файл
-            'class': 'logging.FileHandler',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
             'filename': 'django_app.log',
             'formatter': 'verbose',
+            'when': 'midnight',
+            'interval': 1,
+            'backupCount': 14,
+            'encoding': 'utf-8',
         },
     },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
+    },
     'loggers': {
-        # 'django.db.backends': {
-        #     'level': 'DEBUG',
-        #     'handlers': ['console'],
-        # },
-        'root': {
+        'django.request': {
             'handlers': ['console', 'file'],
-            'level': 'INFO',
-            'propagate': True,
+            'level': 'WARNING',
+            'propagate': False,
         },
     },
 }

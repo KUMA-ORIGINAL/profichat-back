@@ -28,6 +28,15 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+def mask_phone(phone):
+    if not phone:
+        return ""
+    raw = str(phone)
+    if len(raw) <= 4:
+        return "***"
+    return f"{raw[:3]}***{raw[-2:]}"
+
+
 class CustomTokenRefreshSerializer(TokenRefreshSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
@@ -85,7 +94,11 @@ class SendSMSCodeView(APIView):
                     phone_number=phone_number,
                     code=code
                 )
-                logger.info(f"Created new verification code with ID {otp.id} for phone {phone_number}")
+                logger.info(
+                    "Created verification code id=%s for phone=%s",
+                    otp.id,
+                    mask_phone(phone_number),
+                )
 
             text = f"<![CDATA[<#> Код подтверждения - {code} \n{app_signature} \nНикому не сообщайте его.]]>"
             if not send_sms(phone=phone_number, text=text):
@@ -99,8 +112,11 @@ class SendSMSCodeView(APIView):
                 status=status.HTTP_201_CREATED
             )
 
-        except Exception as e:
-            logger.error(f"Unexpected error while sending SMS to {phone_number}: {str(e)}", exc_info=True)
+        except Exception:
+            logger.exception(
+                "Unexpected error while sending SMS to phone=%s",
+                mask_phone(phone_number),
+            )
             return Response(
                 {"error": "Внутренняя ошибка сервера"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -133,7 +149,11 @@ class VerifyOTPView(APIView):
 
                     obj.is_verified = True
                     obj.save()
-                    logger.info(f"SMS code verified successfully for phone {phone_number}, verification ID {obj.id}")
+                    logger.info(
+                        "SMS code verified for phone=%s verification_id=%s",
+                        mask_phone(phone_number),
+                        obj.id,
+                    )
 
                 phone_number = self.normalize_phone(phone_number)
                 try:
@@ -149,15 +169,15 @@ class VerifyOTPView(APIView):
                     from common.telegram_notifier import notify_new_client_registration
                     try:
                         notify_new_client_registration(user)
-                    except Exception as e:
-                        logger.error(f"Failed to send Telegram notification for new user {user.id}: {str(e)}")
+                    except Exception:
+                        logger.exception("Failed to send Telegram notification for new user %s", user.id)
 
                 tokens = OutstandingToken.objects.filter(user=user)
                 for token in tokens:
                     try:
                         BlacklistedToken.objects.get_or_create(token=token)
                     except Exception:
-                        pass
+                        logger.exception("Failed to blacklist token for user=%s token=%s", user.id, token.id)
                 refresh, access_token = build_token_pair_for_user(user)
 
                 stream_token = chat_client.create_token(str(user.id))
@@ -177,6 +197,7 @@ class VerifyOTPView(APIView):
         if not phone.startswith('+'):
             phone = '+' + phone
         return phone
+
 
 #
 # @extend_schema(tags=['Auth'])

@@ -196,10 +196,15 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(order, context={"request": request})
             return Response(serializer.data)
 
-        except Exception as e:
+        except Exception:
+            logger.exception(
+                "Failed to retrieve last access order for user_id=%s specialist_id=%s",
+                request.user.id,
+                specialist_id,
+            )
             return Response(
-                {"detail": f"An error occurred while retrieving the access order: {str(e)}"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"detail": "An error occurred while retrieving the access order."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=False, methods=["get"], url_path="my-clients")

@@ -7,12 +7,16 @@ from push_notifications.models import GCMDevice
 logger = logging.getLogger(__name__)
 
 
+def _safe_user_ref(user):
+    return getattr(user, "id", None) or "unknown"
+
+
 def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta=False):
     """Простая отправка push-уведомления для Android и iOS"""
     devices = GCMDevice.objects.filter(user=user, active=True)
 
     if not devices.exists():
-        logger.info(f"{log_prefix} Нет активных устройств для пользователя {user}")
+        logger.info("%s No active devices for user_id=%s", log_prefix, _safe_user_ref(user))
         if return_meta:
             return {
                 "ok": False,
@@ -27,54 +31,53 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta
 
     for device in devices:
         try:
-            logger.info(f"{log_prefix} Отправка push пользователю {user}: {message}")
+            logger.info(
+                "%s Sending push to user_id=%s device_id=%s",
+                log_prefix,
+                _safe_user_ref(user),
+                getattr(device, "id", None),
+            )
 
-            # Создаем простое сообщение
             firebase_message = messaging.Message(
-                # Данные
                 data={k: str(v) for k, v in (extra or {}).items()},
-
-                # Уведомление
                 notification=messaging.Notification(
                     title=title,
-                    body=message
+                    body=message,
                 ),
-
-                # Токен
                 token=device.registration_id,
-
-                # Настройки для Android
                 android=messaging.AndroidConfig(
-                    priority='high',
+                    priority="high",
                     notification=messaging.AndroidNotification(
-                        sound="default"
-                    )
+                        sound="default",
+                    ),
                 ),
-
-                # Настройки для iOS
                 apns=messaging.APNSConfig(
                     headers={
-                        'apns-priority': '10'
+                        "apns-priority": "10",
                     },
                     payload=messaging.APNSPayload(
                         aps=messaging.Aps(
                             alert=messaging.ApsAlert(
                                 title=title,
-                                body=message
+                                body=message,
                             ),
                             badge=1,
-                            sound='default'
+                            sound="default",
                         )
-                    )
-                )
+                    ),
+                ),
             )
 
-            # Отправляем
             device.send_message(firebase_message)
             success_count += 1
 
         except Exception as e:
-            logger.error(f"{log_prefix} Ошибка отправки push: {e}")
+            logger.exception(
+                "%s Push send failed for user_id=%s device_id=%s",
+                log_prefix,
+                _safe_user_ref(user),
+                getattr(device, "id", None),
+            )
             error_messages.append(str(e))
             continue
 
@@ -90,7 +93,6 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta
 
 
 def create_notification(user, title, message, notification_type, payload=None):
-    # Импорт внутри функции, чтобы избежать циклических импортов при старте приложения.
     from account.models import Notification
 
     return Notification.objects.create(
@@ -158,8 +160,8 @@ def send_chat_invite_push(user, chat, return_meta=False):
         "chat_id": str(chat.id),
         "type": "chat_invite",
         "channel_id": str(chat.channel_id),
-        "sender_name": str(user.get_full_name()),  # или другое поле имени отправителя
-        "sender_id": str(user.id)
+        "sender_name": str(user.get_full_name()),
+        "sender_id": str(user.id),
     }
     return notify_user(
         user=user,
@@ -177,7 +179,7 @@ def send_application_accepted_push(user, application):
     message = "Поздравляем, теперь вы специалист на платформе."
     extra = {
         "application_id": str(application.id),
-        "type": "application_accepted"
+        "type": "application_accepted",
     }
     return notify_user(
         user=user,
@@ -187,3 +189,4 @@ def send_application_accepted_push(user, application):
         payload=extra,
         log_prefix="[Push][Application]",
     )
+

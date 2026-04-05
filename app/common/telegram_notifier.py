@@ -42,7 +42,7 @@ def send_telegram_notification(message: str) -> bool:
                 continue
 
             response.raise_for_status()
-            logger.info("Telegram notification sent (attempt %d): %s…", attempt, message[:50])
+            logger.info("Telegram notification sent (attempt %d)", attempt)
             return True
 
         except requests.exceptions.RequestException as e:
@@ -50,7 +50,7 @@ def send_telegram_notification(message: str) -> bool:
             if attempt < MAX_RETRIES:
                 time.sleep(BACKOFF_BASE ** attempt)
 
-    logger.error("Telegram notification failed after %d attempts: %s…", MAX_RETRIES, message[:80])
+    logger.error("Telegram notification failed after %d attempts", MAX_RETRIES)
     return False
 
 

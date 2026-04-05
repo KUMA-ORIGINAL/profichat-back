@@ -1,6 +1,10 @@
+import logging
+
 from django.utils import timezone
 
 from common.stream_client import chat_client
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_role(chat, user):
@@ -71,6 +75,11 @@ def get_should_reply(chat, user):
         sender_id = last_message.get("user", {}).get("id") or last_message.get("user_id")
         return str(sender_id) != str(user.id)
     except Exception:
+        logger.exception(
+            "Failed to compute should_reply for channel_id=%s user_id=%s",
+            chat.channel_id,
+            user.id,
+        )
         return False
 
 
@@ -109,6 +118,11 @@ def get_should_reply_map(chats, user):
         )
         channels = response.get("channels", []) if isinstance(response, dict) else []
     except Exception:
+        logger.exception(
+            "Failed to fetch channels for should_reply_map user_id=%s channel_ids_count=%s",
+            user.id,
+            len(channel_ids),
+        )
         return should_reply_map
 
     for channel_payload in channels:
@@ -155,3 +169,4 @@ def build_chat_list_item(chat, user, should_reply_map=None):
             else get_should_reply(chat, user)
         ),
     }
+

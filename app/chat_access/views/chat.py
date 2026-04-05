@@ -7,6 +7,11 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from account.services.stream import (
+    hide_channel_for_user,
+    mute_user_for_user,
+    unmute_user_for_user,
+)
 from account.models import InviteDelivery, ROLE_CLIENT, ROLE_SPECIALIST
 from ..models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from ..serializers import (
@@ -80,6 +85,12 @@ class ChatViewSet(
             .first()
         )
 
+    @staticmethod
+    def _resolve_companion_user_id(chat, user):
+        if chat.client_id == user.id:
+            return chat.specialist_id
+        return chat.client_id
+
     def list(self, request, *args, **kwargs):
         chats = list(self.get_queryset())
         should_reply_map = get_should_reply_map(chats, request.user)
@@ -128,6 +139,7 @@ class ChatViewSet(
 
         if update_fields:
             chat.save(update_fields=update_fields)
+        hide_channel_for_user(chat.channel_id, request.user.id)
         return Response({"status": "success", "channel_id": channel_id})
 
     @extend_schema(
@@ -213,6 +225,8 @@ class ChatViewSet(
 
         blocked, _ = BlockedChat.objects.get_or_create(user=request.user, chat=chat)
         sync_blocked_by_to_stream(chat)
+        companion_user_id = self._resolve_companion_user_id(chat, request.user)
+        mute_user_for_user(request.user.id, companion_user_id)
         return Response(BlockedChatSerializer(blocked).data)
 
     @extend_schema(
@@ -232,6 +246,8 @@ class ChatViewSet(
 
         deleted, _ = BlockedChat.objects.filter(user=request.user, chat=chat).delete()
         sync_blocked_by_to_stream(chat)
+        companion_user_id = self._resolve_companion_user_id(chat, request.user)
+        unmute_user_for_user(request.user.id, companion_user_id)
         return Response({"status": "success", "deleted": bool(deleted)})
 
     def get_queryset(self):
