@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+import asyncio
 
 import environ
 from django.urls import reverse_lazy
@@ -112,6 +113,8 @@ DATABASES = {
         'PASSWORD': env('POSTGRES_PASSWORD'),
         'HOST': env('POSTGRES_HOST'),
         'PORT': env('POSTGRES_PORT'),
+        'CONN_MAX_AGE': env.int('DATABASE_CONN_MAX_AGE', default=0),
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
