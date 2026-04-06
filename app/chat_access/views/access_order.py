@@ -5,7 +5,8 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import AccessOrder
+from account.models import ROLE_SPECIALIST
+from ..models import AccessOrder, Chat
 from ..serializers.access_order import (
     AccessOrderCreateSerializer,
     AccessOrderSerializer,
@@ -100,12 +101,29 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         serializer = CancelSubscriptionByChannelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        if request.user.role != ROLE_SPECIALIST:
+            return Response(
+                {"detail": "Only specialists can cancel subscriptions by channel."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         channel_id = serializer.validated_data["channel_id"]
         now = timezone.now()
+        chat = (
+            Chat.objects.filter(channel_id=channel_id)
+            .filter(specialist=request.user)
+            .first()
+        )
+
+        if not chat:
+            return Response(
+                {"detail": "No subscription found for this channel."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         active_order = (
             AccessOrder.objects.filter(
-                client=request.user,
-                chat__channel_id=channel_id,
+                chat=chat,
                 payment_status="success",
                 expires_at__gt=now,
             )
@@ -140,8 +158,7 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
 
         latest_order = (
             AccessOrder.objects.filter(
-                client=request.user,
-                chat__channel_id=channel_id,
+                chat=chat,
             )
             .order_by("-created_at")
             .first()
@@ -156,12 +173,6 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                     "payment_status": latest_order.payment_status,
                 },
                 status=status.HTTP_200_OK,
-            )
-
-        if not latest_order:
-            return Response(
-                {"detail": "No subscription found for this channel."},
-                status=status.HTTP_404_NOT_FOUND,
             )
 
         return Response(
