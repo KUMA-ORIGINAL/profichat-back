@@ -92,8 +92,10 @@ class AccessOrder(models.Model):
     def activate(self):
         """Активировать доступ (после оплаты)"""
         self.activated_at = timezone.now()
-        # self.expires_at = self.activated_at + timedelta(hours=self.duration_hours)
-        self.expires_at = self.activated_at + timedelta(minutes=5)
+        duration_hours = self.duration_hours
+        if duration_hours is None and self.tariff_id:
+            duration_hours = self.tariff.duration_hours
+        self.expires_at = self.activated_at + timedelta(hours=duration_hours or 0)
         self.save()
 
     @property

@@ -611,3 +611,62 @@ class AccessOrderCancelSubscriptionTests(ChatBaseTestCase):
         self.assertEqual(second_response.data["status"], "already_cancelled")
         order.refresh_from_db()
         self.assertEqual(order.payment_status, "cancelled")
+
+    @patch("chat_access.views.access_order.update_chat_data_from_order")
+    def test_client_can_cancel_active_free_subscription_by_channel_id(self, update_chat_data_from_order_mock):
+        free_tariff = Tariff.objects.create(
+            name="Free plan",
+            price=0,
+            duration_hours=24,
+            tariff_type="free",
+            specialist=self.specialist_user,
+        )
+        now = timezone.now()
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=free_tariff,
+            tariff_type="free",
+            payment_status="success",
+            activated_at=now - timedelta(hours=1),
+            expires_at=now + timedelta(hours=2),
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            reverse("access-orders-cancel-subscription-by-channel"),
+            data={"channel_id": self.chat.channel_id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, "cancelled")
+        update_chat_data_from_order_mock.assert_called_once_with(order)
+
+
+class AccessOrderActivationTests(ChatBaseTestCase):
+    def test_activate_uses_duration_hours_instead_of_fixed_minutes(self):
+        tariff = Tariff.objects.create(
+            name="Paid plan",
+            price=100,
+            duration_hours=24,
+            tariff_type="paid",
+            specialist=self.specialist_user,
+        )
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=tariff,
+            duration_hours=2,
+            payment_status="pending",
+        )
+
+        order.activate()
+        order.refresh_from_db()
+
+        self.assertIsNotNone(order.activated_at)
+        self.assertIsNotNone(order.expires_at)
+        self.assertEqual(order.expires_at - order.activated_at, timedelta(hours=2))
