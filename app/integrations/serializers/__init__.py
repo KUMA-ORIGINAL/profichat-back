@@ -9,6 +9,12 @@ from .telegram_auth import (
     TelegramAuthStatusRequestSerializer,
     TelegramAuthStatusResponseSerializer,
 )
+from .sso import (
+    SecondSystemWebviewUrlRequestSerializer,
+    SecondSystemWebviewUrlResponseSerializer,
+    VerifySecondSystemSSOTokenRequestSerializer,
+    VerifySecondSystemSSOTokenResponseSerializer,
+)
 
 __all__ = [
     "MedCRMInviteClientSerializer",
@@ -18,4 +24,8 @@ __all__ = [
     "TelegramAuthStartResponseSerializer",
     "TelegramAuthStatusRequestSerializer",
     "TelegramAuthStatusResponseSerializer",
+    "SecondSystemWebviewUrlRequestSerializer",
+    "SecondSystemWebviewUrlResponseSerializer",
+    "VerifySecondSystemSSOTokenRequestSerializer",
+    "VerifySecondSystemSSOTokenResponseSerializer",
 ]

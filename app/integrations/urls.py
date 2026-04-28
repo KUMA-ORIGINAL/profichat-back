@@ -3,9 +3,11 @@ from django.urls import path
 from .views import (
     MedCRMInviteClientView,
     MedCRMTariffsView,
+    SecondSystemWebviewUrlView,
     TelegramAuthStartView,
     TelegramAuthStatusView,
     TelegramAuthWebhookView,
+    VerifySecondSystemSSOTokenView,
 )
 
 app_name = "integrations"
@@ -40,5 +42,15 @@ urlpatterns = [
         "medcrm/invite-client/",
         MedCRMInviteClientView.as_view(),
         name="medcrm-invite-client",
+    ),
+    path(
+        "medcrm/webview-url/",
+        SecondSystemWebviewUrlView.as_view(),
+        name="medcrm-sso-webview-url",
+    ),
+    path(
+        "medcrm/verify-sso-token/",
+        VerifySecondSystemSSOTokenView.as_view(),
+        name="medcrm-sso-verify-token",
     ),
 ]
