@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth.base_user import BaseUserManager
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
@@ -85,6 +86,13 @@ class User(AbstractUser):
     birthdate = models.DateField(_("Дата рождения"), blank=True, null=True)
     description = models.TextField(_("Описание"), blank=True, null=True)
     balance = models.DecimalField(_("Баланс"), max_digits=12, decimal_places=2, default=0)
+    rating = models.DecimalField(
+        _("Рейтинг"),
+        max_digits=2,
+        decimal_places=1,
+        default=0.0,
+        validators=[MinValueValidator(0.0), MaxValueValidator(5.0)],
+    )
     phone_number = PhoneNumberField(_("phone number"), unique=False, region='KG', null=True)
     old_phone_number = PhoneNumberField(_("Старый номер телефона"), unique=False, region='KG', null=True, blank=True)
     photo = models.ImageField(

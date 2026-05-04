@@ -13,6 +13,7 @@ class MedCRMTariffSerializer(serializers.ModelSerializer):
             "duration_hours",
             "tariff_type",
             "is_active",
+            "is_popular",
         ]
 
 

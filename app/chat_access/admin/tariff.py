@@ -14,9 +14,10 @@ class TariffAdmin(BaseModelAdmin):
         'tariff_type',
         'price',
         'is_active',
+        'is_popular',
         'detail_link'
     )
-    list_filter = ('tariff_type', 'is_active')
+    list_filter = ('tariff_type', 'is_active', 'is_popular')
     search_fields = ('name', 'specialist__username')
     autocomplete_fields = ('specialist',)
     ordering = ('-id',)

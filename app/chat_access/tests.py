@@ -667,6 +667,109 @@ class AccessOrderCancelSubscriptionTests(ChatBaseTestCase):
         update_chat_data_from_order_mock.assert_called_once_with(order)
 
 
+class SpecialistCurrentClientTariffTests(ChatBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.tariff = Tariff.objects.create(
+            name="Paid plan",
+            price=100,
+            duration_hours=24,
+            tariff_type="paid",
+            specialist=self.specialist_user,
+        )
+        self.url = reverse("specialist-orders-current-tariff")
+
+    def test_specialist_gets_active_client_tariff(self):
+        now = timezone.now()
+        order = AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(hours=1),
+            expires_at=now + timedelta(hours=2),
+        )
+        self.client.force_authenticate(user=self.specialist_user)
+
+        response = self.client.get(self.url, {"client_id": self.client_user.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["client_id"], self.client_user.id)
+        self.assertEqual(response.data["access_order_id"], order.id)
+        self.assertEqual(response.data["tariff"]["id"], self.tariff.id)
+        self.assertEqual(response.data["tariff"]["name"], self.tariff.name)
+        self.assertIsNotNone(response.data["activated_at"])
+        self.assertIsNotNone(response.data["expires_at"])
+
+    def test_returns_null_when_client_has_no_active_tariff(self):
+        now = timezone.now()
+        AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(days=2),
+            expires_at=now - timedelta(days=1),
+        )
+        self.client.force_authenticate(user=self.specialist_user)
+
+        response = self.client.get(self.url, {"client_id": self.client_user.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            {
+                "client_id": self.client_user.id,
+                "access_order_id": None,
+                "activated_at": None,
+                "expires_at": None,
+                "tariff": None,
+            },
+        )
+
+    def test_specialist_cannot_see_another_specialists_client_tariff(self):
+        other_specialist = User.objects.create_user(
+            username="specialist_other",
+            password="pass",
+            role=ROLE_SPECIALIST,
+        )
+        now = timezone.now()
+        AccessOrder.objects.create(
+            client=self.client_user,
+            specialist=self.specialist_user,
+            chat=self.chat,
+            tariff=self.tariff,
+            payment_status="success",
+            activated_at=now - timedelta(hours=1),
+            expires_at=now + timedelta(hours=2),
+        )
+        self.client.force_authenticate(user=other_specialist)
+
+        response = self.client.get(self.url, {"client_id": self.client_user.id})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["tariff"])
+        self.assertIsNone(response.data["access_order_id"])
+
+    def test_client_cannot_get_current_client_tariff(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.get(self.url, {"client_id": self.client_user.id})
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_client_id_is_required_and_must_be_integer(self):
+        self.client.force_authenticate(user=self.specialist_user)
+
+        missing_response = self.client.get(self.url)
+        invalid_response = self.client.get(self.url, {"client_id": "abc"})
+
+        self.assertEqual(missing_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(invalid_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 class AccessOrderActivationTests(ChatBaseTestCase):
     def test_activate_uses_duration_hours_instead_of_fixed_minutes(self):
         tariff = Tariff.objects.create(

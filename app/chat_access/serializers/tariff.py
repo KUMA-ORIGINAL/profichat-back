@@ -13,6 +13,7 @@ class TariffSpecialistSerializer(serializers.ModelSerializer):
             'duration_hours',
             'is_active',
             'is_public',
+            'is_popular',
             'tariff_type',
         ]
 
@@ -29,6 +30,7 @@ class TariffSerializer(serializers.ModelSerializer):
             'duration_hours',
             'is_active',
             'is_public',
+            'is_popular',
             'tariff_type',
             'specialist',
         ]

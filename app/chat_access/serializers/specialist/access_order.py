@@ -27,3 +27,7 @@ class SpecialistAccessOrderSerializer(serializers.ModelSerializer):
             'expires_at',
             'is_active',
         ]
+
+
+class CurrentClientTariffQuerySerializer(serializers.Serializer):
+    client_id = serializers.IntegerField()
