@@ -7,6 +7,13 @@ from common.models import BaseModel
 
 class Organization(BaseModel):
     name = models.CharField(_("Название"), max_length=255, unique=True)
+    logo = models.ImageField(
+        _("Логотип"),
+        upload_to="organizations/logos/",
+        blank=True,
+        null=True,
+    )
+    description = models.TextField(_("Описание"), blank=True, null=True)
     rating = models.DecimalField(
         _("Рейтинг"),
         max_digits=2,

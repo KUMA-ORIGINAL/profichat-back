@@ -6,4 +6,4 @@ from ..models import Organization
 class OrganizationShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
-        fields = ("id", "name", "rating")
+        fields = ("id", "name", "logo", "description", "rating")
