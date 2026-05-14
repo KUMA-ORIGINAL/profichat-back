@@ -14,6 +14,7 @@ class Organization(BaseModel):
         null=True,
     )
     description = models.TextField(_("Описание"), blank=True, null=True)
+    category = models.CharField(_("Категория"), max_length=255, blank=True, null=True)
     rating = models.DecimalField(
         _("Рейтинг"),
         max_digits=2,
@@ -21,6 +22,7 @@ class Organization(BaseModel):
         default=0.0,
         validators=[MinValueValidator(0.0), MaxValueValidator(5.0)],
     )
+    reviews_count = models.PositiveIntegerField(_("Количество отзывов"), default=0)
     is_active = models.BooleanField(_("Активна"), default=True)
 
     class Meta:
