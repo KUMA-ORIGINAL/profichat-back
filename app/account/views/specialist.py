@@ -28,7 +28,7 @@ class SpecialistViewSet(viewsets.ReadOnlyModelViewSet):
         base_qs = User.objects.filter(
             role='specialist',
             is_active=True
-        ).prefetch_related(
+        ).select_related('organization').prefetch_related(
             Prefetch(
                 'tariffs',
                 queryset=Tariff.objects.filter(is_active=True, is_archive=False)

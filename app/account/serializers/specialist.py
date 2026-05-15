@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from chat_access.models import Chat
 from chat_access.serializers import TariffSpecialistSerializer
+from .organization import OrganizationShortSerializer
 from .profession_category import ProfessionCategorySerializer
 from .work_schedule import WorkScheduleSerializer
 
@@ -13,11 +14,12 @@ class SpecialistSerializer(serializers.ModelSerializer):
     tariffs = TariffSpecialistSerializer(many=True, read_only=True)
     channel_id = serializers.SerializerMethodField()
     work_schedules = WorkScheduleSerializer(many=True, read_only=True)
+    organization = OrganizationShortSerializer(read_only=True)
 
     class Meta:
         model = User
         fields = ["id", "first_name", "last_name", 'middle_name', "phone_number", "photo",
-                  'description', 'rating', 'can_audio_call', 'can_video_call', 'education', 'work_experience', "profession", 'channel_id', 'tariffs', 'work_schedules']
+                  'description', 'rating', 'can_audio_call', 'can_video_call', 'education', 'work_experience', "profession", 'channel_id', 'tariffs', 'work_schedules', 'organization']
 
     def get_channel_id(self, obj):
         request = self.context.get('request')
