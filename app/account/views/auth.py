@@ -16,7 +16,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from common.stream_client import chat_client
 from ..models import OTP
 from account import serializers
-from ..services import send_sms, generate_unique_username
+from ..services import send_notification, generate_unique_username
 from ..services.token_lifetime import (
     build_token_pair_for_user,
     get_short_access_token_lifetime,
@@ -64,7 +64,6 @@ class SendSMSCodeView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         phone_number = serializer.validated_data.get("phone_number")
-        app_signature = serializer.validated_data.get("app_signature")
 
         try:
             last_otp = OTP.objects.filter(
@@ -100,10 +99,14 @@ class SendSMSCodeView(APIView):
                     mask_phone(phone_number),
                 )
 
-            text = f"<![CDATA[<#> Код подтверждения - {code} \n{app_signature} \nНикому не сообщайте его.]]>"
-            if not send_sms(phone=phone_number, text=text):
+            if not send_notification(
+                phone=phone_number,
+                scenario="otp",
+                variables={"otp": code},
+                external_id=f"otp-{otp.id}",
+            ):
                 return Response(
-                    {"error": "Не удалось отправить SMS"},
+                    {"error": "Не удалось отправить код подтверждения"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 

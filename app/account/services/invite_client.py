@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from account.models import InviteDelivery
 from chat_access.services import update_chat_data_from_order
-from .sms import send_sms
+from .notify import send_notification
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
 from common.notifications import send_chat_invite_push
@@ -17,21 +17,30 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-def send_invite_sms(client, specialist, chat):
+def send_invite_sms(client, specialist, chat, access_order):
     invite_link = f"https://profigram.site/r/{chat.channel_id}"
-    first_name = specialist.first_name or "Специалист"
-    last_initial = specialist.last_name[0] + "." if specialist.last_name else ""
-    text = (
-        f"{first_name} {last_initial} приглашает Вас в приложение для консультаций. "
-        f"Завершите регистрацию: {invite_link}"
+    doctor_name = f"{specialist.first_name} {specialist.last_name}".strip() or "Специалист"
+    org_name = specialist.organization.name if specialist.organization_id else ""
+    access_period = f"{access_order.tariff.duration_hours} ч."
+    return send_notification(
+        phone=client.phone_number,
+        scenario="invite_profigram",
+        variables={
+            "doctor_name": doctor_name,
+            "org_name": org_name,
+            "access_period": access_period,
+            "chat_link": invite_link,
+            "order_id": access_order.id,
+        },
+        external_id=f"invite-{access_order.id}",
+        return_meta=True,
     )
-    return send_sms(phone=client.phone_number, text=text, return_meta=True)
 
 
-def _safe_send_invitation(client, specialist, chat, is_new_client):
+def _safe_send_invitation(client, specialist, chat, access_order, is_new_client):
     try:
         if is_new_client:
-            return send_invite_sms(client, specialist, chat)
+            return send_invite_sms(client, specialist, chat, access_order)
         return send_chat_invite_push(client, chat, return_meta=True)
     except Exception as exc:
         logger.exception(
@@ -127,6 +136,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
         client=client,
         specialist=specialist,
         chat=chat,
+        access_order=access_order,
         is_new_client=is_new_client,
     )
 
