@@ -8,6 +8,10 @@ from .views import (
     TelegramAuthStatusView,
     TelegramAuthWebhookView,
     VerifySecondSystemSSOTokenView,
+    MamadocAppointmentsView,
+    MamadocConclusionView,
+    MamadocBookingView,
+    MamadocBookingCancelView,
 )
 
 app_name = "integrations"
@@ -52,5 +56,25 @@ urlpatterns = [
         "medcrm/verify-sso-token/",
         VerifySecondSystemSSOTokenView.as_view(),
         name="medcrm-sso-verify-token",
+    ),
+    path(
+        "newcrm/appointments/",
+        MamadocAppointmentsView.as_view(),
+        name="newcrm-appointments",
+    ),
+    path(
+        "newcrm/conclusions/<int:conclusion_id>/",
+        MamadocConclusionView.as_view(),
+        name="newcrm-conclusion-detail",
+    ),
+    path(
+        "newcrm/booking/appointments/",
+        MamadocBookingView.as_view(),
+        name="newcrm-booking-appointments",
+    ),
+    path(
+        "newcrm/booking/appointments/<int:appointment_id>/cancel/",
+        MamadocBookingCancelView.as_view(),
+        name="newcrm-booking-appointment-cancel",
     ),
 ]
