@@ -14,8 +14,6 @@ MAMADOC_TIMEOUT = settings.MAMADOC_TIMEOUT
 
 DISPLAY_DATETIME_FORMAT = "%d.%m.%Y %H:%M"
 
-# Верхнеуровневые поля с датами, которые встречаются в "сырых" объектах NewCRM
-# (appointment/conclusion) и которые стоит показывать в читаемом виде.
 APPOINTMENT_DATETIME_FIELDS = ("startsAt", "endsAt", "createdAt", "updatedAt")
 CONCLUSION_DATETIME_FIELDS = ("createdAt", "updatedAt")
 
@@ -173,14 +171,36 @@ def _patch(path, json_data):
     return _safe_json(response)
 
 
+def _normalize_phone(phone) -> str:
+    return "".join(ch for ch in str(phone or "") if ch.isdigit())
+
+
 def find_patient_id_by_phone(phone: str) -> Optional[str]:
     """
     Ищет пациента MamaDoc по номеру телефона.
 
-    Номер телефона в MamaDoc не уникален — при нескольких совпадениях
-    берётся первая запись из ответа (см. открытые вопросы к команде MamaDoc).
+    `/api/patients/?search=` в MamaDoc matчит ПОДСТРОКУ номера (icontains),
+    а не точное совпадение — неполный/усечённый номер может найти сразу
+    нескольких разных пациентов. Поэтому здесь принимается только тот
+    результат, чей номер телефона совпадает с запрошенным ТОЧНО (после
+    нормализации цифр) — иначе можно случайно вернуть чужого пациента.
+
+    Пробелы/скобки/дефисы в номере убираются перед поиском — MamaDoc ищет
+    буквально по подстроке, и "+996 550 365 790" не совпадёт с хранимым
+    "+996550365790", хотя цифры идентичны.
+
+    Если после очистки цифр почти не осталось (мусорный ввод вроде "" или
+    "<script>"), поиск не отправляется вообще: пустая/короткая search-строка
+    матчит ЛЮБУЮ подстроку в MamaDoc (т.е. вообще всех пациентов организации)
+    — это и лишняя нагрузка, и риск случайного совпадения с пациентом без
+    указанного телефона.
     """
-    data = _get("/api/patients/", params={"search": phone})
+    target = _normalize_phone(phone)
+    if len(target) < 4:
+        return None
+
+    search_phone = "".join(ch for ch in str(phone or "") if ch.isdigit() or ch == "+")
+    data = _get("/api/patients/", params={"search": search_phone})
     if not data:
         return None
 
@@ -188,7 +208,11 @@ def find_patient_id_by_phone(phone: str) -> Optional[str]:
     if not results:
         return None
 
-    return results[0].get("id")
+    for candidate in results:
+        if _normalize_phone(candidate.get("phone")) == target:
+            return candidate.get("id")
+
+    return None
 
 
 def list_appointments(patient_id) -> list:
