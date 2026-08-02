@@ -24,6 +24,7 @@ class Organization(BaseModel):
     )
     reviews_count = models.PositiveIntegerField(_("Количество отзывов"), default=0)
     is_active = models.BooleanField(_("Активна"), default=True)
+    mamadoc_enabled = models.BooleanField(_("Подключена интеграция MamaDoc"), default=False)
 
     class Meta:
         verbose_name = _("Организация")

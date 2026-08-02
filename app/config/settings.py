@@ -254,7 +254,7 @@ SPECTACULAR_SETTINGS = {
 
     'SERVE_PUBLIC': True,
     'SERVE_HTTPS': True,
-    'SERVE_PERMISSIONS': ['config.permissions.IsSuperUser'],
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
     'SERVE_AUTHENTICATION': ['rest_framework.authentication.SessionAuthentication',]
 }
 
@@ -294,6 +294,10 @@ SECOND_SYSTEM_SSO_TTL_SECONDS = env.int("SECOND_SYSTEM_SSO_TTL_SECONDS", default
 MEDCRM_SSO_WEB_URL = env("MEDCRM_SSO_WEB_URL", default=SECOND_SYSTEM_WEB_URL)
 MEDCRM_SSO_INTEGRATION_SECRET = env("MEDCRM_SSO_INTEGRATION_SECRET", default=SECOND_SYSTEM_INTEGRATION_SECRET)
 MEDCRM_SSO_TTL_SECONDS = env.int("MEDCRM_SSO_TTL_SECONDS", default=SECOND_SYSTEM_SSO_TTL_SECONDS)
+
+MAMADOC_API_URL = env("MAMADOC_API_URL", default="https://newcrm.pediatr.kg")
+MAMADOC_API_KEY = env("MAMADOC_API_KEY", default="")
+MAMADOC_TIMEOUT = env.int("MAMADOC_TIMEOUT", default=10)
 
 DJOSER = {
     # 'SERIALIZERS': {

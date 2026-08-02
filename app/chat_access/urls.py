@@ -11,6 +11,7 @@ router.register(r'chats', views.ChatViewSet, basename='chat')
 router.register(r'stream/send-system-message', views.StreamSystemMessageViewSet, basename='stream-system-message')
 
 router.register(r'specialist/orders', views.SpecialistAccessOrderViewSet, basename='specialist-orders')
+router.register(r'specialist/newcrm', views.SpecialistMamaDocViewSet, basename='specialist-newcrm')
 
 
 urlpatterns = [
