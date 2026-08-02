@@ -21,6 +21,12 @@ class IsSpecialist(IsAuthenticated):
         return super().has_permission(request, view) and request.user.role == ROLE_SPECIALIST
 
 
+def _error_response(e: MamaDocAPIError):
+    logger.warning("NewCRM request failed: %s", e.detail)
+    detail = e.detail if isinstance(e.detail, (dict, list)) else {"detail": e.detail}
+    return Response(detail, status=e.status_code)
+
+
 class MamadocAppointmentsView(APIView):
     permission_classes = [IsSpecialist]
 
@@ -51,11 +57,15 @@ class MamadocAppointmentsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        patient_id = mamadoc_client.find_patient_id_by_phone(phone_number)
-        if not patient_id:
-            return Response([])
+        try:
+            patient_id = mamadoc_client.find_patient_id_by_phone(phone_number)
+            if not patient_id:
+                return Response([])
+            appointments = mamadoc_client.list_appointments(patient_id)
+        except MamaDocAPIError as e:
+            return _error_response(e)
 
-        appointments = mamadoc_client.list_appointments(patient_id)
+        appointments = [mamadoc_client.reformat_appointment_dates(a) for a in appointments]
         return Response(appointments)
 
 
@@ -73,10 +83,14 @@ class MamadocConclusionView(APIView):
         tags=["NewCRM Integration"],
     )
     def get(self, request, conclusion_id):
-        conclusion = mamadoc_client.get_conclusion(conclusion_id)
+        try:
+            conclusion = mamadoc_client.get_conclusion(conclusion_id)
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
         if conclusion is None:
             return Response({"detail": "Заключение не найдено."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(conclusion)
+        return Response(mamadoc_client.reformat_conclusion_dates(conclusion))
 
 
 class MamadocBookingCreateSerializer(serializers.Serializer):
@@ -84,7 +98,13 @@ class MamadocBookingCreateSerializer(serializers.Serializer):
     patient_id = serializers.IntegerField()
     employee_id = serializers.IntegerField()
     service_id = serializers.IntegerField()
-    starts_at = serializers.DateTimeField(help_text="Время записи, например 2026-08-05T10:00:00+06:00")
+    starts_at = serializers.DateTimeField(
+        input_formats=["iso-8601", "%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"],
+        help_text=(
+            "Время записи. Форматы: '05.08.2026 10:00' (время по Бишкеку) "
+            "или ISO 2026-08-05T10:00:00+06:00"
+        ),
+    )
     status = serializers.CharField(default="scheduled", required=False)
 
 
@@ -152,12 +172,17 @@ class MamadocBookingView(APIView):
         except ValueError:
             return Response({"detail": "employee_id должен быть числом."}, status=status.HTTP_400_BAD_REQUEST)
 
-        appointments = mamadoc_client.list_employee_appointments(
-            employee_id=employee_id,
-            start_date=request.query_params.get("start_date"),
-            end_date=request.query_params.get("end_date"),
-            status=request.query_params.get("status"),
-        )
+        try:
+            appointments = mamadoc_client.list_employee_appointments(
+                employee_id=employee_id,
+                start_date=request.query_params.get("start_date"),
+                end_date=request.query_params.get("end_date"),
+                status=request.query_params.get("status"),
+            )
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
+        appointments = [mamadoc_client.reformat_appointment_dates(a) for a in appointments]
         return Response(appointments)
 
     @extend_schema(
@@ -189,7 +214,40 @@ class MamadocBookingView(APIView):
                 status=data.get("status", "scheduled"),
             )
         except MamaDocAPIError as e:
-            logger.warning("NewCRM booking creation failed: %s", e.detail)
-            return Response({"detail": e.detail}, status=e.status_code)
+            return _error_response(e)
 
-        return Response(result, status=status.HTTP_201_CREATED)
+        return Response(mamadoc_client.reformat_appointment_dates(result), status=status.HTTP_201_CREATED)
+
+
+class MamadocBookingCancelSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class MamadocBookingCancelView(APIView):
+    """Отмена записи (брони) в NewCRM: PATCH status=canceled."""
+
+    permission_classes = [IsSpecialist]
+
+    @extend_schema(
+        summary="[NewCRM] Отменить запись (бронь)",
+        description="Отменяет существующую запись по её ID в NewCRM (status -> canceled).",
+        request=MamadocBookingCancelSerializer,
+        responses={
+            200: dict,
+            404: {"description": "Запись не найдена"},
+            400: {"description": "Ошибка валидации NewCRM (например, запись уже завершена)"},
+            502: {"description": "Ошибка ответа NewCRM"},
+        },
+        tags=["NewCRM Integration"],
+    )
+    def patch(self, request, appointment_id):
+        serializer = MamadocBookingCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data.get("reason", "")
+
+        try:
+            result = mamadoc_client.cancel_appointment(appointment_id, reason=reason)
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
+        return Response(mamadoc_client.reformat_appointment_dates(result), status=status.HTTP_200_OK)

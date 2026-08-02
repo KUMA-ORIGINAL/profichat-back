@@ -11,6 +11,7 @@ from .views import (
     MamadocAppointmentsView,
     MamadocConclusionView,
     MamadocBookingView,
+    MamadocBookingCancelView,
 )
 
 app_name = "integrations"
@@ -70,5 +71,10 @@ urlpatterns = [
         "newcrm/booking/appointments/",
         MamadocBookingView.as_view(),
         name="newcrm-booking-appointments",
+    ),
+    path(
+        "newcrm/booking/appointments/<int:appointment_id>/cancel/",
+        MamadocBookingCancelView.as_view(),
+        name="newcrm-booking-appointment-cancel",
     ),
 ]

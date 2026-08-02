@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from integrations.mamadoc.client import format_local_datetime as _format_local_datetime
+
 
 class MamaDocClientIdQuerySerializer(serializers.Serializer):
     client_id = serializers.IntegerField()
@@ -21,8 +23,11 @@ class MamaDocServiceLineSerializer(serializers.Serializer):
 
 class MamaDocVisitSerializer(serializers.Serializer):
     """Читает сырой dict NewCRM `AppointmentPayload` (camelCase-ключи)."""
-    starts_at = serializers.DateTimeField(source="startsAt")
+    starts_at = serializers.SerializerMethodField()
     service_lines = MamaDocServiceLineSerializer(source="serviceLines", many=True, default=list)
+
+    def get_starts_at(self, obj):
+        return _format_local_datetime(obj.get("startsAt"))
 
 
 class MamaDocDiagnosisSerializer(serializers.Serializer):
@@ -48,4 +53,7 @@ class MamaDocConclusionDetailSerializer(serializers.Serializer):
     height_cm = serializers.CharField(source="heightCm", default=None)
     temperature = serializers.CharField(default=None)
     photo_urls = serializers.ListField(source="photoUrls", child=serializers.CharField(), default=list)
-    created_at = serializers.DateTimeField(source="createdAt")
+    created_at = serializers.SerializerMethodField()
+
+    def get_created_at(self, obj):
+        return _format_local_datetime(obj.get("createdAt"))

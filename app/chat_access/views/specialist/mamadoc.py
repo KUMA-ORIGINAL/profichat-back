@@ -14,6 +14,7 @@ from chat_access.serializers.specialist.mamadoc import (
     MamaDocVisitSerializer,
 )
 from integrations.mamadoc import client as mamadoc_client
+from integrations.mamadoc.client import MamaDocAPIError
 
 User = get_user_model()
 
@@ -43,6 +44,10 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
             return None
         return mamadoc_client.find_patient_id_by_phone(str(client_user.phone_number))
 
+    def _error_response(self, e: MamaDocAPIError):
+        detail = e.detail if isinstance(e.detail, (dict, list)) else {"detail": e.detail}
+        return Response(detail, status=e.status_code)
+
     @extend_schema(
         parameters=[OpenApiParameter(name="client_id", type=int, location=OpenApiParameter.QUERY, required=True)],
         summary="История визитов клиента в NewCRM (Аксима CRM)",
@@ -64,11 +69,15 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        patient_id = self._resolve_patient_id(client_user)
-        if patient_id is None:
-            return Response({"linked": False, "visits": []})
+        try:
+            patient_id = self._resolve_patient_id(client_user)
+            if patient_id is None:
+                return Response({"linked": False, "visits": []})
 
-        appointments = mamadoc_client.list_appointments(patient_id)
+            appointments = mamadoc_client.list_appointments(patient_id)
+        except MamaDocAPIError as e:
+            return self._error_response(e)
+
         visits = MamaDocVisitSerializer(appointments, many=True).data
         return Response({"linked": True, "visits": visits})
 
@@ -97,23 +106,27 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        patient_id = self._resolve_patient_id(client_user)
-        if patient_id is None:
-            return Response({"detail": "Client is not linked to NewCRM."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            patient_id = self._resolve_patient_id(client_user)
+            if patient_id is None:
+                return Response({"detail": "Client is not linked to NewCRM."}, status=status.HTTP_404_NOT_FOUND)
 
-        appointments = mamadoc_client.list_appointments(patient_id)
-        known_conclusion_ids = {
-            line.get("conclusionId")
-            for appointment in appointments
-            for line in appointment.get("serviceLines", [])
-        }
-        if conclusion_id not in known_conclusion_ids:
-            return Response(
-                {"detail": "Conclusion does not belong to this client."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            appointments = mamadoc_client.list_appointments(patient_id)
+            known_conclusion_ids = {
+                line.get("conclusionId")
+                for appointment in appointments
+                for line in appointment.get("serviceLines", [])
+            }
+            if conclusion_id not in known_conclusion_ids:
+                return Response(
+                    {"detail": "Conclusion does not belong to this client."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-        conclusion_data = mamadoc_client.get_conclusion(conclusion_id)
+            conclusion_data = mamadoc_client.get_conclusion(conclusion_id)
+        except MamaDocAPIError as e:
+            return self._error_response(e)
+
         if conclusion_data is None:
             return Response({"detail": "Conclusion not found."}, status=status.HTTP_404_NOT_FOUND)
 
