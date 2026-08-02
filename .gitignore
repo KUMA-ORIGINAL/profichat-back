@@ -9,6 +9,14 @@
 
 /app/firebase.json
 
+# Local dev overrides / ad-hoc test scripts (never commit — may contain live keys)
+docker-compose.override.yml
+swagger.html
+test_endpoints.py
+app/test_endpoints.py
+test_django_views.py
+test_mamadoc_api.py
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
