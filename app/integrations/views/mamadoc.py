@@ -1,6 +1,7 @@
 import logging
 from datetime import timezone as dt_timezone
 
+from django.utils import timezone as dj_timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
@@ -106,6 +107,11 @@ class MamadocBookingCreateSerializer(serializers.Serializer):
         ),
     )
     status = serializers.CharField(default="scheduled", required=False)
+
+    def validate_starts_at(self, value):
+        if value <= dj_timezone.now():
+            raise serializers.ValidationError("Время записи должно быть в будущем.")
+        return value
 
 
 class MamadocBookingView(APIView):
