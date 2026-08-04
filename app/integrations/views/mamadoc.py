@@ -1,5 +1,5 @@
 import logging
-from datetime import timezone as dt_timezone
+from datetime import datetime as dt_datetime
 
 from django.utils import timezone as dj_timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -26,6 +26,152 @@ def _error_response(e: MamaDocAPIError):
     logger.warning("NewCRM request failed: %s", e.detail)
     detail = e.detail if isinstance(e.detail, (dict, list)) else {"detail": e.detail}
     return Response(detail, status=e.status_code)
+
+
+class MamadocProfessionalsView(APIView):
+    """Каталог врачей клиники NewCRM — чтобы найти employeeId нужного врача."""
+
+    permission_classes = [IsSpecialist]
+
+    @extend_schema(
+        summary="[NewCRM] Каталог врачей клиники",
+        description=(
+            "Возвращает список врачей клиники NewCRM (id, ФИО, фото, специальность). "
+            "id из этого списка используется как employeeId в остальных эндпоинтах брони."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="organization_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="ID клиники (организации) в NewCRM",
+            ),
+        ],
+        responses={
+            200: dict,
+            400: {"description": "Не передан organization_id"},
+            502: {"description": "Ошибка ответа NewCRM"},
+        },
+        tags=["NewCRM Integration"],
+    )
+    def get(self, request):
+        organization_id = request.query_params.get("organization_id")
+        if not organization_id:
+            return Response(
+                {"detail": "Параметр organization_id обязателен."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            organization_id = int(organization_id)
+        except ValueError:
+            return Response({"detail": "organization_id должен быть числом."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            professionals = mamadoc_client.list_professionals(organization_id)
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
+        return Response(professionals)
+
+
+class MamadocServicesView(APIView):
+    """Каталог услуг клиники NewCRM — чтобы показать стоимость перед созданием брони."""
+
+    permission_classes = [IsSpecialist]
+
+    @extend_schema(
+        summary="[NewCRM] Каталог услуг клиники",
+        description=(
+            "Возвращает список услуг клиники NewCRM (id, название, цена, длительность). "
+            "id из этого списка используется как serviceId при создании брони."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="organization_id",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="ID клиники (организации) в NewCRM",
+            ),
+        ],
+        responses={
+            200: dict,
+            400: {"description": "Не передан organization_id"},
+            502: {"description": "Ошибка ответа NewCRM"},
+        },
+        tags=["NewCRM Integration"],
+    )
+    def get(self, request):
+        organization_id = request.query_params.get("organization_id")
+        if not organization_id:
+            return Response(
+                {"detail": "Параметр organization_id обязателен."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            organization_id = int(organization_id)
+        except ValueError:
+            return Response({"detail": "organization_id должен быть числом."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            services = mamadoc_client.list_services(organization_id)
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
+        return Response(services)
+
+
+class MamadocOrganizationView(APIView):
+    """Клиника, привязанная к партнёрскому ключу Профиграма."""
+
+    permission_classes = [IsSpecialist]
+
+    @extend_schema(
+        summary="[NewCRM] Клиника, привязанная к ключу",
+        description="Возвращает данные организации (клиники), к которой привязан партнёрский ключ.",
+        responses={
+            200: dict,
+            404: {"description": "Организация не найдена"},
+            502: {"description": "Ошибка ответа NewCRM"},
+        },
+        tags=["NewCRM Integration"],
+    )
+    def get(self, request):
+        try:
+            organization = mamadoc_client.get_organization()
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
+        if organization is None:
+            return Response({"detail": "Организация не найдена."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(organization)
+
+
+class MamadocBranchesView(APIView):
+    """Филиалы клиники, привязанной к партнёрскому ключу — источник branchId."""
+
+    permission_classes = [IsSpecialist]
+
+    @extend_schema(
+        summary="[NewCRM] Филиалы клиники",
+        description=(
+            "Возвращает филиалы клиники, привязанной к партнёрскому ключу. "
+            "id из этого списка используется как branchId при создании брони."
+        ),
+        responses={
+            200: dict,
+            502: {"description": "Ошибка ответа NewCRM"},
+        },
+        tags=["NewCRM Integration"],
+    )
+    def get(self, request):
+        try:
+            branches = mamadoc_client.list_branches()
+        except MamaDocAPIError as e:
+            return _error_response(e)
+
+        return Response(branches)
 
 
 class MamadocAppointmentsView(APIView):
@@ -95,23 +241,27 @@ class MamadocConclusionView(APIView):
 
 
 class MamadocBookingCreateSerializer(serializers.Serializer):
+    """
+    Создание брони через партнёрский эндпоинт `/api/profigram/bookings/`.
+
+    Пациент identifицируется по имени+фамилии+телефону — NewCRM сама находит
+    существующего пациента по телефону или создаёт нового (дедуп на её стороне).
+    """
     branch_id = serializers.IntegerField()
-    patient_id = serializers.IntegerField()
     employee_id = serializers.IntegerField()
     service_id = serializers.IntegerField()
-    starts_at = serializers.DateTimeField(
-        input_formats=["iso-8601", "%d.%m.%Y %H:%M", "%d.%m.%Y %H:%M:%S"],
-        help_text=(
-            "Время записи. Форматы: '05.08.2026 10:00' (время по Бишкеку) "
-            "или ISO 2026-08-05T10:00:00+06:00"
-        ),
-    )
-    status = serializers.CharField(default="scheduled", required=False)
+    date = serializers.DateField(help_text="Дата записи, например 2026-09-27")
+    time = serializers.TimeField(help_text="Время записи, например 15:30")
+    patient_first_name = serializers.CharField(max_length=255)
+    patient_last_name = serializers.CharField(max_length=255)
+    patient_phone = serializers.CharField(max_length=32)
 
-    def validate_starts_at(self, value):
-        if value <= dj_timezone.now():
-            raise serializers.ValidationError("Время записи должно быть в будущем.")
-        return value
+    def validate(self, attrs):
+        naive = dt_datetime.combine(attrs["date"], attrs["time"])
+        aware = dj_timezone.make_aware(naive)
+        if aware <= dj_timezone.now():
+            raise serializers.ValidationError("Дата и время записи должны быть в будущем.")
+        return attrs
 
 
 class MamadocBookingView(APIView):
@@ -193,12 +343,32 @@ class MamadocBookingView(APIView):
 
     @extend_schema(
         summary="[NewCRM] Создать новую запись (бронь)",
-        description="Создает запись к указанному специалисту (employee_id) в NewCRM.",
+        description=(
+            "Создает запись к указанному специалисту (employee_id) в NewCRM через "
+            "партнёрский эндпоинт /api/profigram/bookings/. Пациент ищется по телефону "
+            "и создаётся автоматически, если не найден. Цену определяет NewCRM по service_id."
+        ),
         request=MamadocBookingCreateSerializer,
         responses={
             201: dict,
-            400: {"description": "Ошибка валидации NewCRM (например, неверный ID)"},
-            502: {"description": "Ошибка ответа NewCRM"},
+            400: {
+                "description": "Не хватает полей, дата в прошлом, или NewCRM отклонила данные (например, несуществующий филиал/услугу/врача, либо занятый слот)",
+                "examples": {
+                    "past_date": {"value": {"nonFieldErrors": ["Дата и время записи должны быть в будущем."]}},
+                    "missing_fields": {"value": {"branchId": ["Обязательное поле."], "patientPhone": ["Обязательное поле."]}},
+                    "unknown_branch": {"value": {"detail": [{"msg": "branch: Филиал 999999 не найден.", "type": "value_error"}]}},
+                    "slot_taken": {"value": {"code": "appointment_overlap", "message": "Время приёма пересекается с другим приёмом.", "requestedSlot": {"startsAt": "...", "endsAt": "..."}, "overlaps": [{"appointmentId": 123, "startsAt": "...", "endsAt": "...", "employeeId": 6, "employeeName": "...", "patientName": "..."}]}},
+                },
+            },
+            401: {"description": "Нет токена или он недействителен", "example": {"detail": "Учетные данные не были предоставлены."}},
+            403: {
+                "description": "Не специалист, либо у ключа Профиграма нет права profigram.bookings.create в NewCRM",
+                "examples": {
+                    "not_specialist": {"value": {"detail": "У вас недостаточно прав для выполнения данного действия."}},
+                    "no_newcrm_permission": {"value": {"detail": [{"msg": "Permission denied: profigram.bookings.create", "type": "security"}]}},
+                },
+            },
+            502: {"description": "Сбой связи с NewCRM (сеть, сервер недоступен)", "example": {"detail": "Ошибка соединения с MamaDoc."}},
         },
         tags=["NewCRM Integration"],
     )
@@ -207,17 +377,16 @@ class MamadocBookingView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        starts_at_utc = data["starts_at"].astimezone(dt_timezone.utc)
-        starts_at_iso = starts_at_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-
         try:
-            result = mamadoc_client.create_appointment(
+            result = mamadoc_client.create_booking(
                 branch_id=data["branch_id"],
-                patient_id=data["patient_id"],
                 employee_id=data["employee_id"],
                 service_id=data["service_id"],
-                starts_at_iso=starts_at_iso,
-                status=data.get("status", "scheduled"),
+                date=data["date"].isoformat(),
+                time=data["time"].strftime("%H:%M"),
+                first_name=data["patient_first_name"],
+                last_name=data["patient_last_name"],
+                phone=data["patient_phone"],
             )
         except MamaDocAPIError as e:
             return _error_response(e)
@@ -236,13 +405,27 @@ class MamadocBookingCancelView(APIView):
 
     @extend_schema(
         summary="[NewCRM] Отменить запись (бронь)",
-        description="Отменяет существующую запись по её ID в NewCRM (status -> canceled).",
+        description=(
+            "Отменяет существующую запись по её ID через партнёрский эндпоинт "
+            "/api/profigram/bookings/<id>/cancel/ (status -> canceled). Меняет только "
+            "статус и причину отмены, больше ничего в приёме затронуть нельзя."
+        ),
         request=MamadocBookingCancelSerializer,
         responses={
             200: dict,
-            404: {"description": "Запись не найдена"},
-            400: {"description": "Ошибка валидации NewCRM (например, запись уже завершена)"},
-            502: {"description": "Ошибка ответа NewCRM"},
+            401: {"description": "Нет токена или он недействителен", "example": {"detail": "Учетные данные не были предоставлены."}},
+            403: {
+                "description": "Не специалист, либо у ключа Профиграма нет права profigram.bookings.create в NewCRM",
+                "examples": {
+                    "not_specialist": {"value": {"detail": "У вас недостаточно прав для выполнения данного действия."}},
+                    "no_newcrm_permission": {"value": {"detail": [{"msg": "Permission denied: profigram.bookings.create", "type": "security"}]}},
+                },
+            },
+            404: {
+                "description": "Запись не найдена или принадлежит другой организации",
+                "example": {"detail": [{"msg": "Приём не найден.", "type": "not_found"}]},
+            },
+            502: {"description": "Сбой связи с NewCRM (сеть, сервер недоступен)", "example": {"detail": "Ошибка соединения с MamaDoc."}},
         },
         tags=["NewCRM Integration"],
     )
@@ -252,7 +435,7 @@ class MamadocBookingCancelView(APIView):
         reason = serializer.validated_data.get("reason", "")
 
         try:
-            result = mamadoc_client.cancel_appointment(appointment_id, reason=reason)
+            result = mamadoc_client.cancel_booking(appointment_id, reason=reason)
         except MamaDocAPIError as e:
             return _error_response(e)
 
