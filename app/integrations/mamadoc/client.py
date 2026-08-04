@@ -158,8 +158,6 @@ def _patch(path, json_data):
         logger.warning("[MAMADOC ERROR] PATCH %s: %s", path, e)
         raise MamaDocAPIError(502, "Ошибка соединения с MamaDoc.")
 
-    if response.status_code == 404:
-        raise MamaDocAPIError(404, "Запись не найдена.")
     if 400 <= response.status_code < 500:
         raise MamaDocAPIError(response.status_code, _safe_json(response) or response.text)
     if not response.ok:
@@ -215,6 +213,62 @@ def find_patient_id_by_phone(phone: str) -> Optional[str]:
     return None
 
 
+def list_professionals(organization_id) -> list:
+    """
+    Возвращает публичный каталог врачей клиники NewCRM (id, ФИО, фото,
+    специальность) — используется, чтобы найти employeeId нужного врача.
+
+    Эндпоинт `/api/v1/professionals/` в NewCRM публичный (не требует
+    авторизации), в отличие от `/api/staff/employees/`.
+    """
+    data = _get("/api/v1/professionals/", params={"organization_id": organization_id})
+    if not data:
+        return []
+
+    return data.get("data", data) if isinstance(data, dict) else data
+
+
+def list_services(organization_id) -> list:
+    """
+    Возвращает публичный каталог услуг клиники NewCRM (id, название, цена,
+    длительность) — используется, чтобы показать стоимость перед созданием брони.
+
+    Эндпоинт `/api/v1/organizations/{id}/services/` в NewCRM публичный.
+    """
+    data = _get(f"/api/v1/organizations/{organization_id}/services/")
+    if not data:
+        return []
+
+    return data.get("data", data) if isinstance(data, dict) else data
+
+
+def get_organization() -> Optional[dict]:
+    """
+    Возвращает клинику, привязанную к текущему партнёрскому ключу.
+
+    Требует право `organization.view`. Реальный ответ NewCRM — список из
+    одного объекта; здесь отдаётся сразу этот объект (или None).
+    """
+    data = _get("/api/organization/")
+    if not data:
+        return None
+
+    results = data.get("results", data) if isinstance(data, dict) else data
+    if not results:
+        return None
+
+    return results[0]
+
+
+def list_branches() -> list:
+    """Возвращает филиалы клиники, привязанной к ключу. Требует право `branches.view`."""
+    data = _get("/api/organization/branches/")
+    if not data:
+        return []
+
+    return data.get("results", data) if isinstance(data, dict) else data
+
+
 def list_appointments(patient_id) -> list:
     """Возвращает визиты пациента, у которых есть строки услуг (serviceLines)."""
     data = _get("/api/appointments/", params={"patientId": patient_id})
@@ -250,25 +304,29 @@ def list_employee_appointments(employee_id, start_date=None, end_date=None, stat
     return data.get("results", data) if isinstance(data, dict) else data
 
 
-def create_appointment(branch_id, patient_id, employee_id, service_id, starts_at_iso, status="scheduled") -> dict:
+def create_booking(branch_id, employee_id, service_id, date, time, first_name, last_name, phone) -> dict:
     """
-    Создаёт запись (бронь) в MamaDoc.
+    Создаёт запись (бронь) через партнёрский эндпоинт `/api/profigram/bookings/`.
 
-    `starts_at_iso` должен быть уже нормализован в UTC (например, `...T10:00:00Z`).
+    Пациент ищется по номеру телефона и создаётся автоматически, если не найден
+    (дедуп на стороне NewCRM). Цену NewCRM определяет сама по `service_id` —
+    клиент не может её подменить.
+
+    `date` — 'YYYY-MM-DD', `time` — 'HH:MM'.
     """
     payload = {
         "branchId": branch_id,
-        "patientId": patient_id,
-        "startsAt": starts_at_iso,
-        "status": status,
-        "services": [{"serviceId": service_id, "employeeId": employee_id}],
+        "employeeId": employee_id,
+        "serviceId": service_id,
+        "date": date,
+        "time": time,
+        "patientFirstName": first_name,
+        "patientLastName": last_name,
+        "patientPhone": phone,
     }
-    return _post("/api/appointments/", payload)
+    return _post("/api/profigram/bookings/", payload)
 
 
-def cancel_appointment(appointment_id, reason="") -> dict:
-    """Отменяет запись (бронь) в MamaDoc: PATCH status=canceled."""
-    payload = {"status": "canceled"}
-    if reason:
-        payload["cancelReason"] = reason
-    return _patch(f"/api/appointments/{appointment_id}/", payload)
+def cancel_booking(booking_id, reason="") -> dict:
+    """Отменяет запись через партнёрский эндпоинт `/api/profigram/bookings/{id}/cancel/`."""
+    return _patch(f"/api/profigram/bookings/{booking_id}/cancel/", {"reason": reason})

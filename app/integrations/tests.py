@@ -36,14 +36,14 @@ class MedCRMSSOTests(APITestCase):
         )
 
     def test_webview_url_requires_authentication(self):
-        response = self.client.post(reverse("medcrm-sso-webview-url"), {})
+        response = self.client.post(reverse("integrations:medcrm-sso-webview-url"), {})
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_webview_url_returns_raw_token_but_stores_only_hash(self):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            reverse("medcrm-sso-webview-url"),
+            reverse("integrations:medcrm-sso-webview-url"),
             {"next": "/dashboard"},
             format="json",
         )
@@ -65,7 +65,7 @@ class MedCRMSSOTests(APITestCase):
         self.client.force_authenticate(user=self.user)
 
         response = self.client.post(
-            reverse("medcrm-sso-webview-url"),
+            reverse("integrations:medcrm-sso-webview-url"),
             {"next": "login"},
             format="json",
         )
@@ -77,7 +77,7 @@ class MedCRMSSOTests(APITestCase):
         raw_token = SSOLoginToken.create_for_user(self.user)
 
         response = self.client.post(
-            reverse("medcrm-sso-verify-token"),
+            reverse("integrations:medcrm-sso-verify-token"),
             {"token": raw_token},
             HTTP_X_INTEGRATION_SECRET="wrong",
             format="json",
@@ -87,7 +87,7 @@ class MedCRMSSOTests(APITestCase):
 
     def test_verify_rejects_missing_token(self):
         response = self.client.post(
-            reverse("medcrm-sso-verify-token"),
+            reverse("integrations:medcrm-sso-verify-token"),
             {},
             HTTP_X_INTEGRATION_SECRET="test-secret",
             format="json",
@@ -100,7 +100,7 @@ class MedCRMSSOTests(APITestCase):
         SSOLoginToken.objects.update(expires_at=timezone.now() - timedelta(seconds=1))
 
         response = self.client.post(
-            reverse("medcrm-sso-verify-token"),
+            reverse("integrations:medcrm-sso-verify-token"),
             {"token": raw_token},
             HTTP_X_INTEGRATION_SECRET="test-secret",
             format="json",
@@ -113,13 +113,13 @@ class MedCRMSSOTests(APITestCase):
         raw_token = SSOLoginToken.create_for_user(self.user, next_path="/dashboard")
 
         first_response = self.client.post(
-            reverse("medcrm-sso-verify-token"),
+            reverse("integrations:medcrm-sso-verify-token"),
             {"token": raw_token},
             HTTP_X_INTEGRATION_SECRET="test-secret",
             format="json",
         )
         second_response = self.client.post(
-            reverse("medcrm-sso-verify-token"),
+            reverse("integrations:medcrm-sso-verify-token"),
             {"token": raw_token},
             HTTP_X_INTEGRATION_SECRET="test-secret",
             format="json",

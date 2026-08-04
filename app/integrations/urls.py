@@ -12,6 +12,10 @@ from .views import (
     MamadocConclusionView,
     MamadocBookingView,
     MamadocBookingCancelView,
+    MamadocProfessionalsView,
+    MamadocServicesView,
+    MamadocOrganizationView,
+    MamadocBranchesView,
 )
 
 app_name = "integrations"
@@ -56,6 +60,26 @@ urlpatterns = [
         "medcrm/verify-sso-token/",
         VerifySecondSystemSSOTokenView.as_view(),
         name="medcrm-sso-verify-token",
+    ),
+    path(
+        "newcrm/professionals/",
+        MamadocProfessionalsView.as_view(),
+        name="newcrm-professionals",
+    ),
+    path(
+        "newcrm/services/",
+        MamadocServicesView.as_view(),
+        name="newcrm-services",
+    ),
+    path(
+        "newcrm/organization/",
+        MamadocOrganizationView.as_view(),
+        name="newcrm-organization",
+    ),
+    path(
+        "newcrm/branches/",
+        MamadocBranchesView.as_view(),
+        name="newcrm-branches",
     ),
     path(
         "newcrm/appointments/",

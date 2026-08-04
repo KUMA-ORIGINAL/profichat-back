@@ -10,6 +10,10 @@ from .mamadoc import (
     MamadocConclusionView,
     MamadocBookingView,
     MamadocBookingCancelView,
+    MamadocProfessionalsView,
+    MamadocServicesView,
+    MamadocOrganizationView,
+    MamadocBranchesView,
 )
 
 __all__ = [
@@ -24,4 +28,8 @@ __all__ = [
     "MamadocConclusionView",
     "MamadocBookingView",
     "MamadocBookingCancelView",
+    "MamadocProfessionalsView",
+    "MamadocServicesView",
+    "MamadocOrganizationView",
+    "MamadocBranchesView",
 ]
