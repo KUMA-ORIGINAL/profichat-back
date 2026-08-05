@@ -23,7 +23,7 @@ def send_invite_sms(client, specialist, chat, access_order):
     org_name = specialist.organization.name if specialist.organization_id else ""
     access_period = f"{access_order.tariff.duration_hours} ч."
     return send_notification(
-        phone=client.phone_number,
+        phone=str(client.phone_number),
         scenario="invite_profigram",
         variables={
             "doctor_name": doctor_name,
@@ -37,9 +37,9 @@ def send_invite_sms(client, specialist, chat, access_order):
     )
 
 
-def _safe_send_invitation(client, specialist, chat, access_order, is_new_client):
+def _send_via(channel, client, specialist, chat, access_order):
     try:
-        if is_new_client:
+        if channel == InviteDelivery.CHANNEL_SMS:
             return send_invite_sms(client, specialist, chat, access_order)
         return send_chat_invite_push(client, chat, return_meta=True)
     except Exception as exc:
@@ -48,7 +48,7 @@ def _safe_send_invitation(client, specialist, chat, access_order, is_new_client)
             specialist.id,
             client.id,
             chat.id,
-            InviteDelivery.CHANNEL_SMS if is_new_client else InviteDelivery.CHANNEL_PUSH,
+            channel,
         )
         return {
             "ok": False,
@@ -56,6 +56,24 @@ def _safe_send_invitation(client, specialist, chat, access_order, is_new_client)
             "provider_status": "",
             "provider_message_id": "",
         }
+
+
+def _safe_send_invitation(client, specialist, chat, access_order, is_new_client):
+    if is_new_client:
+        channel = InviteDelivery.CHANNEL_SMS
+        result = _send_via(channel, client, specialist, chat, access_order)
+        return channel, result
+
+    channel = InviteDelivery.CHANNEL_PUSH
+    result = _send_via(channel, client, specialist, chat, access_order)
+    if not result.get("ok"):
+        logger.info(
+            "Push delivery failed for client=%s, falling back to SMS",
+            client.id,
+        )
+        channel = InviteDelivery.CHANNEL_SMS
+        result = _send_via(channel, client, specialist, chat, access_order)
+    return channel, result
 
 
 def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str = None):
@@ -132,7 +150,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
         except Exception as exc:
             logger.error("Failed to send Telegram notification for invited user %s: %s", client.id, exc)
 
-    invite_result = _safe_send_invitation(
+    channel, invite_result = _safe_send_invitation(
         client=client,
         specialist=specialist,
         chat=chat,
@@ -145,7 +163,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
         specialist=specialist,
         client=client,
         chat=chat,
-        channel=InviteDelivery.CHANNEL_SMS if is_new_client else InviteDelivery.CHANNEL_PUSH,
+        channel=channel,
         status=InviteDelivery.STATUS_SENT if is_success else InviteDelivery.STATUS_FAILED,
         is_new_client=is_new_client,
         provider_message_id=invite_result.get("provider_message_id", ""),
