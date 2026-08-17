@@ -20,7 +20,7 @@ User = get_user_model()
 def send_invite_sms(client, specialist, chat, access_order):
     invite_link = f"https://profigram.site/r/{chat.channel_id}"
     doctor_name = f"{specialist.first_name} {specialist.last_name}".strip() or "Специалист"
-    org_name = specialist.organization.name if specialist.organization_id else ""
+    org_name = (specialist.organization.name.strip() if specialist.organization_id else "") or "Profigram"
     access_period = f"{access_order.tariff.duration_hours} ч."
     return send_notification(
         phone=str(client.phone_number),
