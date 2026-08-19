@@ -22,6 +22,7 @@ from integrations.serializers import (
     TelegramAuthStatusRequestSerializer,
     TelegramAuthStatusResponseSerializer,
 )
+from integrations.telegram_admin import handle_admin_update, is_admin_update
 from integrations.telegram_auth.constants import (
     CHAT_CACHE_KEY_PREFIX,
     CONSUMED_SESSION_TTL_SECONDS,
@@ -259,9 +260,21 @@ class TelegramAuthWebhookView(APIView):
         if expected_secret and webhook_secret != expected_secret:
             return Response({"detail": MESSAGE_INVALID_WEBHOOK_SECRET}, status=status.HTTP_403_FORBIDDEN)
 
+        update = request.data if isinstance(request.data, dict) else {}
+
+        # Уведомления и авторизация могут работать на одном боте — тогда нажатия
+        # на кнопки заявок приходят сюда же.
+        try:
+            if is_admin_update(update):
+                handle_admin_update(update)
+                return Response({"ok": True}, status=status.HTTP_200_OK)
+        except Exception:
+            logger.exception("Failed to handle Telegram admin update from auth webhook")
+            return Response({"ok": True}, status=status.HTTP_200_OK)
+
         message = (
-            request.data.get("message")
-            or request.data.get("edited_message")
+            update.get("message")
+            or update.get("edited_message")
             or {}
         )
         chat_id = (message.get("chat") or {}).get("id")

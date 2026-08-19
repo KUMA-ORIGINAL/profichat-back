@@ -4,6 +4,7 @@ from .telegram_auth import (
     TelegramAuthStatusView,
     TelegramAuthWebhookView,
 )
+from .telegram_admin import TelegramAdminWebhookView
 from .sso import SecondSystemWebviewUrlView, VerifySecondSystemSSOTokenView
 from .mamadoc import (
     MamadocAppointmentsView,
@@ -23,6 +24,7 @@ __all__ = [
     "TelegramAuthStartView",
     "TelegramAuthStatusView",
     "TelegramAuthWebhookView",
+    "TelegramAdminWebhookView",
     "VerifySecondSystemSSOTokenView",
     "MamadocAppointmentsView",
     "MamadocConclusionView",

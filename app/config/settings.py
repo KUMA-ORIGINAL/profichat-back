@@ -191,6 +191,19 @@ TELEGRAM_AUTH_WEBHOOK_SECRET = env('TELEGRAM_AUTH_WEBHOOK_SECRET', default='')
 TELEGRAM_AUTH_BOT_USERNAME = env('TELEGRAM_AUTH_BOT_USERNAME', default='')
 TELEGRAM_AUTH_SESSION_TTL_SECONDS = env.int('TELEGRAM_AUTH_SESSION_TTL_SECONDS', default=300)
 
+# Webhook бота уведомлений (кнопки решения по заявкам)
+TELEGRAM_ADMIN_WEBHOOK_SECRET = env('TELEGRAM_ADMIN_WEBHOOK_SECRET', default=TELEGRAM_AUTH_WEBHOOK_SECRET)
+# Значение secret_token из setWebhook: Telegram присылает его в заголовке
+TELEGRAM_WEBHOOK_SECRET_TOKEN = env('TELEGRAM_WEBHOOK_SECRET_TOKEN', default='')
+
+# Отправка ошибок в Telegram (как Sentry)
+TELEGRAM_ERROR_ALERTS_ENABLED = env.bool('TELEGRAM_ERROR_ALERTS_ENABLED', default=False)
+TELEGRAM_ERROR_CHAT_ID = env('TELEGRAM_ERROR_CHAT_ID', default=TELEGRAM_CHAT_ID)
+TELEGRAM_ERROR_THREAD_ID = env('TELEGRAM_ERROR_THREAD_ID', default=None)
+TELEGRAM_ERROR_ENVIRONMENT = env('TELEGRAM_ERROR_ENVIRONMENT', default='')
+TELEGRAM_ERROR_DEDUPE_SECONDS = env.int('TELEGRAM_ERROR_DEDUPE_SECONDS', default=300)
+TELEGRAM_ERROR_MAX_PER_MINUTE = env.int('TELEGRAM_ERROR_MAX_PER_MINUTE', default=20)
+
 LANGUAGES = (
     ('ru', 'Russian'),
     ('en', 'English'),
@@ -335,14 +348,18 @@ LOGGING = {
             'backupCount': 14,
             'encoding': 'utf-8',
         },
+        'telegram': {
+            'level': 'ERROR',
+            'class': 'common.telegram_logging.TelegramErrorHandler',
+        },
     },
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console', 'file', 'telegram'],
         'level': 'INFO',
     },
     'loggers': {
         'django.request': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file', 'telegram'],
             'level': 'WARNING',
             'propagate': False,
         },

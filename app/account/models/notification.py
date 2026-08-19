@@ -9,12 +9,14 @@ class Notification(BaseModel):
     TYPE_PAYMENT_SUCCESS = "payment_success"
     TYPE_CHAT_INVITE = "chat_invite"
     TYPE_APPLICATION_ACCEPTED = "application_accepted"
+    TYPE_APPLICATION_REJECTED = "application_rejected"
 
     TYPE_CHOICES = (
         (TYPE_SYSTEM, "Системное"),
         (TYPE_PAYMENT_SUCCESS, "Успешная оплата"),
         (TYPE_CHAT_INVITE, "Приглашение в чат"),
         (TYPE_APPLICATION_ACCEPTED, "Заявка одобрена"),
+        (TYPE_APPLICATION_REJECTED, "Заявка отклонена"),
     )
 
     recipient = models.ForeignKey(

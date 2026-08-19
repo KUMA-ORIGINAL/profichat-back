@@ -274,3 +274,21 @@ def send_application_accepted_push(user, application):
         log_prefix="[Push][Application]",
     )
 
+
+def send_application_rejected_push(user, application):
+    title = "Заявка отклонена"
+    reason = (application.rejection_reason or "").strip()
+    message = f"Причина: {reason}" if reason else "К сожалению, ваша заявка отклонена."
+    extra = {
+        "application_id": str(application.id),
+        "type": "application_rejected",
+        "rejection_reason": reason,
+    }
+    return notify_user(
+        user=user,
+        title=title,
+        message=message,
+        notification_type="application_rejected",
+        payload=extra,
+        log_prefix="[Push][Application]",
+    )

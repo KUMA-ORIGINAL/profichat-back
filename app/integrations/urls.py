@@ -4,6 +4,7 @@ from .views import (
     MedCRMInviteClientView,
     MedCRMTariffsView,
     SecondSystemWebviewUrlView,
+    TelegramAdminWebhookView,
     TelegramAuthStartView,
     TelegramAuthStatusView,
     TelegramAuthWebhookView,
@@ -40,6 +41,11 @@ urlpatterns = [
         "telegram/auth/webhook/<str:webhook_secret>/",
         TelegramAuthWebhookView.as_view(),
         name="telegram-auth-webhook-secret",
+    ),
+    path(
+        "telegram/admin/webhook/<str:webhook_secret>/",
+        TelegramAdminWebhookView.as_view(),
+        name="telegram-admin-webhook",
     ),
     path(
         "medcrm/tariffs/",
