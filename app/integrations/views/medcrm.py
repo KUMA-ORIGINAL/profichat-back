@@ -11,6 +11,7 @@ from account.services.invite_client import invite_client
 from chat_access.models import Tariff
 from integrations.medcrm.authentication import MedCRMApiKeyAuthentication
 from integrations.medcrm.permissions import IsMedCRMAuthenticated
+from common.errors import ErrorCode, error_response
 from integrations.serializers import (
     MedCRMInviteClientSerializer,
     MedCRMInviteResponseSerializer,
@@ -45,9 +46,11 @@ class MedCRMTariffsView(APIView):
     def get(self, request):
         phone_number = request.query_params.get("phone_number")
         if not phone_number:
-            return Response(
-                {"detail": "Параметр phone_number обязателен."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.PARAM_REQUIRED,
+                "Параметр phone_number обязателен.",
+                status.HTTP_400_BAD_REQUEST,
+                param="phone_number",
             )
 
         specialist = User.objects.filter(
@@ -57,9 +60,10 @@ class MedCRMTariffsView(APIView):
         ).first()
 
         if not specialist:
-            return Response(
-                {"detail": "Специалист с таким номером не найден."},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.SPECIALIST_NOT_FOUND,
+                "Специалист с таким номером не найден.",
+                status.HTTP_404_NOT_FOUND,
             )
 
         tariffs = Tariff.objects.filter(
@@ -105,9 +109,10 @@ class MedCRMInviteClientView(APIView):
         ).first()
 
         if not specialist:
-            return Response(
-                {"detail": "Специалист с таким номером не найден."},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.SPECIALIST_NOT_FOUND,
+                "Специалист с таким номером не найден.",
+                status.HTTP_404_NOT_FOUND,
             )
 
         tariff = Tariff.objects.filter(
@@ -117,9 +122,10 @@ class MedCRMInviteClientView(APIView):
         ).first()
 
         if not tariff:
-            return Response(
-                {"detail": "Тариф не найден или не принадлежит данному специалисту."},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.TARIFF_NOT_FOUND,
+                "Тариф не найден или не принадлежит данному специалисту.",
+                status.HTTP_404_NOT_FOUND,
             )
 
         existing_client = User.objects.filter(phone_number=client_phone).exists()

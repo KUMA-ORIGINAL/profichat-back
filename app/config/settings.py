@@ -285,7 +285,7 @@ REST_FRAMEWORK = {
         'djangorestframework_camel_case.parser.CamelCaseMultiPartParser',
         'djangorestframework_camel_case.parser.CamelCaseJSONParser',
     ),
-    'EXCEPTION_HANDLER': 'account.exceptions.custom_exception_handler',
+    'EXCEPTION_HANDLER': 'common.error_handler.api_exception_handler',
 }
 
 SIMPLE_JWT = {

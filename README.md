@@ -29,3 +29,4 @@
 # Документация 
 - **GET docs/**
 - **GET schema/**
+- [API_ERROR_CODES.md](API_ERROR_CODES.md) — формат ошибок API и коды ошибок для клиента

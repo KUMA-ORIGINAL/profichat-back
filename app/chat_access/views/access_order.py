@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from account.models import ROLE_SPECIALIST
+from common.errors import ErrorCode, error_response
 from ..models import AccessOrder, Chat
 from ..serializers.access_order import (
     AccessOrderCreateSerializer,
@@ -55,9 +56,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
 
         payment_url = generate_payment_link(access_order)
         if not payment_url:
-            return Response(
-                {"detail": "Failed to generate payment link. Please try again later."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            return error_response(
+                ErrorCode.PAYMENT_LINK_FAILED,
+                "Failed to generate payment link. Please try again later.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         data = {
@@ -76,9 +78,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Subscription already cancelled."}, status=status.HTTP_200_OK)
 
         if order.payment_status != "success" or not order.expires_at or order.expires_at <= now:
-            return Response(
-                {"detail": "Only active subscription can be cancelled."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.SUBSCRIPTION_NOT_ACTIVE,
+                "Only active subscription can be cancelled.",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         order.payment_status = "cancelled"
@@ -102,9 +105,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         if request.user.role != ROLE_SPECIALIST:
-            return Response(
-                {"detail": "Only specialists can cancel subscriptions by channel."},
-                status=status.HTTP_403_FORBIDDEN,
+            return error_response(
+                ErrorCode.SPECIALIST_ONLY,
+                "Only specialists can cancel subscriptions by channel.",
+                status.HTTP_403_FORBIDDEN,
             )
 
         channel_id = serializer.validated_data["channel_id"]
@@ -116,9 +120,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         )
 
         if not chat:
-            return Response(
-                {"detail": "No subscription found for this channel."},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.SUBSCRIPTION_NOT_FOUND,
+                "No subscription found for this channel.",
+                status.HTTP_404_NOT_FOUND,
             )
 
         active_order = (
@@ -175,12 +180,11 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
-        return Response(
-            {
-                "detail": "Only active subscription can be cancelled.",
-                "channel_id": channel_id,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+        return error_response(
+            ErrorCode.SUBSCRIPTION_NOT_ACTIVE,
+            "Only active subscription can be cancelled.",
+            status.HTTP_400_BAD_REQUEST,
+            channel_id=channel_id,
         )
 
     @action(detail=False, methods=["get"], url_path="last-for-specialist/(?P<specialist_id>[^/.]+)")
@@ -199,9 +203,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
             )
 
             if order is None:
-                return Response(
-                    {"detail": "No access order found for this specialist."},
-                    status=status.HTTP_404_NOT_FOUND,
+                return error_response(
+                    ErrorCode.ACCESS_ORDER_NOT_FOUND,
+                    "No access order found for this specialist.",
+                    status.HTTP_404_NOT_FOUND,
                 )
 
             serializer = self.get_serializer(order, context={"request": request})
@@ -213,9 +218,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                 request.user.id,
                 specialist_id,
             )
-            return Response(
-                {"detail": "An error occurred while retrieving the access order."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            return error_response(
+                ErrorCode.INTERNAL_ERROR,
+                "An error occurred while retrieving the access order.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     @action(detail=False, methods=["get"], url_path="my-clients")
@@ -223,9 +229,10 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
         user = request.user
 
         if not hasattr(user, "role") or user.role != "specialist":
-            return Response(
-                {"detail": "Only specialists can view clients."},
-                status=status.HTTP_403_FORBIDDEN,
+            return error_response(
+                ErrorCode.SPECIALIST_ONLY,
+                "Only specialists can view clients.",
+                status.HTTP_403_FORBIDDEN,
             )
 
         orders = (

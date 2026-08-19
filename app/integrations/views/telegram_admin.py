@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from integrations.telegram_admin import handle_admin_update
+from common.errors import ErrorCode, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,18 @@ class TelegramAdminWebhookView(APIView):
     def post(self, request, webhook_secret=None):
         expected_secret = admin_webhook_secret()
         if expected_secret and webhook_secret != expected_secret:
-            return Response({"detail": MESSAGE_INVALID_WEBHOOK_SECRET}, status=status.HTTP_403_FORBIDDEN)
+            return error_response(
+                ErrorCode.INVALID_WEBHOOK_SECRET,
+                MESSAGE_INVALID_WEBHOOK_SECRET,
+                status.HTTP_403_FORBIDDEN,
+            )
 
         if not check_webhook_secret_token(request):
-            return Response({"detail": MESSAGE_INVALID_WEBHOOK_SECRET}, status=status.HTTP_403_FORBIDDEN)
+            return error_response(
+                ErrorCode.INVALID_WEBHOOK_SECRET,
+                MESSAGE_INVALID_WEBHOOK_SECRET,
+                status.HTTP_403_FORBIDDEN,
+            )
 
         try:
             handle_admin_update(request.data if isinstance(request.data, dict) else {})

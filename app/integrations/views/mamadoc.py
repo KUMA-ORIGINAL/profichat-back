@@ -9,8 +9,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from account.models.user import ROLE_SPECIALIST
+from common.errors import ErrorCode, error_response
 from integrations.mamadoc import client as mamadoc_client
 from integrations.mamadoc.client import MamaDocAPIError
+from integrations.mamadoc.errors import mamadoc_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +25,7 @@ class IsSpecialist(IsAuthenticated):
 
 
 def _error_response(e: MamaDocAPIError):
-    logger.warning("NewCRM request failed: %s", e.detail)
-    detail = e.detail if isinstance(e.detail, (dict, list)) else {"detail": e.detail}
-    return Response(detail, status=e.status_code)
+    return mamadoc_error_response(e)
 
 
 class MamadocProfessionalsView(APIView):
@@ -58,14 +58,21 @@ class MamadocProfessionalsView(APIView):
     def get(self, request):
         organization_id = request.query_params.get("organization_id")
         if not organization_id:
-            return Response(
-                {"detail": "Параметр organization_id обязателен."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.PARAM_REQUIRED,
+                "Параметр organization_id обязателен.",
+                status.HTTP_400_BAD_REQUEST,
+                param='organization_id',
             )
         try:
             organization_id = int(organization_id)
         except ValueError:
-            return Response({"detail": "organization_id должен быть числом."}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                ErrorCode.PARAM_INVALID,
+                "organization_id должен быть числом.",
+                status.HTTP_400_BAD_REQUEST,
+                param='organization_id',
+            )
 
         try:
             professionals = mamadoc_client.list_professionals(organization_id)
@@ -105,14 +112,21 @@ class MamadocServicesView(APIView):
     def get(self, request):
         organization_id = request.query_params.get("organization_id")
         if not organization_id:
-            return Response(
-                {"detail": "Параметр organization_id обязателен."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.PARAM_REQUIRED,
+                "Параметр organization_id обязателен.",
+                status.HTTP_400_BAD_REQUEST,
+                param='organization_id',
             )
         try:
             organization_id = int(organization_id)
         except ValueError:
-            return Response({"detail": "organization_id должен быть числом."}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                ErrorCode.PARAM_INVALID,
+                "organization_id должен быть числом.",
+                status.HTTP_400_BAD_REQUEST,
+                param='organization_id',
+            )
 
         try:
             services = mamadoc_client.list_services(organization_id)
@@ -144,7 +158,11 @@ class MamadocOrganizationView(APIView):
             return _error_response(e)
 
         if organization is None:
-            return Response({"detail": "Организация не найдена."}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(
+                ErrorCode.ORGANIZATION_NOT_FOUND,
+                "Организация не найдена.",
+                status.HTTP_404_NOT_FOUND,
+            )
         return Response(organization)
 
 
@@ -199,9 +217,11 @@ class MamadocAppointmentsView(APIView):
     def get(self, request):
         phone_number = request.query_params.get("phone_number")
         if not phone_number:
-            return Response(
-                {"detail": "Параметр phone_number обязателен."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.PARAM_REQUIRED,
+                "Параметр phone_number обязателен.",
+                status.HTTP_400_BAD_REQUEST,
+                param='phone_number',
             )
 
         try:
@@ -236,7 +256,11 @@ class MamadocConclusionView(APIView):
             return _error_response(e)
 
         if conclusion is None:
-            return Response({"detail": "Заключение не найдено."}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(
+                ErrorCode.CONCLUSION_NOT_FOUND,
+                "Заключение не найдено.",
+                status.HTTP_404_NOT_FOUND,
+            )
         return Response(mamadoc_client.reformat_conclusion_dates(conclusion))
 
 
@@ -319,14 +343,21 @@ class MamadocBookingView(APIView):
     def get(self, request):
         employee_id = request.query_params.get("employee_id")
         if not employee_id:
-            return Response(
-                {"detail": "Параметр employee_id обязателен."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.PARAM_REQUIRED,
+                "Параметр employee_id обязателен.",
+                status.HTTP_400_BAD_REQUEST,
+                param='employee_id',
             )
         try:
             employee_id = int(employee_id)
         except ValueError:
-            return Response({"detail": "employee_id должен быть числом."}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                ErrorCode.PARAM_INVALID,
+                "employee_id должен быть числом.",
+                status.HTTP_400_BAD_REQUEST,
+                param='employee_id',
+            )
 
         try:
             appointments = mamadoc_client.list_employee_appointments(

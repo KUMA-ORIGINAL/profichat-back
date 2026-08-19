@@ -8,6 +8,7 @@ import logging
 
 from ..services import update_chat_data_from_order
 from common.notifications import send_payment_success_push
+from common.errors import ErrorCode, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,23 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
                     order_id,
                     new_payment_status,
                 )
-                return Response({'error': 'Недостаточно данных'}, status=status.HTTP_400_BAD_REQUEST)
+                return error_response(
+                    ErrorCode.PARAM_REQUIRED,
+                    'Недостаточно данных',
+                    status.HTTP_400_BAD_REQUEST,
+                    error='Недостаточно данных',
+                )
 
             try:
                 access_order = AccessOrder.objects.get(id=order_id)
             except AccessOrder.DoesNotExist:
                 logger.error(f"Заказ доступа не найден: ID {order_id}")
-                return Response({'error': 'Заказ не найден'}, status=status.HTTP_404_NOT_FOUND)
+                return error_response(
+                    ErrorCode.ORDER_NOT_FOUND,
+                    'Заказ не найден',
+                    status.HTTP_404_NOT_FOUND,
+                    error='Заказ не найден',
+                )
 
             current_status = access_order.payment_status
 
@@ -70,4 +81,9 @@ class PaymentWebhookViewSet(viewsets.ViewSet):
 
         except Exception as e:
             logger.exception("Ошибка при обработке webhook")
-            return Response({'error': 'Внутренняя ошибка'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return error_response(
+                ErrorCode.INTERNAL_ERROR,
+                'Внутренняя ошибка',
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error='Внутренняя ошибка',
+            )

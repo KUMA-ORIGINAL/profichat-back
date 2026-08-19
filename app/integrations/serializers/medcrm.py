@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from chat_access.models import Tariff
+from common.errors import AppError, ErrorCode
 
 
 class MedCRMTariffSerializer(serializers.ModelSerializer):
@@ -34,7 +35,7 @@ class MedCRMInviteClientSerializer(serializers.Serializer):
 
     def validate_tariff_id(self, value):
         if not Tariff.objects.filter(id=value, is_archive=False).exists():
-            raise serializers.ValidationError("Тариф не найден.")
+            raise AppError("Тариф не найден.", code=ErrorCode.TARIFF_NOT_FOUND)
         return value
 
 

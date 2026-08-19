@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from account.services import send_system_message_once
 from ..models import Chat
 from ..serializers import StreamSystemMessageSerializer
+from common.errors import ErrorCode, error_response
 
 
 class StreamSystemMessageViewSet(viewsets.ViewSet):
@@ -22,9 +23,12 @@ class StreamSystemMessageViewSet(viewsets.ViewSet):
         try:
             chat = Chat.objects.select_related("client", "specialist").get(channel_id=channel_id)
         except Chat.DoesNotExist:
-            return Response(
-                {"success": False, "error": "Chat not found"},
-                status=status.HTTP_404_NOT_FOUND
+            return error_response(
+                ErrorCode.CHAT_NOT_FOUND,
+                "Chat not found",
+                status.HTTP_404_NOT_FOUND,
+                success=False,
+                error="Chat not found",
             )
 
         client_name = chat.client.get_full_name()

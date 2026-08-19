@@ -13,6 +13,7 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, Bl
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.views import TokenRefreshView
 
+from common.errors import ErrorCode, error_response
 from common.stream_client import chat_client
 from ..models import OTP
 from account import serializers
@@ -61,7 +62,13 @@ class SendSMSCodeView(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(
+                ErrorCode.VALIDATION_ERROR,
+                "Некорректные данные",
+                status.HTTP_400_BAD_REQUEST,
+                errors=serializer.errors,
+                **serializer.errors,
+            )
 
         phone_number = serializer.validated_data.get("phone_number")
         app_signature = serializer.validated_data.get("app_signature") or ""
@@ -85,13 +92,13 @@ class SendSMSCodeView(APIView):
             ):
                 if last_otp.sms_resent_at and last_otp.sms_resent_at > now - timedelta(seconds=60):
                     seconds_left = int(60 - (now - last_otp.sms_resent_at).total_seconds())
-                    return Response(
-                        {
-                            "error": "SMS уже было отправлено недавно. Подождите минуту.",
-                            "seconds_left": max(0, seconds_left),
-                            "channel": OTP.CHANNEL_SMS,
-                        },
-                        status=status.HTTP_429_TOO_MANY_REQUESTS
+                    return error_response(
+                        ErrorCode.OTP_SMS_RESEND_COOLDOWN,
+                        "SMS уже было отправлено недавно. Подождите минуту.",
+                        status.HTTP_429_TOO_MANY_REQUESTS,
+                        error="SMS уже было отправлено недавно. Подождите минуту.",
+                        seconds_left=max(0, seconds_left),
+                        channel=OTP.CHANNEL_SMS,
                     )
 
                 if not self.deliver_code(
@@ -100,9 +107,11 @@ class SendSMSCodeView(APIView):
                     scenario=scenario,
                     app_signature=app_signature,
                 ):
-                    return Response(
-                        {"error": "Не удалось отправить код подтверждения"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    return error_response(
+                        ErrorCode.OTP_SEND_FAILED,
+                        "Не удалось отправить код подтверждения",
+                        status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        error="Не удалось отправить код подтверждения",
                     )
 
                 last_otp.channel = OTP.CHANNEL_SMS
@@ -117,12 +126,12 @@ class SendSMSCodeView(APIView):
             if last_otp and last_otp.created_at > now - timedelta(seconds=60):
                 seconds_passed = (now - last_otp.created_at).total_seconds()
                 seconds_left = int(60 - seconds_passed)
-                return Response(
-                    {
-                        "error": "Код уже был отправлен недавно. Подождите минуту.",
-                        "seconds_left": max(0, seconds_left)
-                    },
-                    status=status.HTTP_429_TOO_MANY_REQUESTS
+                return error_response(
+                    ErrorCode.OTP_SEND_COOLDOWN,
+                    "Код уже был отправлен недавно. Подождите минуту.",
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                    error="Код уже был отправлен недавно. Подождите минуту.",
+                    seconds_left=max(0, seconds_left),
                 )
 
             with transaction.atomic():
@@ -151,9 +160,11 @@ class SendSMSCodeView(APIView):
                 scenario=scenario,
                 app_signature=app_signature,
             ):
-                return Response(
-                    {"error": "Не удалось отправить код подтверждения"},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                return error_response(
+                    ErrorCode.OTP_SEND_FAILED,
+                    "Не удалось отправить код подтверждения",
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    error="Не удалось отправить код подтверждения",
                 )
 
             return Response(
@@ -166,9 +177,11 @@ class SendSMSCodeView(APIView):
                 "Unexpected error while sending SMS to phone=%s",
                 mask_phone(phone_number),
             )
-            return Response(
-                {"error": "Внутренняя ошибка сервера"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return error_response(
+                ErrorCode.INTERNAL_ERROR,
+                "Внутренняя ошибка сервера",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error="Внутренняя ошибка сервера",
             )
 
     @staticmethod
@@ -192,7 +205,13 @@ class VerifyOTPView(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=400)
+            return error_response(
+                ErrorCode.VALIDATION_ERROR,
+                "Некорректные данные",
+                status.HTTP_400_BAD_REQUEST,
+                errors=serializer.errors,
+                **serializer.errors,
+            )
 
         phone_number = serializer.validated_data.get("phone_number")
         code = serializer.validated_data.get("code")
@@ -207,7 +226,12 @@ class VerifyOTPView(APIView):
                     )
 
                     if obj.is_expired():
-                        return Response({"error": "Код просрочен"}, status=400)
+                        return error_response(
+                            ErrorCode.OTP_CODE_EXPIRED,
+                            "Код просрочен",
+                            status.HTTP_400_BAD_REQUEST,
+                            error="Код просрочен",
+                        )
 
                     obj.is_verified = True
                     obj.save()
@@ -245,7 +269,12 @@ class VerifyOTPView(APIView):
                 stream_token = chat_client.create_token(str(user.id))
 
         except OTP.DoesNotExist:
-            return Response({"error": "Неверный код"}, status=400)
+            return error_response(
+                ErrorCode.OTP_CODE_INVALID,
+                "Неверный код",
+                status.HTTP_400_BAD_REQUEST,
+                error="Неверный код",
+            )
 
         return Response({
             "refresh": str(refresh),

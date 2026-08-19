@@ -8,6 +8,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 
 from account.models import ROLE_SPECIALIST
+from common.errors import ErrorCode, error_response
 from chat_access.models import AccessOrder
 from chat_access.serializers import TariffSpecialistSerializer
 from chat_access.serializers.specialist import CurrentClientTariffQuerySerializer, SpecialistAccessOrderSerializer
@@ -63,9 +64,10 @@ class SpecialistAccessOrderViewSet(viewsets.GenericViewSet,
     @action(detail=False, methods=["get"], url_path="current-tariff")
     def current_tariff(self, request):
         if request.user.role != ROLE_SPECIALIST:
-            return Response(
-                {"detail": "Only specialists can view current client tariff."},
-                status=status.HTTP_403_FORBIDDEN,
+            return error_response(
+                ErrorCode.SPECIALIST_ONLY,
+                "Only specialists can view current client tariff.",
+                status.HTTP_403_FORBIDDEN,
             )
 
         query_serializer = CurrentClientTariffQuerySerializer(data=request.query_params)

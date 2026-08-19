@@ -1,4 +1,3 @@
-from rest_framework import serializers
 
 from account.services.stream import (
     create_stream_channel,
@@ -6,6 +5,7 @@ from account.services.stream import (
     update_channel_extra_data,
 )
 from chat_access.models import Chat
+from common.errors import AppError, ErrorCode
 
 
 def create_or_get_chat(client, specialist):
@@ -20,7 +20,10 @@ def create_or_get_chat(client, specialist):
             create_stream_channel(chat)
         except Exception as exc:
             chat.delete()
-            raise serializers.ValidationError(f"Ошибка создания канала в GetStream: {exc}")
+            raise AppError(
+                f"Ошибка создания канала в GetStream: {exc}",
+                code=ErrorCode.STREAM_CHANNEL_CREATE_FAILED,
+            )
     else:
         update_fields = []
         was_deleted_by_client = chat.deleted_by_client_at is not None
@@ -48,5 +51,8 @@ def update_chat_and_stream(instance, validated_data):
     try:
         update_channel_extra_data(channel_id=instance.channel_id, data=validated_data)
     except Exception as exc:
-        raise serializers.ValidationError(f"Ошибка обновления канала в GetStream: {exc}")
+        raise AppError(
+            f"Ошибка обновления канала в GetStream: {exc}",
+            code=ErrorCode.STREAM_CHANNEL_UPDATE_FAILED,
+        )
     return instance

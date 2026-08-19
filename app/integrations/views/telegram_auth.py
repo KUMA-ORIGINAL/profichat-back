@@ -15,6 +15,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 
 from account.services.token_lifetime import build_token_pair_for_user
 from account.services.user import generate_unique_username
+from common.errors import ErrorCode, error_response
 from common.stream_client import chat_client
 from integrations.serializers import (
     TelegramAuthErrorResponseSerializer,
@@ -220,9 +221,10 @@ class TelegramAuthStatusView(APIView):
         key = _session_cache_key(session_id)
         session = cache.get(key)
         if not session:
-            return Response(
-                {"detail": MESSAGE_SESSION_NOT_FOUND},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.TELEGRAM_SESSION_NOT_FOUND,
+                MESSAGE_SESSION_NOT_FOUND,
+                status.HTTP_404_NOT_FOUND,
             )
 
         session_status = session.get("status", STATUS_PENDING)
@@ -230,9 +232,10 @@ class TelegramAuthStatusView(APIView):
             return Response({"status": session_status}, status=status.HTTP_200_OK)
 
         if session.get("consumed"):
-            return Response(
-                {"detail": MESSAGE_SESSION_ALREADY_USED},
-                status=status.HTTP_410_GONE,
+            return error_response(
+                ErrorCode.TELEGRAM_SESSION_ALREADY_USED,
+                MESSAGE_SESSION_ALREADY_USED,
+                status.HTTP_410_GONE,
             )
 
         session["consumed"] = True
@@ -258,7 +261,11 @@ class TelegramAuthWebhookView(APIView):
     def post(self, request, webhook_secret=None):
         expected_secret = getattr(settings, "TELEGRAM_AUTH_WEBHOOK_SECRET", "")
         if expected_secret and webhook_secret != expected_secret:
-            return Response({"detail": MESSAGE_INVALID_WEBHOOK_SECRET}, status=status.HTTP_403_FORBIDDEN)
+            return error_response(
+                ErrorCode.INVALID_WEBHOOK_SECRET,
+                MESSAGE_INVALID_WEBHOOK_SECRET,
+                status.HTTP_403_FORBIDDEN,
+            )
 
         update = request.data if isinstance(request.data, dict) else {}
 

@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from .. import serializers
 from ..serializers import ShowInSearchSerializer, InviteGreetingSerializer, CanCallSerializer
 from ..services import broadcast_user_update
+from common.errors import ErrorCode, error_response
 
 User = get_user_model()
 
@@ -62,7 +63,13 @@ class UpdateShowInSearchView(APIView):
                 changes=serializer.validated_data.keys(),
             )
             return Response({'detail': 'Поле "show_in_search" обновлено успешно.'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return error_response(
+            ErrorCode.VALIDATION_ERROR,
+            "Некорректные данные",
+            status.HTTP_400_BAD_REQUEST,
+            errors=serializer.errors,
+            **serializer.errors,
+        )
 
 
 @extend_schema(tags=['Users Me'])
@@ -80,7 +87,13 @@ class UpdateInviteGreetingView(APIView):
                 changes=serializer.validated_data.keys(),
             )
             return Response({'detail': 'Поле "invite_greeting" обновлено успешно.'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return error_response(
+            ErrorCode.VALIDATION_ERROR,
+            "Некорректные данные",
+            status.HTTP_400_BAD_REQUEST,
+            errors=serializer.errors,
+            **serializer.errors,
+        )
 
 
 @extend_schema(tags=['Users Me'])
@@ -103,4 +116,10 @@ class UpdateCanCallView(APIView):
                 changes=serializer.validated_data.keys(),
             )
             return Response({'detail': 'Поле обновлено успешно.'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return error_response(
+            ErrorCode.VALIDATION_ERROR,
+            "Некорректные данные",
+            status.HTTP_400_BAD_REQUEST,
+            errors=serializer.errors,
+            **serializer.errors,
+        )

@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from account.models import ProfessionCategory
 from ..models import AccessOrder, Chat
+from common.errors import AppError, ErrorCode
 
 User = get_user_model()
 
@@ -85,11 +86,15 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
             )
             if free_order:
                 if free_order.is_active:
-                    raise serializers.ValidationError(
-                        {"tariff": "Ваш бесплатный тариф еще активен."}
+                    raise AppError(
+                        "Ваш бесплатный тариф еще активен.",
+                        code=ErrorCode.FREE_TARIFF_ACTIVE,
+                        errors={"tariff": "Ваш бесплатный тариф еще активен."},
                     )
-                raise serializers.ValidationError(
-                    {"tariff": "Бесплатный тариф уже был использован для этого специалиста."}
+                raise AppError(
+                    "Бесплатный тариф уже был использован для этого специалиста.",
+                    code=ErrorCode.FREE_TARIFF_ALREADY_USED,
+                    errors={"tariff": "Бесплатный тариф уже был использован для этого специалиста."},
                 )
 
         return attrs
@@ -106,8 +111,10 @@ class AccessOrderCreateSerializer(serializers.ModelSerializer):
         )
 
         if not created and chat.channel_id != channel_id:
-            raise serializers.ValidationError(
-                {"channel_id": "Чат уже существует с другим channel_id."}
+            raise AppError(
+                "Чат уже существует с другим channel_id.",
+                code=ErrorCode.CHAT_CHANNEL_MISMATCH,
+                errors={"channel_id": "Чат уже существует с другим channel_id."},
             )
 
         if not created:

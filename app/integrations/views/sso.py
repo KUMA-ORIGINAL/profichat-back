@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from common.errors import ErrorCode, error_response
 from integrations.models import SSOLoginToken
 from integrations.serializers import (
     SecondSystemWebviewUrlRequestSerializer,
@@ -50,15 +51,17 @@ class SecondSystemWebviewUrlView(APIView):
 
         web_url = _get_medcrm_web_url()
         if not web_url:
-            return Response(
-                {"detail": "MEDCRM_SSO_WEB_URL is not configured."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            return error_response(
+                ErrorCode.SSO_NOT_CONFIGURED,
+                "MEDCRM_SSO_WEB_URL is not configured.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         if not request.user.phone_number:
-            return Response(
-                {"detail": "Current user has no phone_number."},
-                status=status.HTTP_400_BAD_REQUEST,
+            return error_response(
+                ErrorCode.PHONE_NUMBER_MISSING,
+                "Current user has no phone_number.",
+                status.HTTP_400_BAD_REQUEST,
             )
 
         next_path = serializer.validated_data.get("next", "/")
@@ -82,9 +85,10 @@ class VerifySecondSystemSSOTokenView(APIView):
         provided_secret = request.headers.get("X-Integration-Secret", "")
 
         if not expected_secret or not secrets.compare_digest(provided_secret, expected_secret):
-            return Response(
-                {"detail": "Invalid integration secret"},
-                status=status.HTTP_403_FORBIDDEN,
+            return error_response(
+                ErrorCode.INVALID_INTEGRATION_SECRET,
+                "Invalid integration secret",
+                status.HTTP_403_FORBIDDEN,
             )
 
         serializer = VerifySecondSystemSSOTokenRequestSerializer(data=request.data)
@@ -104,11 +108,21 @@ class VerifySecondSystemSSOTokenView(APIView):
             )
 
             if not sso_token or not sso_token.is_valid:
-                return Response({"valid": False}, status=status.HTTP_401_UNAUTHORIZED)
+                return error_response(
+                    ErrorCode.SSO_TOKEN_INVALID,
+                    "SSO token is invalid or already used",
+                    status.HTTP_401_UNAUTHORIZED,
+                    valid=False,
+                )
 
             user = sso_token.user
             if not user.phone_number:
-                return Response({"valid": False}, status=status.HTTP_401_UNAUTHORIZED)
+                return error_response(
+                    ErrorCode.PHONE_NUMBER_MISSING,
+                    "User has no phone_number",
+                    status.HTTP_401_UNAUTHORIZED,
+                    valid=False,
+                )
 
             sso_token.used_at = timezone.now()
             sso_token.save(update_fields=["used_at"])

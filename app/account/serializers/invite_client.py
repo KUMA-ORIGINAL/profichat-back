@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 
 from account.models import InviteDelivery
 from chat_access.models import Tariff
+from common.errors import AppError, ErrorCode
 
 User = get_user_model()
 
@@ -14,7 +15,11 @@ class InviteClientSerializer(serializers.Serializer):
 
     def validate_tariff_id(self, value):
         if not Tariff.objects.filter(id=value).exists():
-            raise serializers.ValidationError("Тариф не найден.")
+            raise AppError(
+                "Тариф не найден.",
+                code=ErrorCode.TARIFF_NOT_FOUND,
+                errors={"tariff_id": ["Тариф не найден."]},
+            )
         return value
 
 

@@ -2,7 +2,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
-from rest_framework import exceptions, mixins, viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -13,6 +13,7 @@ from account.services.stream import (
     unmute_user_for_user,
 )
 from account.models import InviteDelivery, ROLE_CLIENT, ROLE_SPECIALIST
+from common.errors import AppError, ErrorCode
 from ..models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from ..serializers import (
     BlockedChatSerializer,
@@ -67,16 +68,16 @@ class ChatViewSet(
 
     def update(self, request, *args, **kwargs):
         if request.user.role != ROLE_SPECIALIST:
-            raise exceptions.PermissionDenied("Only specialists can edit chat notes")
+            raise AppError("Only specialists can edit chat notes", code=ErrorCode.SPECIALIST_ONLY, status_code=403)
         return super().update(request, *args, **kwargs)
 
     def _ensure_specialist_for_favorites(self, user):
         if user.role != ROLE_SPECIALIST:
-            raise exceptions.PermissionDenied("Only specialists can manage favorites")
+            raise AppError("Only specialists can manage favorites", code=ErrorCode.SPECIALIST_ONLY, status_code=403)
 
     def _ensure_specialist_for_blacklist(self, user):
         if user.role != ROLE_SPECIALIST:
-            raise exceptions.PermissionDenied("Only specialists can manage blacklist")
+            raise AppError("Only specialists can manage blacklist", code=ErrorCode.SPECIALIST_ONLY, status_code=403)
 
     def _resolve_member_chat(self, user, channel_id):
         return (
@@ -121,7 +122,7 @@ class ChatViewSet(
     @action(detail=False, methods=["post"], url_path="soft-delete")
     def soft_delete(self, request):
         if request.user.role != ROLE_SPECIALIST:
-            raise exceptions.PermissionDenied("Only specialists can delete chats")
+            raise AppError("Only specialists can delete chats", code=ErrorCode.SPECIALIST_ONLY, status_code=403)
 
         serializer = SoftDeleteChatRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -129,7 +130,7 @@ class ChatViewSet(
         channel_id = serializer.validated_data["channel_id"]
         chat = self._resolve_member_chat(request.user, channel_id)
         if not chat:
-            raise exceptions.NotFound("Chat not found or unavailable")
+            raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         now = timezone.now()
         update_fields = []
@@ -170,7 +171,7 @@ class ChatViewSet(
         channel_id = serializer.validated_data["channel_id"]
         chat = self._resolve_member_chat(request.user, channel_id)
         if not chat:
-            raise exceptions.NotFound("Chat not found or unavailable")
+            raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         favorite, _ = FavoriteChat.objects.get_or_create(user=request.user, chat=chat)
         sync_favorite_by_to_stream(chat)
@@ -190,7 +191,7 @@ class ChatViewSet(
         channel_id = serializer.validated_data["channel_id"]
         chat = self._resolve_member_chat(request.user, channel_id)
         if not chat:
-            raise exceptions.NotFound("Chat not found or unavailable")
+            raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         deleted, _ = FavoriteChat.objects.filter(user=request.user, chat=chat).delete()
         sync_favorite_by_to_stream(chat)
@@ -221,7 +222,7 @@ class ChatViewSet(
         channel_id = serializer.validated_data["channel_id"]
         chat = self._resolve_member_chat(request.user, channel_id)
         if not chat:
-            raise exceptions.NotFound("Chat not found or unavailable")
+            raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         blocked, _ = BlockedChat.objects.get_or_create(user=request.user, chat=chat)
         sync_blocked_by_to_stream(chat)
@@ -242,7 +243,7 @@ class ChatViewSet(
         channel_id = serializer.validated_data["channel_id"]
         chat = self._resolve_member_chat(request.user, channel_id)
         if not chat:
-            raise exceptions.NotFound("Chat not found or unavailable")
+            raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         deleted, _ = BlockedChat.objects.filter(user=request.user, chat=chat).delete()
         sync_blocked_by_to_stream(chat)

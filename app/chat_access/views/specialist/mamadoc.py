@@ -13,8 +13,10 @@ from chat_access.serializers.specialist.mamadoc import (
     MamaDocConclusionDetailSerializer,
     MamaDocVisitSerializer,
 )
+from common.errors import ErrorCode, error_response
 from integrations.mamadoc import client as mamadoc_client
 from integrations.mamadoc.client import MamaDocAPIError
+from integrations.mamadoc.errors import mamadoc_error_response
 
 User = get_user_model()
 
@@ -28,9 +30,10 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
 
     def _forbid_if_not_specialist(self, request):
         if request.user.role != ROLE_SPECIALIST:
-            return Response(
-                {"detail": "Only specialists can view NewCRM history."},
-                status=status.HTTP_403_FORBIDDEN,
+            return error_response(
+                ErrorCode.SPECIALIST_ONLY,
+                "Only specialists can view NewCRM history.",
+                status.HTTP_403_FORBIDDEN,
             )
         return None
 
@@ -45,8 +48,7 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
         return mamadoc_client.find_patient_id_by_phone(str(client_user.phone_number))
 
     def _error_response(self, e: MamaDocAPIError):
-        detail = e.detail if isinstance(e.detail, (dict, list)) else {"detail": e.detail}
-        return Response(detail, status=e.status_code)
+        return mamadoc_error_response(e)
 
     @extend_schema(
         parameters=[OpenApiParameter(name="client_id", type=int, location=OpenApiParameter.QUERY, required=True)],
@@ -64,9 +66,10 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
 
         client_user = self._get_authorized_client(request, client_id)
         if client_user is None:
-            return Response(
-                {"detail": "Client not found or no chat with this client."},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.CLIENT_NOT_FOUND,
+                "Client not found or no chat with this client.",
+                status.HTTP_404_NOT_FOUND,
             )
 
         try:
@@ -101,15 +104,20 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
 
         client_user = self._get_authorized_client(request, client_id)
         if client_user is None:
-            return Response(
-                {"detail": "Client not found or no chat with this client."},
-                status=status.HTTP_404_NOT_FOUND,
+            return error_response(
+                ErrorCode.CLIENT_NOT_FOUND,
+                "Client not found or no chat with this client.",
+                status.HTTP_404_NOT_FOUND,
             )
 
         try:
             patient_id = self._resolve_patient_id(client_user)
             if patient_id is None:
-                return Response({"detail": "Client is not linked to NewCRM."}, status=status.HTTP_404_NOT_FOUND)
+                return error_response(
+                    ErrorCode.CLIENT_NOT_LINKED_TO_NEWCRM,
+                    "Client is not linked to NewCRM.",
+                    status.HTTP_404_NOT_FOUND,
+                )
 
             appointments = mamadoc_client.list_appointments(patient_id)
             known_conclusion_ids = {
@@ -118,9 +126,10 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
                 for line in appointment.get("serviceLines", [])
             }
             if conclusion_id not in known_conclusion_ids:
-                return Response(
-                    {"detail": "Conclusion does not belong to this client."},
-                    status=status.HTTP_404_NOT_FOUND,
+                return error_response(
+                    ErrorCode.CONCLUSION_NOT_FOUND,
+                    "Conclusion does not belong to this client.",
+                    status.HTTP_404_NOT_FOUND,
                 )
 
             conclusion_data = mamadoc_client.get_conclusion(conclusion_id)
@@ -128,6 +137,10 @@ class SpecialistMamaDocViewSet(viewsets.GenericViewSet):
             return self._error_response(e)
 
         if conclusion_data is None:
-            return Response({"detail": "Conclusion not found."}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(
+                ErrorCode.CONCLUSION_NOT_FOUND,
+                "Conclusion not found.",
+                status.HTTP_404_NOT_FOUND,
+            )
 
         return Response(MamaDocConclusionDetailSerializer(conclusion_data).data)

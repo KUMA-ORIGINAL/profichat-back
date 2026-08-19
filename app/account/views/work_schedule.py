@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from ..models import WorkSchedule
 from ..serializers import WorkScheduleSerializer
 from ..services import broadcast_user_update
+from common.errors import ErrorCode
 
 
 @extend_schema(tags=['Work Schedule'])
@@ -52,8 +53,18 @@ class WorkScheduleViewSet(viewsets.GenericViewSet,
                 serializer.is_valid(raise_exception=True)
                 serializer.save()
                 updated_items.append(serializer.data)
+            except WorkSchedule.DoesNotExist:
+                errors.append({
+                    'id': item_data.get('id'),
+                    'code': ErrorCode.NOT_FOUND,
+                    'error': 'Запись расписания не найдена.',
+                })
             except Exception as e:
-                errors.append({'id': item_data.get('id'), 'error': str(e)})
+                errors.append({
+                    'id': item_data.get('id'),
+                    'code': ErrorCode.VALIDATION_ERROR,
+                    'error': str(e),
+                })
 
         # отправляем обновление 1 раз после всего bulk обновления
         if updated_items:
