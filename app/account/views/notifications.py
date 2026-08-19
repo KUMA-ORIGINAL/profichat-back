@@ -213,3 +213,114 @@ class NotificationViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         ).update(is_read=True, read_at=timezone.now(), updated_at=timezone.now())
 
         return Response({"status": "success", "updated_count": updated}, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Notifications"])
+class PushStatusView(APIView):
+    """Состояние доставки push для текущего пользователя.
+
+    Нужен клиенту, чтобы понять, что пуши не дойдут (токен протух, устройство
+    не зарегистрировано), и показать подсказку вместо молчаливой тишины.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    REASON_OK = "ok"
+    REASON_NO_DEVICES = "no_devices"
+    REASON_TOKEN_INVALID = "token_invalid"
+    REASON_PROVIDER_ERROR = "provider_error"
+    REASON_UNKNOWN = "unknown"
+
+    REASON_MESSAGES = {
+        REASON_OK: "Push-уведомления работают",
+        REASON_NO_DEVICES: "Устройство не зарегистрировано для push-уведомлений",
+        REASON_TOKEN_INVALID: "Токен устройства недействителен, зарегистрируйте его заново",
+        REASON_PROVIDER_ERROR: "Сервис push-уведомлений вернул ошибку при последней отправке",
+        REASON_UNKNOWN: "Пока не было ни одной отправки push на это устройство",
+    }
+
+    @extend_schema(
+        summary="Push delivery status",
+        description=(
+            "Возвращает, дойдут ли push-уведомления до текущего пользователя: "
+            "есть ли активные устройства, когда была последняя успешная отправка "
+            "и причина последней ошибки."
+        ),
+        responses={
+            200: OpenApiResponse(
+                response=inline_serializer(
+                    name="PushStatusResponse",
+                    fields={
+                        "push_enabled": serializers.BooleanField(),
+                        "reason": serializers.CharField(),
+                        "message": serializers.CharField(),
+                        "action": serializers.CharField(allow_blank=True),
+                        "active_devices": serializers.IntegerField(min_value=0),
+                        "total_devices": serializers.IntegerField(min_value=0),
+                        "last_success_at": serializers.DateTimeField(allow_null=True),
+                        "last_failure_at": serializers.DateTimeField(allow_null=True),
+                        "last_error_code": serializers.CharField(allow_blank=True),
+                    },
+                ),
+                description="Push status",
+            )
+        },
+        examples=[
+            OpenApiExample(
+                "Токен протух",
+                value={
+                    "pushEnabled": False,
+                    "reason": "token_invalid",
+                    "message": "Токен устройства недействителен, зарегистрируйте его заново",
+                    "action": "reregister_token",
+                    "activeDevices": 0,
+                    "totalDevices": 1,
+                    "lastSuccessAt": "2026-08-01T10:15:00+06:00",
+                    "lastFailureAt": "2026-08-19T09:00:00+06:00",
+                    "lastErrorCode": "UNREGISTERED",
+                },
+                response_only=True,
+            ),
+        ],
+    )
+    def get(self, request):
+        devices = GCMDevice.objects.filter(user=request.user).select_related("delivery_status")
+        active_devices = [d for d in devices if d.active]
+        statuses = [d.delivery_status for d in devices if getattr(d, "delivery_status", None)]
+
+        success_times = [s.last_success_at for s in statuses if s.last_success_at]
+        failure_times = [s.last_failure_at for s in statuses if s.last_failure_at]
+        last_success_at = max(success_times) if success_times else None
+        last_failure_at = max(failure_times) if failure_times else None
+
+        last_error_code = ""
+        if last_failure_at:
+            last_error_code = next(
+                (s.last_error_code for s in statuses if s.last_failure_at == last_failure_at),
+                "",
+            )
+
+        if not active_devices:
+            reason = self.REASON_TOKEN_INVALID if devices else self.REASON_NO_DEVICES
+            action_hint = "reregister_token"
+        elif last_success_at and (not last_failure_at or last_success_at >= last_failure_at):
+            reason, action_hint = self.REASON_OK, ""
+        elif last_failure_at:
+            reason, action_hint = self.REASON_PROVIDER_ERROR, "retry_later"
+        else:
+            reason, action_hint = self.REASON_UNKNOWN, ""
+
+        return Response(
+            {
+                "push_enabled": reason == self.REASON_OK,
+                "reason": reason,
+                "message": self.REASON_MESSAGES[reason],
+                "action": action_hint,
+                "active_devices": len(active_devices),
+                "total_devices": len(devices),
+                "last_success_at": last_success_at,
+                "last_failure_at": last_failure_at,
+                "last_error_code": last_error_code,
+            },
+            status=status.HTTP_200_OK,
+        )

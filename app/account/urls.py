@@ -32,6 +32,7 @@ urlpatterns = [
     # path('auth/password-reset/confirm/', views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     
     path('register-fcm/', views.RegisterFCMTokenView.as_view(), name='register-fcm'),
+    path('push/status/', views.PushStatusView.as_view(), name='push-status'),
     path('invite-client/', views.InviteClientView.as_view(), name='invite-client'),
     path('invite-client/deliveries/', views.InviteDeliveryStatusView.as_view(), name='invite-client-deliveries'),
 ]
