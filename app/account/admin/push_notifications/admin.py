@@ -134,9 +134,25 @@ class DeviceAdmin(BaseModelAdmin):
 
 class GCMDeviceAdmin(DeviceAdmin):
 	list_display = (
-		"__str__", "device_id", "user", "active", "date_created", "cloud_message_type"
+		"__str__", "device_id", "user", "active", "date_created", "cloud_message_type",
+		"last_push_success", "last_push_error",
 	)
 	list_filter = ("active", "cloud_message_type")
+
+	def get_queryset(self, request):
+		return super().get_queryset(request).select_related("delivery_status")
+
+	@admin.display(description=_("Последний успешный push"))
+	def last_push_success(self, obj):
+		status = getattr(obj, "delivery_status", None)
+		return status.last_success_at if status else None
+
+	@admin.display(description=_("Последняя ошибка push"))
+	def last_push_error(self, obj):
+		status = getattr(obj, "delivery_status", None)
+		if not status or not status.last_failure_at:
+			return "-"
+		return f"{status.last_error_code} ({status.last_failure_at:%d.%m.%Y %H:%M})"
 
 	def send_messages(self, request, queryset, bulk=False):
 		"""

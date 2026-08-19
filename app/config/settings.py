@@ -468,6 +468,11 @@ UNFOLD = {
                         "icon": "send",
                         "link": reverse_lazy("admin:push_notifications_gcmdevice_changelist"),
                     },
+                    {
+                        "title": _("Статус доставки push"),
+                        "icon": "troubleshoot",
+                        "link": reverse_lazy("admin:account_pushdevicestatus_changelist"),
+                    },
                     # {
                     #     "title": "Web Push",
                     #     "icon": "globe",
@@ -494,6 +499,11 @@ UNFOLD = {
                         "title": _("Организации"),
                         "icon": "business",
                         "link": reverse_lazy("admin:account_organization_changelist"),
+                    },
+                    {
+                        "title": _("Коды подтверждения"),
+                        "icon": "password",
+                        "link": reverse_lazy("admin:account_otp_changelist"),
                     },
                 ],
             },
