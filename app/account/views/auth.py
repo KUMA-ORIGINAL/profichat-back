@@ -64,6 +64,9 @@ class SendSMSCodeView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         phone_number = serializer.validated_data.get("phone_number")
+        app_signature = serializer.validated_data.get("app_signature") or ""
+        channel = serializer.validated_data.get("channel") or OTP.CHANNEL_WHATSAPP
+        scenario = OTP.SCENARIO_BY_CHANNEL[channel]
 
         try:
             last_otp = OTP.objects.filter(
@@ -71,6 +74,46 @@ class SendSMSCodeView(APIView):
             ).order_by('-created_at').first()
 
             now = timezone.now()
+
+            # «Код не пришёл» → повторная отправка того же кода по SMS,
+            # без ожидания общего кулдауна на выдачу нового кода.
+            if (
+                channel == OTP.CHANNEL_SMS
+                and last_otp
+                and not last_otp.is_verified
+                and not last_otp.is_expired()
+            ):
+                if last_otp.sms_resent_at and last_otp.sms_resent_at > now - timedelta(seconds=60):
+                    seconds_left = int(60 - (now - last_otp.sms_resent_at).total_seconds())
+                    return Response(
+                        {
+                            "error": "SMS уже было отправлено недавно. Подождите минуту.",
+                            "seconds_left": max(0, seconds_left),
+                            "channel": OTP.CHANNEL_SMS,
+                        },
+                        status=status.HTTP_429_TOO_MANY_REQUESTS
+                    )
+
+                if not self.deliver_code(
+                    phone_number=phone_number,
+                    otp=last_otp,
+                    scenario=scenario,
+                    app_signature=app_signature,
+                ):
+                    return Response(
+                        {"error": "Не удалось отправить код подтверждения"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+                last_otp.channel = OTP.CHANNEL_SMS
+                last_otp.sms_resent_at = timezone.now()
+                last_otp.save(update_fields=["channel", "sms_resent_at"])
+
+                return Response(
+                    {"message": "Код подтверждения отправлен по SMS", "channel": OTP.CHANNEL_SMS},
+                    status=status.HTTP_201_CREATED
+                )
+
             if last_otp and last_otp.created_at > now - timedelta(seconds=60):
                 seconds_passed = (now - last_otp.created_at).total_seconds()
                 seconds_left = int(60 - seconds_passed)
@@ -91,19 +134,22 @@ class SendSMSCodeView(APIView):
                 code = str(random.randint(1000, 9999))
                 otp = OTP.objects.create(
                     phone_number=phone_number,
-                    code=code
+                    code=code,
+                    channel=channel,
+                    sms_resent_at=timezone.now() if channel == OTP.CHANNEL_SMS else None,
                 )
                 logger.info(
-                    "Created verification code id=%s for phone=%s",
+                    "Created verification code id=%s for phone=%s channel=%s",
                     otp.id,
                     mask_phone(phone_number),
+                    channel,
                 )
 
-            if not send_notification(
-                phone=phone_number,
-                scenario="otp",
-                variables={"otp": code},
-                external_id=f"otp-{otp.id}",
+            if not self.deliver_code(
+                phone_number=phone_number,
+                otp=otp,
+                scenario=scenario,
+                app_signature=app_signature,
             ):
                 return Response(
                     {"error": "Не удалось отправить код подтверждения"},
@@ -111,7 +157,7 @@ class SendSMSCodeView(APIView):
                 )
 
             return Response(
-                {"message": "Код подтверждения отправлен"},
+                {"message": "Код подтверждения отправлен", "channel": channel},
                 status=status.HTTP_201_CREATED
             )
 
@@ -124,6 +170,19 @@ class SendSMSCodeView(APIView):
                 {"error": "Внутренняя ошибка сервера"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @staticmethod
+    def deliver_code(phone_number, otp, scenario, app_signature):
+        variables = {"otp": otp.code}
+        if scenario == OTP.SCENARIO_BY_CHANNEL[OTP.CHANNEL_SMS]:
+            variables["app_signature"] = app_signature
+        return send_notification(
+            phone=phone_number,
+            scenario=scenario,
+            variables=variables,
+            # уникален для каждой попытки, иначе провайдер может отбросить повтор как дубль
+            external_id=f"otp-{otp.id}-{scenario}-{int(timezone.now().timestamp())}",
+        )
 
 
 @extend_schema(tags=['Auth'])

@@ -1,6 +1,8 @@
 from django.contrib.auth import authenticate
 from rest_framework import serializers
 
+from account.models import OTP
+
 
 class VerifyOTPSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
@@ -9,7 +11,13 @@ class VerifyOTPSerializer(serializers.Serializer):
 
 class PhoneNumberSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
-    app_signature = serializers.CharField()
+    app_signature = serializers.CharField(required=False, allow_blank=True, default="")
+    channel = serializers.ChoiceField(
+        choices=OTP.CHANNEL_CHOICES,
+        required=False,
+        default=OTP.CHANNEL_WHATSAPP,
+        help_text="Канал доставки кода: whatsapp (по умолчанию) или sms — если код не пришёл.",
+    )
 
 
 class LoginSerializer(serializers.Serializer):
