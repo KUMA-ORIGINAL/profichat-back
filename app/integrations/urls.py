@@ -38,12 +38,12 @@ urlpatterns = [
         name="telegram-auth-webhook",
     ),
     path(
-        "telegram/auth/webhook/<str:webhook_secret>/",
+        "telegram/auth/webhook/<path:webhook_secret>/",
         TelegramAuthWebhookView.as_view(),
         name="telegram-auth-webhook-secret",
     ),
     path(
-        "telegram/admin/webhook/<str:webhook_secret>/",
+        "telegram/admin/webhook/<path:webhook_secret>/",
         TelegramAdminWebhookView.as_view(),
         name="telegram-admin-webhook",
     ),
