@@ -247,7 +247,14 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": ['redis://redis:6379/2'],  # Используем другой слот Redis (например, /2)
+            # socket_timeout обязан быть больше brpop_timeout (5с) у channels_redis:
+            # иначе блокирующий BZPOPMIN всегда упирается в дедлайн чтения и рвёт WebSocket
+            "hosts": [{
+                "address": "redis://redis:6379/2",  # Используем другой слот Redis (например, /2)
+                "socket_timeout": 30,
+                "socket_connect_timeout": 5,
+                "health_check_interval": 30,
+            }],
         },
     },
 }

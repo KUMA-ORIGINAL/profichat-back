@@ -24,6 +24,9 @@ sentry-sdk[django]==2.22.0
 
 channels==4.2.0
 channels-redis==4.2.1
+# channels-redis требует лишь redis>=4.6, а в новых redis-py блокирующий BZPOPMIN
+# упирается в дедлайн чтения сокета и рвёт WebSocket через 5с — держим версию фиксированной
+redis==6.1.0
 daphne==4.1.2
 uvicorn==0.34.0
 websockets==14.2

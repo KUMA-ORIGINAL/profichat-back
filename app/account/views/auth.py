@@ -101,18 +101,14 @@ class SendSMSCodeView(APIView):
                         channel=OTP.CHANNEL_SMS,
                     )
 
-                if not self.deliver_code(
+                delivery = self.deliver_code(
                     phone_number=phone_number,
                     otp=last_otp,
                     scenario=scenario,
                     app_signature=app_signature,
-                ):
-                    return error_response(
-                        ErrorCode.OTP_SEND_FAILED,
-                        "Не удалось отправить код подтверждения",
-                        status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        error="Не удалось отправить код подтверждения",
-                    )
+                )
+                if not delivery["ok"]:
+                    return self.delivery_error_response(delivery)
 
                 last_otp.channel = OTP.CHANNEL_SMS
                 last_otp.sms_resent_at = timezone.now()
@@ -154,18 +150,18 @@ class SendSMSCodeView(APIView):
                     channel,
                 )
 
-            if not self.deliver_code(
+            delivery = self.deliver_code(
                 phone_number=phone_number,
                 otp=otp,
                 scenario=scenario,
                 app_signature=app_signature,
-            ):
-                return error_response(
-                    ErrorCode.OTP_SEND_FAILED,
-                    "Не удалось отправить код подтверждения",
-                    status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    error="Не удалось отправить код подтверждения",
-                )
+            )
+            if not delivery["ok"]:
+                # Запись создаётся до отправки, поэтому неудачу нужно откатить:
+                # иначе кулдаун в 60 секунд заблокирует пользователя из-за
+                # проблемы на нашей стороне, а не из-за его повторного запроса.
+                otp.delete()
+                return self.delivery_error_response(delivery)
 
             return Response(
                 {"message": "Код подтверждения отправлен", "channel": channel},
@@ -195,6 +191,30 @@ class SendSMSCodeView(APIView):
             variables=variables,
             # уникален для каждой попытки, иначе провайдер может отбросить повтор как дубль
             external_id=f"otp-{otp.id}-{scenario}-{int(timezone.now().timestamp())}",
+            return_meta=True,
+        )
+
+    @staticmethod
+    def delivery_error_response(delivery):
+        """Ошибку провайдера не выдаём за свою.
+
+        4xx от провайдера — это претензия к запросу (например, номер, который
+        он не обслуживает), а не сбой сервера: такой ответ не должен уходить
+        клиенту как 500 и поднимать алерт в Telegram.
+        """
+        provider_status = delivery.get("status_code") or 0
+        if 400 <= provider_status < 500:
+            return error_response(
+                ErrorCode.OTP_SEND_FAILED,
+                "Не удалось отправить код подтверждения на этот номер",
+                status.HTTP_400_BAD_REQUEST,
+                error="Не удалось отправить код подтверждения на этот номер",
+            )
+        return error_response(
+            ErrorCode.OTP_SEND_FAILED,
+            "Не удалось отправить код подтверждения",
+            status.HTTP_502_BAD_GATEWAY,
+            error="Не удалось отправить код подтверждения",
         )
 
 
