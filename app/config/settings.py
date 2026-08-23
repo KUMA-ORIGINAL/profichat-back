@@ -370,6 +370,13 @@ LOGGING = {
             'level': 'WARNING',
             'propagate': False,
         },
+        # Чужой Host — это сканеры и обращения по IP, а не ошибка приложения.
+        # Пишем в файл для статистики, но не будим Telegram.
+        'django.security.DisallowedHost': {
+            'handlers': ['file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
 }
 
