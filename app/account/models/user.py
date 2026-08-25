@@ -8,6 +8,8 @@ from django.utils.translation import gettext_lazy as _
 from django.core.validators import RegexValidator
 from phonenumber_field.modelfields import PhoneNumberField
 
+from stream_chat.base.exceptions import StreamAPIException
+
 from common.stream_client import chat_client
 
 logger = logging.getLogger(__name__)
@@ -182,6 +184,13 @@ class User(AbstractUser):
 
         return data
 
+    @staticmethod
+    def _stream_error_details(exc: Exception) -> str:
+        """Тело ответа Stream — в str(StreamAPIException) его нет, если ответ не JSON"""
+        if isinstance(exc, StreamAPIException):
+            return f"HTTP {exc.status_code}, body: {exc.response_text!r}"
+        return str(exc)
+
     def upsert_stream_user(self) -> None:
         """Создаёт или обновляет пользователя в Stream"""
         payload = self._get_stream_payload()
@@ -191,13 +200,13 @@ class User(AbstractUser):
             logger.info("Stream user synced: %s", self.id)
 
         except Exception as e:
-            message = str(e).lower()
+            details = self._stream_error_details(e)
 
-            if "deleted" in message:
+            if "deleted" in details.lower():
                 self._recreate_stream_user(payload)
             else:
                 logger.exception(
-                    "Stream sync failed for user %s", self.id
+                    "Stream sync failed for user %s (%s)", self.id, details
                 )
 
     def _recreate_stream_user(self, payload: dict) -> None:
@@ -205,9 +214,10 @@ class User(AbstractUser):
         try:
             chat_client.create_user(payload)
             logger.info("Stream user recreated: %s", self.id)
-        except Exception:
+        except Exception as e:
             logger.exception(
-                "Failed to recreate Stream user %s", self.id
+                "Failed to recreate Stream user %s (%s)",
+                self.id, self._stream_error_details(e)
             )
 
     def delete_stream_user(self) -> None:
@@ -215,9 +225,10 @@ class User(AbstractUser):
         try:
             chat_client.delete_user(str(self.id))
             logger.info("Stream user deleted: %s", self.id)
-        except Exception:
+        except Exception as e:
             logger.exception(
-                "Failed to delete Stream user %s", self.id
+                "Failed to delete Stream user %s (%s)",
+                self.id, self._stream_error_details(e)
             )
 
         # -----------------------------
