@@ -3,6 +3,10 @@ from .medcrm import (
     MedCRMInviteResponseSerializer,
     MedCRMTariffSerializer,
 )
+from .push import (
+    ErkinAIPushResponseSerializer,
+    ErkinAIPushSerializer,
+)
 from .telegram_auth import (
     TelegramAuthErrorResponseSerializer,
     TelegramAuthStartResponseSerializer,
@@ -19,6 +23,8 @@ from .sso import (
 __all__ = [
     "MedCRMInviteClientSerializer",
     "MedCRMInviteResponseSerializer",
+    "ErkinAIPushResponseSerializer",
+    "ErkinAIPushSerializer",
     "MedCRMTariffSerializer",
     "TelegramAuthErrorResponseSerializer",
     "TelegramAuthStartResponseSerializer",

@@ -1,4 +1,5 @@
 from .medcrm import MedCRMInviteClientView, MedCRMTariffsView
+from .push import ErkinAIPushView
 from .telegram_auth import (
     TelegramAuthStartView,
     TelegramAuthStatusView,
@@ -18,6 +19,7 @@ from .mamadoc import (
 )
 
 __all__ = [
+    "ErkinAIPushView",
     "MedCRMInviteClientView",
     "MedCRMTariffsView",
     "SecondSystemWebviewUrlView",

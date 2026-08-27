@@ -157,6 +157,16 @@ X-Api-Key: <ключ>
 
 ---
 
+## 3. Отправить push пользователю
+
+`POST /api/integration/erkinai/push/` — ErkinAI просит доставить push своему
+клиенту или специалисту, адресуя его по номеру телефона.
+
+Отдельный документ с телом запроса, кодами ошибок и правилами повторов:
+[`PUSH_FROM_ERKINAI.md`](PUSH_FROM_ERKINAI.md).
+
+---
+
 ## Подключение из Supabase
 
 API-ключ Profigram **нельзя** хранить на фронте. Все вызовы идут через **Supabase Edge Functions**.

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    ErkinAIPushView,
     MedCRMInviteClientView,
     MedCRMTariffsView,
     SecondSystemWebviewUrlView,
@@ -56,6 +57,11 @@ urlpatterns = [
         "medcrm/invite-client/",
         MedCRMInviteClientView.as_view(),
         name="medcrm-invite-client",
+    ),
+    path(
+        "erkinai/push/",
+        ErkinAIPushView.as_view(),
+        name="erkinai-push",
     ),
     path(
         "medcrm/webview-url/",
