@@ -21,6 +21,26 @@ class Notification(BaseModel):
         (TYPE_ERKINAI, "Из ErkinAI"),
     )
 
+    # Откуда уведомление взялось. Приложению это нужно раньше типа:
+    # своё оно откроет внутри себя, чужое — в разделе CRM. Поле не хранится:
+    # источник однозначно следует из типа, а дублирующая колонка рано или
+    # поздно разошлась бы с ним.
+    SOURCE_PROFICHAT = "profichat"
+    SOURCE_ERKINAI = "erkinai"
+
+    ERKINAI_TYPES = frozenset({TYPE_ERKINAI})
+
+    @classmethod
+    def source_for_type(cls, notification_type):
+        """``profichat`` или ``erkinai`` — кто породил уведомление этого типа."""
+        if notification_type in cls.ERKINAI_TYPES:
+            return cls.SOURCE_ERKINAI
+        return cls.SOURCE_PROFICHAT
+
+    @property
+    def source(self):
+        return self.source_for_type(self.notification_type)
+
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

@@ -6,10 +6,19 @@ class RegisterFCMTokenSerializer(serializers.Serializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
+    source = serializers.CharField(
+        read_only=True,
+        help_text=(
+            "Кто породил уведомление: `profichat` — само приложение, "
+            "`erkinai` — внешняя CRM."
+        ),
+    )
+
     class Meta:
         model = Notification
         fields = (
             "id",
+            "source",
             "notification_type",
             "title",
             "message",

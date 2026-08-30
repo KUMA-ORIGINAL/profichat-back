@@ -139,5 +139,10 @@ class NotifyUserServiceTests(APITestCase):
 
         notification = Notification.objects.get(id=result["notification_id"])
         self.assertEqual(notification.recipient_id, self.user.id)
-        self.assertEqual(notification.payload, {"k": "v"})
+        # notify_user докладывает в payload источник и тип: приложению нужно понять,
+        # своё это уведомление или из ErkinAI, и в pushе ленты нет.
+        self.assertEqual(
+            notification.payload,
+            {"k": "v", "source": "profichat", "type": Notification.TYPE_SYSTEM},
+        )
         self.assertIsNotNone(notification.pushed_at)
