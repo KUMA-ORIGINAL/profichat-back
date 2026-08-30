@@ -6,17 +6,22 @@
 предзаполняется данными CRM.
 
 Ключевое правило: **id карточки, пришедший от клиента, ничего не доказывает.**
-:func:`apply_card` всегда сама заново ищет карточки по телефону *этого*
-пользователя и принимает только ту, что нашлась. Иначе любой авторизованный
-клиент мог бы прислать чужой ``employee_id`` и получить чужой профиль вместе с
-привязкой к чужой клинике.
+:func:`apply_card` вызывается только после того, как :func:`find_card` заново
+нашла карточки по телефону *этого* пользователя. Иначе любой авторизованный
+клиент мог бы прислать чужой ``employee_id`` и получить чужой профиль.
+
+Организацию из CRM мы **не заводим**: человек выбирает её из нашего
+справочника (`GET /api/organizations/`). Названия клиник у нас и в ErkinAI
+живут своей жизнью, и автосоздание по одному лишь совпадению имени плодило бы
+почти-дубликаты, которые потом разбирать руками. Организация из карточки
+приходит в предложении и годится, чтобы подсветить нужный пункт списка, — но
+решает человек.
 """
 
 import logging
 
 from django.db import transaction
 
-from account.models import Organization
 from integrations.erkinai import client
 
 logger = logging.getLogger(__name__)
@@ -53,12 +58,17 @@ def find_card(phone, employee_id) -> dict | None:
 
 
 @transaction.atomic
-def apply_card(user, card: dict):
+def apply_card(user, card: dict, organization=None):
     """Делает *user* специалистом по карточке *card* из ErkinAI.
 
-    Заполняются только пустые поля профиля — кроме роли и организации, которые
-    и есть смысл операции. Человек мог уже что-то про себя написать до того,
-    как согласился привязаться, и затирать это данными CRM неправильно.
+    *organization* — выбранная человеком из нашего справочника; ``None``
+    значит «пока не выбрал», и тогда привязка просто не трогается. Блокировать
+    из-за этого получение роли незачем: организацию можно указать и позже, а
+    клиники может не оказаться в списке в момент регистрации.
+
+    Заполняются только пустые поля профиля — кроме роли. Человек мог уже
+    что-то про себя написать до того, как согласился привязаться, и затирать
+    это данными CRM неправильно.
     """
     from account.models.user import ROLE_SPECIALIST
 
@@ -70,57 +80,25 @@ def apply_card(user, card: dict):
             setattr(user, field, value)
             updated.append(field)
 
-    organization = link_organization(card.get("organization"))
     if organization is not None:
         user.organization = organization
         updated.append("organization")
 
     user.save(update_fields=updated)
     logger.info(
-        "[ERKINAI] Пользователь %s стал специалистом по карточке %s",
+        "[ERKINAI] Пользователь %s стал специалистом по карточке %s (организация %s)",
         user.id,
         card.get("id"),
+        organization.id if organization is not None else "не выбрана",
     )
     return user
 
 
-def link_organization(payload) -> Organization | None:
-    """Наша организация для организации ErkinAI из карточки.
-
-    Заводит её, если синхронизация справочника до неё ещё не дошла: специалист
-    не должен ждать крона, чтобы привязаться к своей клинике. Полноценные
-    данные (адреса, статус) подтянет ближайший запуск синхронизации — он найдёт
-    эту же строку по ``erkinai_id``.
-    """
-    if not isinstance(payload, dict):
-        return None
-    erkinai_id = payload.get("id")
-    name = (payload.get("name") or "").strip()
-    if not erkinai_id or not name:
-        return None
-
-    organization = Organization.objects.filter(erkinai_id=erkinai_id).first()
-    if organization is not None:
-        return organization
-
-    existing_name = Organization.objects.filter(name=name).first()
-    if existing_name is not None:
-        # Одноимённая организация уже заведена руками — привязываем к ней
-        # вместо того, чтобы плодить дубль с суффиксом.
-        if existing_name.erkinai_id is None:
-            existing_name.erkinai_id = erkinai_id
-            existing_name.save(update_fields=["erkinai_id"])
-        return existing_name
-
-    return Organization.objects.create(name=name, erkinai_id=erkinai_id)
-
-
 def _profile_updates(card: dict) -> dict:
     # ErkinAI хранит одно поле «ФИО» одной строкой, а у нас три отдельных.
-    # Читаем его в порядке Фамилия Имя Отчество — так поле и названо в CRM.
-    # Если в реальных данных окажется «Имя Фамилия», менять надо здесь и
-    # только здесь; человек в любом случае правит эти поля на экране
-    # подтверждения перед сохранением.
+    # Читаем его в порядке Фамилия Имя Отчество — так поле и названо в CRM,
+    # и так приходят реальные данные («Юлдашева Зарифа Мажитовна»). Человек в
+    # любом случае правит эти поля на экране подтверждения перед сохранением.
     full_name = (card.get("fullName") or "").strip().split()
     return {
         "last_name": full_name[0] if full_name else "",
