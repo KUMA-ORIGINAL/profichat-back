@@ -13,6 +13,16 @@ class OrganizationAddress(BaseModel):
     )
     address = models.CharField(_("Адрес"), max_length=500)
     is_primary = models.BooleanField(_("Основной адрес"), default=False)
+    erkinai_branch_id = models.PositiveIntegerField(
+        _("ID филиала в ErkinAI"),
+        unique=True,
+        null=True,
+        blank=True,
+        help_text=_(
+            "Адреса, приехавшие из филиалов ErkinAI. Без этого поля "
+            "синхронизация плодила бы дубликаты при каждом запуске."
+        ),
+    )
 
     class Meta:
         verbose_name = _("Адрес организации")

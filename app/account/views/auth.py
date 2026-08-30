@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from common.errors import ErrorCode, error_response
 from common.stream_client import chat_client
+from integrations.erkinai import staff as erkinai_staff
 from ..models import OTP
 from account import serializers
 from ..services import send_notification, generate_unique_username
@@ -299,8 +300,28 @@ class VerifyOTPView(APIView):
         return Response({
             "refresh": str(refresh),
             "access": str(access_token),
-            "stream_token": stream_token
+            "stream_token": stream_token,
+            # Есть ли по этому номеру карточка сотрудника в ErkinAI. Непустой
+            # список — приложение показывает «стать специалистом» и
+            # предзаполняет анкету; принимается выбор отдельным запросом на
+            # auth/erkinai/become-specialist/. Спрашиваем ПОСЛЕ транзакции:
+            # сетевой поход не должен держать открытым select_for_update по
+            # OTP, а недоступный ErkinAI — ронять регистрацию.
+            "erkinai_specialist_offer": self.erkinai_offer(user),
         })
+
+    @staticmethod
+    def erkinai_offer(user):
+        """Карточки ErkinAI для этого номера — или пустой список.
+
+        Тем, кто уже специалист, не предлагаем: у них профиль заполнен, и
+        повторное предложение выглядело бы как сбой.
+        """
+        from account.models.user import ROLE_SPECIALIST
+
+        if user.role == ROLE_SPECIALIST:
+            return []
+        return erkinai_staff.offer_for_phone(user.phone_number)
 
     @staticmethod
     def normalize_phone(phone):

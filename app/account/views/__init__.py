@@ -8,3 +8,4 @@ from .work_schedule import *
 from .notifications import *
 from .invite_client import *
 from .auth import *
+from .erkinai import *

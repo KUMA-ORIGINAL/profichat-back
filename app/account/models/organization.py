@@ -25,6 +25,17 @@ class Organization(BaseModel):
     reviews_count = models.PositiveIntegerField(_("Количество отзывов"), default=0)
     is_active = models.BooleanField(_("Активна"), default=True)
     mamadoc_enabled = models.BooleanField(_("Подключена интеграция MamaDoc"), default=False)
+    erkinai_id = models.PositiveIntegerField(
+        _("ID в ErkinAI"),
+        unique=True,
+        null=True,
+        blank=True,
+        help_text=_(
+            "Заполняется синхронизацией справочника. Организации с этим полем "
+            "приезжают из ErkinAI и перезаписываются при каждом запуске; "
+            "созданные вручную остаются пустыми и синхронизацией не трогаются."
+        ),
+    )
 
     class Meta:
         verbose_name = _("Организация")
