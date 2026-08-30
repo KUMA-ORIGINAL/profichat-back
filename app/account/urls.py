@@ -25,6 +25,11 @@ urlpatterns = [
     # path("auth/register/", views.R    egisterView.as_view(), name="register"),
     path("auth/sms/send/", views.SendSMSCodeView.as_view(), name="send_sms_code"),
     path('auth/sms/verify/', views.VerifyOTPView.as_view(), name='verify_sms_code'),
+    path(
+        'auth/erkinai/become-specialist/',
+        views.ErkinAIBecomeSpecialistView.as_view(),
+        name='erkinai_become_specialist',
+    ),
     path('auth/token/refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
     path("auth/stream-token/", views.GetStreamTokenView.as_view(), name="stream_token"),
     # path('auth/password-reset/request/', views.PasswordResetRequestView.as_view(), name='password_reset_request'),

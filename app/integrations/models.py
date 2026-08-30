@@ -55,3 +55,27 @@ class SSOLoginToken(models.Model):
     @property
     def is_valid(self):
         return self.used_at is None and self.expires_at > timezone.now()
+
+
+class ErkinAISyncState(models.Model):
+    """Отметка «докуда мы уже синхронизировались» по каждому фиду ErkinAI.
+
+    Одна строка на фид. Хранится `syncedAt` из последнего успешного ответа —
+    именно он уходит в `updated_since` следующего запуска, поэтому строка
+    обновляется только когда обход дошёл до конца: упавший на середине запуск
+    должен повториться с той же точки, а не сделать вид, что всё забрал.
+    """
+
+    FEED_ORGANIZATIONS = "organizations"
+
+    feed = models.CharField(max_length=64, unique=True)
+    synced_at = models.DateTimeField(null=True, blank=True)
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Состояние синхронизации ErkinAI"
+        verbose_name_plural = "Состояния синхронизации ErkinAI"
+
+    def __str__(self):
+        return f"{self.feed} @ {self.synced_at or 'никогда'}"
