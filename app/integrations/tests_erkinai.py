@@ -354,3 +354,78 @@ class OfferTests(TestCase):
             username="u2", phone_number=PHONE, role=ROLE_SPECIALIST
         )
         self.assertEqual(VerifyOTPView.erkinai_offer(user), [])
+
+
+class NotificationSourceTests(TestCase):
+    """Приложению нужно понять, своё это уведомление или из CRM."""
+
+    def setUp(self):
+        self.user = User.objects.create(username="u3", phone_number=PHONE)
+
+    def test_internal_notification_is_marked_profichat(self):
+        from account.models import Notification
+        from common.notifications import notify_user
+
+        with patch("common.notifications.send_push", return_value={"ok": False}):
+            notify_user(
+                user=self.user,
+                title="Новый чат",
+                message="Вас пригласили",
+                notification_type=Notification.TYPE_CHAT_INVITE,
+                payload={"chatId": "42"},
+            )
+
+        notification = Notification.objects.get()
+        self.assertEqual(notification.source, Notification.SOURCE_PROFICHAT)
+        self.assertEqual(notification.payload["source"], "profichat")
+        self.assertEqual(notification.payload["type"], "chat_invite")
+        self.assertEqual(notification.payload["chatId"], "42")
+
+    def test_erkinai_notification_is_marked_erkinai(self):
+        from account.models import Notification
+        from common.notifications import notify_user
+
+        with patch("common.notifications.send_push", return_value={"ok": False}):
+            notify_user(
+                user=self.user,
+                title="Приём завтра",
+                message="Напоминание",
+                notification_type=Notification.TYPE_ERKINAI,
+                payload={"event": "appointment.created"},
+            )
+
+        notification = Notification.objects.get()
+        self.assertEqual(notification.source, Notification.SOURCE_ERKINAI)
+        self.assertEqual(notification.payload["source"], "erkinai")
+
+    def test_source_reaches_the_push_data_block(self):
+        """Push приходит без ленты — признак должен быть и в нём."""
+        from account.models import Notification
+        from common.notifications import notify_user
+
+        with patch("common.notifications.send_push", return_value={"ok": False}) as push:
+            notify_user(
+                user=self.user,
+                title="t",
+                message="m",
+                notification_type=Notification.TYPE_ERKINAI,
+            )
+
+        self.assertEqual(push.call_args.kwargs["extra"]["source"], "erkinai")
+
+    def test_feed_exposes_source(self):
+        from account.models import Notification
+
+        Notification.objects.create(
+            recipient=self.user,
+            notification_type=Notification.TYPE_ERKINAI,
+            title="t",
+            message="m",
+        )
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+
+        response = api.get("/api/notifications/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["source"], "erkinai")

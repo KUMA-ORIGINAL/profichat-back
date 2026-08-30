@@ -197,6 +197,15 @@ def notify_user(
     log_prefix="[Notify]",
     return_meta=False,
 ):
+    from account.models import Notification
+
+    # Источник проставляется здесь, а не в каждом вызове: так он гарантированно
+    # есть и в ленте, и в data-части pushа — приложению не приходится вести
+    # свой список типов и угадывать, что значит новый.
+    payload = dict(payload or {})
+    payload.setdefault("source", Notification.source_for_type(notification_type))
+    payload.setdefault("type", notification_type)
+
     notification = create_notification(
         user=user,
         title=title,
@@ -209,7 +218,7 @@ def notify_user(
         user=user,
         title=title,
         message=message,
-        extra=payload or {},
+        extra=payload,
         log_prefix=log_prefix,
         return_meta=True,
     )
