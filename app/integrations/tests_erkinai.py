@@ -192,7 +192,7 @@ class BecomeSpecialistTests(TestCase):
     def setUp(self):
         self.user = User.objects.create(username="u1", phone_number=PHONE)
 
-    def test_apply_card_makes_a_specialist_and_links_the_clinic(self):
+    def test_apply_card_makes_a_specialist(self):
         staff.apply_card(self.user, card_payload())
 
         self.user.refresh_from_db()
@@ -202,7 +202,6 @@ class BecomeSpecialistTests(TestCase):
         self.assertEqual(self.user.middle_name, "Кубанычбековна")
         self.assertEqual(self.user.education, "КГМА")
         self.assertEqual(self.user.work_experience, "7")
-        self.assertEqual(self.user.organization.erkinai_id, 1)
 
     def test_existing_profile_data_is_not_overwritten(self):
         """Человек мог заполнить профиль до привязки — CRM его не затирает."""
@@ -214,23 +213,92 @@ class BecomeSpecialistTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.description, "Своё описание")
 
-    def test_organization_is_reused_by_erkinai_id(self):
-        existing = Organization.objects.create(name="Педиатр", erkinai_id=1)
-
+    def test_organization_from_the_card_is_never_created(self):
+        """Клинику выбирают из нашего справочника, а не заводят по имени CRM."""
         staff.apply_card(self.user, card_payload())
 
         self.user.refresh_from_db()
-        self.assertEqual(self.user.organization_id, existing.id)
-        self.assertEqual(Organization.objects.count(), 1)
+        self.assertEqual(Organization.objects.count(), 0)
+        self.assertIsNone(self.user.organization_id)
 
-    def test_same_named_organization_is_adopted_rather_than_duplicated(self):
-        existing = Organization.objects.create(name="Педиатр")
+    def test_chosen_organization_is_linked(self):
+        chosen = Organization.objects.create(name="Наша клиника")
 
-        staff.apply_card(self.user, card_payload())
+        staff.apply_card(self.user, card_payload(), organization=chosen)
 
-        existing.refresh_from_db()
-        self.assertEqual(existing.erkinai_id, 1)
-        self.assertEqual(Organization.objects.count(), 1)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.organization_id, chosen.id)
+
+    def test_endpoint_links_the_chosen_organization(self):
+        chosen = Organization.objects.create(name="Наша клиника")
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with patch.object(staff, "offer_for_phone", return_value=[card_payload()]):
+            response = api.post(
+                reverse("erkinai_become_specialist"),
+                data={"employeeId": 42, "organizationId": chosen.id},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.organization_id, chosen.id)
+
+    def test_endpoint_rejects_an_unknown_organization(self):
+        """Выбор из списка не прошёл — человек должен узнать, а не гадать."""
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with patch.object(staff, "offer_for_phone", return_value=[card_payload()]):
+            response = api.post(
+                reverse("erkinai_become_specialist"),
+                data={"employeeId": 42, "organizationId": 99999},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.role, ROLE_CLIENT)
+
+    def test_endpoint_rejects_a_deactivated_organization(self):
+        dead = Organization.objects.create(name="Закрытая", is_active=False)
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with patch.object(staff, "offer_for_phone", return_value=[card_payload()]):
+            response = api.post(
+                reverse("erkinai_become_specialist"),
+                data={"employeeId": 42, "organizationId": dead.id},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_endpoint_rejects_a_non_numeric_organization(self):
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with patch.object(staff, "offer_for_phone", return_value=[card_payload()]):
+            response = api.post(
+                reverse("erkinai_become_specialist"),
+                data={"employeeId": 42, "organizationId": "abc"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_organization_is_optional(self):
+        """Клиники может не быть в списке — роль всё равно выдаётся."""
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with patch.object(staff, "offer_for_phone", return_value=[card_payload()]):
+            response = api.post(
+                reverse("erkinai_become_specialist"),
+                data={"employeeId": 42},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.role, ROLE_SPECIALIST)
+        self.assertIsNone(self.user.organization_id)
 
     def test_find_card_refuses_a_card_that_is_not_yours(self):
         """Присланный клиентом id ничего не доказывает — ищем по его телефону."""
