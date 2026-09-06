@@ -47,7 +47,7 @@ def reject_application(application, reason: str, reviewed_by: str = ""):
 
 def apply_approval_effects(application, reviewed_by: str = ""):
     """Выдаёт роль специалиста и шлёт пуш. Статус заявки уже должен быть accepted."""
-    from ..models import ROLE_SPECIALIST
+    from ..models import ROLE_SPECIALIST, UserEducation, UserWorkplace
 
     user = application.user
     if user:
@@ -56,6 +56,30 @@ def apply_approval_effects(application, reviewed_by: str = ""):
         if application.organization:
             user.organization = application.organization
         user.save()
+
+        if not user.educations.exists():
+            UserEducation.objects.bulk_create(
+                UserEducation(
+                    user=user,
+                    institution=item.institution,
+                    faculty=item.faculty,
+                    start_date=item.start_date,
+                    end_date=item.end_date,
+                )
+                for item in application.educations.all()
+            )
+        if not user.workplaces.exists():
+            UserWorkplace.objects.bulk_create(
+                UserWorkplace(
+                    user=user,
+                    organization=item.organization,
+                    position=item.position,
+                    start_date=item.start_date,
+                    end_date=item.end_date,
+                    is_current=item.is_current,
+                )
+                for item in application.work_experiences.all()
+            )
 
     logger.info("Application %s approved by %s", application.id, reviewed_by or "admin")
 

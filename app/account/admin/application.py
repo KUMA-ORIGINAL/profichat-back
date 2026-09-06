@@ -2,7 +2,7 @@ from django.contrib import admin, messages
 from unfold.admin import TabularInline
 
 from common.admin import BaseModelAdmin
-from ..models import Application, WorkExperience
+from ..models import Application, ApplicationEducation, WorkExperience
 from ..services.application_review import (
     STATUS_ACCEPTED,
     STATUS_PENDING,
@@ -17,15 +17,20 @@ class WorkExperienceInline(TabularInline):
     extra = 1
 
 
+class ApplicationEducationInline(TabularInline):
+    model = ApplicationEducation
+    extra = 1
+
+
 @admin.register(Application)
 class ApplicationAdmin(BaseModelAdmin):
     list_display = ("id", "first_name", "last_name", 'profession', 'custom_profession', 'organization', 'custom_organization', 'status', "created_at", 'detail_link')
     list_display_links = ("id", "first_name")
-    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "organization__name", "custom_organization", "education")
+    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "organization__name", "custom_organization", "educations__institution")
     list_filter = ("profession", "organization", "created_at", 'status')
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
-    inlines = [WorkExperienceInline]
+    inlines = [ApplicationEducationInline, WorkExperienceInline]
 
     def save_model(self, request, obj, form, change):
         old_status = None

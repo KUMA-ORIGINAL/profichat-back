@@ -202,6 +202,7 @@ class BecomeSpecialistTests(TestCase):
         self.assertEqual(self.user.middle_name, "Кубанычбековна")
         self.assertEqual(self.user.education, "КГМА")
         self.assertEqual(self.user.work_experience, "7")
+        self.assertEqual(self.user.educations.get().institution, "КГМА")
 
     def test_existing_profile_data_is_not_overwritten(self):
         """Человек мог заполнить профиль до привязки — CRM его не затирает."""

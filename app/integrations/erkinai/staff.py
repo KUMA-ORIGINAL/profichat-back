@@ -85,6 +85,13 @@ def apply_card(user, card: dict, organization=None):
         updated.append("organization")
 
     user.save(update_fields=updated)
+
+    # Новая структура профиля хранит образования отдельными записями. Старое
+    # строковое поле пока также заполняется для обратной совместимости.
+    education = (card.get("education") or "").strip()
+    if education and not user.educations.exists():
+        from account.models import UserEducation
+        UserEducation.objects.create(user=user, institution=education)
     logger.info(
         "[ERKINAI] Пользователь %s стал специалистом по карточке %s (организация %s)",
         user.id,

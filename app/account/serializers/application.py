@@ -1,17 +1,46 @@
 from rest_framework import serializers
 
-from ..models import Application, WorkExperience, Organization
+from ..models import Application, ApplicationEducation, WorkExperience, Organization
+
+
+class ApplicationEducationSerializer(serializers.ModelSerializer):
+    start_date = serializers.DateField(required=True)
+    end_date = serializers.DateField(required=True)
+
+    class Meta:
+        model = ApplicationEducation
+        fields = ['institution', 'faculty', 'start_date', 'end_date']
+
+    def validate(self, attrs):
+        if attrs['end_date'] < attrs['start_date']:
+            raise serializers.ValidationError({'end_date': 'Дата окончания не может быть раньше даты начала.'})
+        return attrs
 
 
 class WorkExperienceSerializer(serializers.ModelSerializer):
+    start_date = serializers.DateField(required=True)
+
     class Meta:
         model = WorkExperience
-        fields = ['name',]
+        fields = ['organization', 'position', 'start_date', 'end_date', 'is_current']
+
+    def validate(self, attrs):
+        start_date = attrs['start_date']
+        end_date = attrs.get('end_date')
+        is_current = attrs.get('is_current', False)
+        if is_current and end_date:
+            raise serializers.ValidationError({'end_date': 'Для текущего места работы дата окончания должна быть пустой.'})
+        if not is_current and not end_date:
+            raise serializers.ValidationError({'end_date': 'Укажите дату окончания или отметьте, что работаете здесь сейчас.'})
+        if end_date and end_date < start_date:
+            raise serializers.ValidationError({'end_date': 'Дата окончания не может быть раньше даты начала.'})
+        return attrs
 
 
 class ApplicationSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     work_experiences = WorkExperienceSerializer(many=True)
+    education = ApplicationEducationSerializer(source='educations', many=True)
     organization = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.filter(is_active=True),
         required=False,
@@ -54,8 +83,12 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         work_experiences_data = validated_data.pop('work_experiences')
+        educations_data = validated_data.pop('educations')
 
         application = Application.objects.create(**validated_data)
+
+        for education_data in educations_data:
+            ApplicationEducation.objects.create(application=application, **education_data)
 
         for work_data in work_experiences_data:
             WorkExperience.objects.create(application=application, **work_data)

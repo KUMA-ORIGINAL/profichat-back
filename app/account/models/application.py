@@ -11,7 +11,6 @@ class Application(models.Model):
 
     first_name = models.CharField(max_length=100, verbose_name=_("Имя"))
     last_name = models.CharField(max_length=100, verbose_name=_("Фамилия"))
-    education = models.CharField(max_length=255, verbose_name=_("Образование"))
     status = models.CharField(
         max_length=10,
         choices=STATUS_CHOICES,
@@ -71,11 +70,30 @@ class Application(models.Model):
 
 class WorkExperience(models.Model):
     application = models.ForeignKey(Application, related_name='work_experiences', on_delete=models.CASCADE)
-    name = models.CharField(max_length=255, verbose_name=_("Место работы / описание опыта"))
+    organization = models.CharField(max_length=255, verbose_name=_("Организация"))
+    position = models.CharField(max_length=255, blank=True, verbose_name=_("Должность"))
+    start_date = models.DateField(null=True, blank=True, verbose_name=_("Дата начала работы"))
+    end_date = models.DateField(null=True, blank=True, verbose_name=_("Дата окончания работы"))
+    is_current = models.BooleanField(default=False, verbose_name=_("Сейчас работает здесь"))
 
     class Meta:
         verbose_name = _("Опыт работы")
         verbose_name_plural = _("Опыт работы")
 
     def __str__(self):
-        return f"{self.name}"
+        return f"{self.organization} — {self.position}" if self.position else self.organization
+
+
+class ApplicationEducation(models.Model):
+    application = models.ForeignKey(Application, related_name='educations', on_delete=models.CASCADE)
+    institution = models.CharField(max_length=255, verbose_name=_("Учебное заведение"))
+    faculty = models.CharField(max_length=255, blank=True, verbose_name=_("Факультет или направление"))
+    start_date = models.DateField(null=True, blank=True, verbose_name=_("Дата начала обучения"))
+    end_date = models.DateField(null=True, blank=True, verbose_name=_("Дата окончания обучения"))
+
+    class Meta:
+        verbose_name = _("Образование в заявке")
+        verbose_name_plural = _("Образование в заявках")
+
+    def __str__(self):
+        return self.institution

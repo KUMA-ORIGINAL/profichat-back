@@ -168,7 +168,13 @@ def notify_new_client_registration(user) -> bool:
 def build_application_message(application, footer: str = "") -> str:
     """Собирает текст карточки заявки (используется и при отправке, и при правке сообщения)."""
     work_experiences = application.work_experiences.all()
-    work_exp_text = "\n".join([f"  • {exp.name}" for exp in work_experiences]) if work_experiences else "  Не указан"
+    work_exp_text = "\n".join(
+        [f"  • {exp.organization}" + (f" — {exp.position}" if exp.position else "") for exp in work_experiences]
+    ) if work_experiences else "  Не указан"
+    educations = application.educations.all()
+    education_text = "\n".join(
+        [f"  • {item.institution}" + (f" — {item.faculty}" if item.faculty else "") for item in educations]
+    ) if educations else "  Не указано"
 
     # Конвертируем время в локальный часовой пояс
     local_time = timezone.localtime(application.created_at)
@@ -179,7 +185,7 @@ def build_application_message(application, footer: str = "") -> str:
     message = (
         f"📋 <b>Новая заявка на специалиста!</b>\n\n"
         f"👤 ФИО: {application.last_name} {application.first_name}\n"
-        f"🎓 Образование: {application.education}\n"
+        f"🎓 Образование:\n{education_text}\n"
         f"💼 Профессия: {profession_text}\n"
         f"🏢 Организация: {organization_text}\n"
         f"📝 Опыт работы:\n{work_exp_text}\n"

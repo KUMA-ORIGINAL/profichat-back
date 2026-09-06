@@ -5,6 +5,7 @@ from chat_access.serializers import TariffSpecialistSerializer
 from .organization import OrganizationShortSerializer
 from .profession_category import ProfessionCategorySerializer
 from .work_schedule import WorkScheduleSerializer
+from .user import UserEducationSerializer, UserWorkplaceSerializer
 
 from ..models import User
 
@@ -15,6 +16,8 @@ class SpecialistSerializer(serializers.ModelSerializer):
     channel_id = serializers.SerializerMethodField()
     work_schedules = WorkScheduleSerializer(many=True, read_only=True)
     organization = OrganizationShortSerializer(read_only=True)
+    education = UserEducationSerializer(source='educations', many=True, read_only=True)
+    work_experience = UserWorkplaceSerializer(source='workplaces', many=True, read_only=True)
 
     class Meta:
         model = User
@@ -34,6 +37,8 @@ class SpecialistSerializer(serializers.ModelSerializer):
 
 class SpecialistListSerializer(serializers.ModelSerializer):
     profession = ProfessionCategorySerializer(read_only=True)
+    education = UserEducationSerializer(source='educations', many=True, read_only=True)
+    work_experience = UserWorkplaceSerializer(source='workplaces', many=True, read_only=True)
 
     class Meta:
         model = User

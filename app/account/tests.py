@@ -6,10 +6,161 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from account.models import Notification
+from account.models import (
+    Application,
+    ApplicationEducation,
+    Notification,
+    UserEducation,
+    UserWorkplace,
+    WorkExperience,
+)
+from account.services.application_review import apply_approval_effects
 from common.notifications import notify_user
 
 User = get_user_model()
+
+
+class UserProfileHistoryApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="profile_user", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    @patch("account.views.user.broadcast_user_update")
+    def test_patch_replaces_education_and_workplace_lists(self, broadcast_mock):
+        response = self.client.patch(
+            reverse("user-me"),
+            data={
+                "education": [{
+                    "institution": "БГУ",
+                    "faculty": "Юридический",
+                    "start_date": "2018-09-01",
+                    "end_date": "2022-06-30",
+                }],
+                "work_experience": [{
+                    "organization": "МЦ Мама Доктор",
+                    "position": "Ортодонт",
+                    "start_date": "2022-07-01",
+                    "end_date": None,
+                    "is_current": True,
+                }],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(UserEducation.objects.get(user=self.user).faculty, "Юридический")
+        workplace = UserWorkplace.objects.get(user=self.user)
+        self.assertEqual(workplace.position, "Ортодонт")
+        self.assertTrue(workplace.is_current)
+        self.assertIsNone(workplace.end_date)
+        self.assertEqual(response.data["education"][0]["institution"], "БГУ")
+        self.assertEqual(response.data["work_experience"][0]["organization"], "МЦ Мама Доктор")
+        broadcast_mock.assert_called_once()
+
+    @patch("account.views.user.broadcast_user_update")
+    def test_patch_omitted_list_is_preserved_and_empty_list_clears(self, _broadcast_mock):
+        UserEducation.objects.create(
+            user=self.user,
+            institution="КГМА",
+            start_date="2010-09-01",
+            end_date="2016-06-30",
+        )
+        UserWorkplace.objects.create(
+            user=self.user,
+            organization="Клиника",
+            start_date="2020-01-01",
+            is_current=True,
+        )
+
+        first_response = self.client.patch(
+            reverse("user-me"), data={"education": []}, format="json"
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(self.user.educations.exists())
+        self.assertTrue(self.user.workplaces.exists())
+
+    @patch("account.views.user.broadcast_user_update")
+    def test_rejects_invalid_work_period(self, broadcast_mock):
+        response = self.client.patch(
+            reverse("user-me"),
+            data={
+                "work_experience": [{
+                    "organization": "Клиника",
+                    "position": "Врач",
+                    "start_date": "2024-01-01",
+                    "end_date": "2023-01-01",
+                    "is_current": False,
+                }],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(self.user.workplaces.exists())
+        broadcast_mock.assert_not_called()
+
+
+class ApplicationProfileHistoryApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="applicant", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    @patch("common.telegram_notifier.notify_specialist_application")
+    def test_application_accepts_structured_history(self, notify_mock):
+        response = self.client.post(
+            reverse("application-create-list"),
+            data={
+                "first_name": "Айгуль",
+                "last_name": "Осмонова",
+                "custom_profession": "Ортодонт",
+                "education": [{
+                    "institution": "КГМА",
+                    "faculty": "Стоматология",
+                    "start_date": "2014-09-01",
+                    "end_date": "2020-06-30",
+                }],
+                "work_experiences": [{
+                    "organization": "МЦ Мама Доктор",
+                    "position": "Ортодонт",
+                    "start_date": "2020-07-01",
+                    "end_date": None,
+                    "is_current": True,
+                }],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(ApplicationEducation.objects.get().institution, "КГМА")
+        self.assertEqual(WorkExperience.objects.get().position, "Ортодонт")
+        notify_mock.assert_called_once()
+
+    def test_approved_application_copies_history_to_empty_profile(self):
+        application = Application.objects.create(
+            user=self.user,
+            first_name="Айгуль",
+            last_name="Осмонова",
+            custom_profession="Ортодонт",
+        )
+        ApplicationEducation.objects.create(
+            application=application,
+            institution="КГМА",
+            faculty="Стоматология",
+            start_date="2014-09-01",
+            end_date="2020-06-30",
+        )
+        WorkExperience.objects.create(
+            application=application,
+            organization="МЦ Мама Доктор",
+            position="Ортодонт",
+            start_date="2020-07-01",
+            is_current=True,
+        )
+
+        apply_approval_effects(application)
+
+        self.assertEqual(self.user.educations.get().institution, "КГМА")
+        self.assertEqual(self.user.workplaces.get().organization, "МЦ Мама Доктор")
 
 
 class NotificationApiTests(APITestCase):

@@ -262,3 +262,46 @@ class User(AbstractUser):
             "phone_number",
             "old_phone_number",
         ])
+
+
+class UserEducation(models.Model):
+    user = models.ForeignKey(
+        User,
+        related_name="educations",
+        on_delete=models.CASCADE,
+        verbose_name=_("Пользователь"),
+    )
+    institution = models.CharField(max_length=255, verbose_name=_("Учебное заведение"))
+    faculty = models.CharField(max_length=255, blank=True, verbose_name=_("Факультет или направление"))
+    start_date = models.DateField(null=True, blank=True, verbose_name=_("Дата начала обучения"))
+    end_date = models.DateField(null=True, blank=True, verbose_name=_("Дата окончания обучения"))
+
+    class Meta:
+        ordering = ("-start_date", "-id")
+        verbose_name = _("Образование пользователя")
+        verbose_name_plural = _("Образование пользователей")
+
+    def __str__(self):
+        return self.institution
+
+
+class UserWorkplace(models.Model):
+    user = models.ForeignKey(
+        User,
+        related_name="workplaces",
+        on_delete=models.CASCADE,
+        verbose_name=_("Пользователь"),
+    )
+    organization = models.CharField(max_length=255, verbose_name=_("Организация"))
+    position = models.CharField(max_length=255, blank=True, verbose_name=_("Должность"))
+    start_date = models.DateField(null=True, blank=True, verbose_name=_("Дата начала работы"))
+    end_date = models.DateField(null=True, blank=True, verbose_name=_("Дата окончания работы"))
+    is_current = models.BooleanField(default=False, verbose_name=_("Сейчас работает здесь"))
+
+    class Meta:
+        ordering = ("-is_current", "-start_date", "-id")
+        verbose_name = _("Место работы пользователя")
+        verbose_name_plural = _("Места работы пользователей")
+
+    def __str__(self):
+        return f"{self.organization} — {self.position}" if self.position else self.organization
