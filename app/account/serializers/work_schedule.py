@@ -13,12 +13,20 @@ class WorkScheduleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkSchedule
-        fields = ('id', 'user', 'day_of_week', 'from_time', 'to_time', 'is_day_off', 'is_round_the_clock')
+        fields = (
+            'id', 'user', 'day_of_week', 'from_time', 'to_time',
+            'lunch_from_time', 'lunch_to_time', 'is_day_off', 'is_round_the_clock',
+        )
         list_serializer_class = WorkScheduleListSerializer
 
     def validate(self, attrs):
-        is_day_off = attrs.get('is_day_off', False)
-        is_round_the_clock = attrs.get('is_round_the_clock', False)
+        def value(field, default=None):
+            if field in attrs:
+                return attrs[field]
+            return getattr(self.instance, field, default)
+
+        is_day_off = value('is_day_off', False)
+        is_round_the_clock = value('is_round_the_clock', False)
 
         if is_day_off and is_round_the_clock:
             raise serializers.ValidationError(
@@ -28,10 +36,29 @@ class WorkScheduleSerializer(serializers.ModelSerializer):
         if is_day_off or is_round_the_clock:
             attrs['from_time'] = None
             attrs['to_time'] = None
+            attrs['lunch_from_time'] = None
+            attrs['lunch_to_time'] = None
         else:
-            if not attrs.get('from_time') or not attrs.get('to_time'):
+            from_time = value('from_time')
+            to_time = value('to_time')
+            lunch_from_time = value('lunch_from_time')
+            lunch_to_time = value('lunch_to_time')
+
+            if not from_time or not to_time:
                 raise serializers.ValidationError(
                     "Укажите время начала и окончания, либо отметьте выходной/круглосуточно."
+                )
+            if from_time >= to_time:
+                raise serializers.ValidationError(
+                    "Время окончания работы должно быть позже времени начала."
+                )
+            if bool(lunch_from_time) != bool(lunch_to_time):
+                raise serializers.ValidationError(
+                    "Укажите время начала и окончания обеда."
+                )
+            if lunch_from_time and not (from_time < lunch_from_time < lunch_to_time < to_time):
+                raise serializers.ValidationError(
+                    "Обед должен находиться внутри рабочего времени."
                 )
 
         return attrs

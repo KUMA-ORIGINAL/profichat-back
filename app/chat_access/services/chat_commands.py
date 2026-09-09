@@ -17,7 +17,7 @@ def create_or_get_chat(client, specialist):
     )
     if created:
         try:
-            create_stream_channel(chat)
+            create_stream_channel(chat, first_message=specialist.invite_greeting)
         except Exception as exc:
             chat.delete()
             raise AppError(

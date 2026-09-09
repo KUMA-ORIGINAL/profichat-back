@@ -13,11 +13,75 @@ from account.models import (
     UserEducation,
     UserWorkplace,
     WorkExperience,
+    WorkSchedule,
 )
+from account.serializers import WorkScheduleSerializer
 from account.services.application_review import apply_approval_effects
 from common.notifications import notify_user
 
 User = get_user_model()
+
+
+class WorkScheduleSerializerTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="schedule_user", password="pass")
+
+    def test_accepts_lunch_inside_working_hours(self):
+        serializer = WorkScheduleSerializer(
+            data={
+                "day_of_week": 1,
+                "from_time": "09:00:00",
+                "to_time": "18:00:00",
+                "lunch_from_time": "13:00:00",
+                "lunch_to_time": "14:00:00",
+            },
+            context={"request": type("Request", (), {"user": self.user})()},
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_rejects_incomplete_lunch_period(self):
+        serializer = WorkScheduleSerializer(
+            data={
+                "day_of_week": 1,
+                "from_time": "09:00:00",
+                "to_time": "18:00:00",
+                "lunch_from_time": "13:00:00",
+            },
+            context={"request": type("Request", (), {"user": self.user})()},
+        )
+
+        self.assertFalse(serializer.is_valid())
+
+    def test_rejects_lunch_outside_working_hours(self):
+        serializer = WorkScheduleSerializer(
+            data={
+                "day_of_week": 1,
+                "from_time": "09:00:00",
+                "to_time": "18:00:00",
+                "lunch_from_time": "18:00:00",
+                "lunch_to_time": "19:00:00",
+            },
+            context={"request": type("Request", (), {"user": self.user})()},
+        )
+
+        self.assertFalse(serializer.is_valid())
+
+    def test_day_off_clears_lunch_period(self):
+        schedule = WorkSchedule.objects.create(
+            user=self.user,
+            day_of_week=1,
+            from_time="09:00:00",
+            to_time="18:00:00",
+            lunch_from_time="13:00:00",
+            lunch_to_time="14:00:00",
+        )
+        serializer = WorkScheduleSerializer(schedule, data={"is_day_off": True}, partial=True)
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        updated = serializer.save()
+        self.assertIsNone(updated.lunch_from_time)
+        self.assertIsNone(updated.lunch_to_time)
 
 
 class UserProfileHistoryApiTests(APITestCase):

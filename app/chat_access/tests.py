@@ -239,6 +239,7 @@ class ChatCommandTests(ChatBaseTestCase):
             username="specialist_new",
             password="pass",
             role=ROLE_SPECIALIST,
+            invite_greeting="Здравствуйте! Чем могу помочь?",
         )
         self.client.force_authenticate(user=self.client_user)
 
@@ -250,7 +251,10 @@ class ChatCommandTests(ChatBaseTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Chat.objects.filter(client=self.client_user, specialist=new_specialist).count(), 1)
-        create_stream_channel_mock.assert_called_once()
+        create_stream_channel_mock.assert_called_once_with(
+            Chat.objects.get(client=self.client_user, specialist=new_specialist),
+            first_message="Здравствуйте! Чем могу помочь?",
+        )
 
     @patch("chat_access.services.chat_commands.update_channel_extra_data")
     def test_specialist_can_update_chat(self, update_channel_extra_data_mock):

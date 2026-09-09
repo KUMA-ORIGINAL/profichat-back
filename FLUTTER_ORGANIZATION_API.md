@@ -123,6 +123,8 @@
 | `day_of_week_display` | string | Человекочитаемое название дня |
 | `from_time` | string \| null | Время начала, формат `"HH:MM:SS"` |
 | `to_time` | string \| null | Время окончания, формат `"HH:MM:SS"` |
+| `lunch_from_time` | string \| null | Время начала обеда, формат `"HH:MM:SS"` |
+| `lunch_to_time` | string \| null | Время окончания обеда, формат `"HH:MM:SS"` |
 | `is_day_off` | bool | `true` — выходной день |
 | `is_round_the_clock` | bool | `true` — работает круглосуточно |
 

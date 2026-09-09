@@ -30,7 +30,8 @@ class OrganizationWorkScheduleSerializer(serializers.ModelSerializer):
         model = OrganizationWorkSchedule
         fields = (
             "id", "day_of_week", "day_of_week_display",
-            "from_time", "to_time", "is_day_off", "is_round_the_clock",
+            "from_time", "to_time", "lunch_from_time", "lunch_to_time",
+            "is_day_off", "is_round_the_clock",
         )
 
 

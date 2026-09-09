@@ -31,6 +31,8 @@ class WorkSchedule(models.Model):
     )
     from_time = models.TimeField(verbose_name='Время начала', null=True, blank=True)
     to_time = models.TimeField(verbose_name='Время окончания', null=True, blank=True)
+    lunch_from_time = models.TimeField(verbose_name='Начало обеда', null=True, blank=True)
+    lunch_to_time = models.TimeField(verbose_name='Окончание обеда', null=True, blank=True)
     is_day_off = models.BooleanField(default=False, verbose_name='Выходной')
     is_round_the_clock = models.BooleanField(default=False, verbose_name='Круглосуточно')
 
