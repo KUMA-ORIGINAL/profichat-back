@@ -10,6 +10,8 @@ class Notification(BaseModel):
     TYPE_CHAT_INVITE = "chat_invite"
     TYPE_APPLICATION_ACCEPTED = "application_accepted"
     TYPE_APPLICATION_REJECTED = "application_rejected"
+    TYPE_PROFESSION_REQUEST_APPROVED = "profession_request_approved"
+    TYPE_PROFESSION_REQUEST_REJECTED = "profession_request_rejected"
     TYPE_ERKINAI = "erkinai"
 
     TYPE_CHOICES = (
@@ -18,6 +20,8 @@ class Notification(BaseModel):
         (TYPE_CHAT_INVITE, "Приглашение в чат"),
         (TYPE_APPLICATION_ACCEPTED, "Заявка одобрена"),
         (TYPE_APPLICATION_REJECTED, "Заявка отклонена"),
+        (TYPE_PROFESSION_REQUEST_APPROVED, "Профессия добавлена"),
+        (TYPE_PROFESSION_REQUEST_REJECTED, "Заявка на профессию отклонена"),
         (TYPE_ERKINAI, "Из ErkinAI"),
     )
 

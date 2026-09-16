@@ -180,6 +180,10 @@ def build_application_message(application, footer: str = "") -> str:
     local_time = timezone.localtime(application.created_at)
 
     profession_text = application.profession.name if application.profession else (application.custom_profession or 'Не указана')
+    if not application.profession and application.custom_profession:
+        profession_text += " (своя)"
+        if application.custom_profession_description:
+            profession_text += f"\n  {application.custom_profession_description}"
     organization_text = application.organization.name if application.organization else (application.custom_organization or 'Не указана')
 
     message = (
@@ -196,6 +200,22 @@ def build_application_message(application, footer: str = "") -> str:
     if footer:
         message = f"{message}\n\n{footer}"
     return message
+
+
+def notify_profession_request(profession_request) -> bool:
+    """Уведомляет админов о заявке на новую профессию, поданной из профиля."""
+    user = profession_request.user
+    local_time = timezone.localtime(profession_request.created_at)
+    message = (
+        f"🆕 <b>Заявка на новую профессию</b>\n\n"
+        f"💼 Профессия: {profession_request.name}\n"
+        f"📝 Описание: {profession_request.description or 'Не указано'}\n"
+        f"👤 Пользователь: {user.last_name} {user.first_name} (ID: {user.id}, {user.get_role_display()})\n"
+        f"🆔 ID заявки: {profession_request.id}\n"
+        f"📅 Дата подачи: {local_time.strftime('%d.%m.%Y %H:%M')}\n\n"
+        f"Рассмотреть можно в админке: Заявки на профессии."
+    )
+    return send_telegram_notification(message)
 
 
 def notify_specialist_application(application) -> bool:

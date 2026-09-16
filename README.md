@@ -30,3 +30,4 @@
 - **GET docs/**
 - **GET schema/**
 - [API_ERROR_CODES.md](API_ERROR_CODES.md) — формат ошибок API и коды ошибок для клиента
+- [PROFESSION_REQUEST_API.md](PROFESSION_REQUEST_API.md) — заявка на новую профессию (из анкеты и из профиля), модерация

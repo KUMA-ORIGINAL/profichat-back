@@ -301,3 +301,46 @@ def send_application_rejected_push(user, application):
         payload=extra,
         log_prefix="[Push][Application]",
     )
+
+
+def send_profession_request_approved_push(user, profession_request):
+    category = profession_request.profession_category
+    title = "Профессия добавлена"
+    message = f"«{profession_request.name}» теперь есть в списке профессий."
+    if user.profession_id and category and user.profession_id == category.id:
+        message = f"«{profession_request.name}» добавлена в список и указана в вашем профиле."
+    extra = {
+        "profession_request_id": str(profession_request.id),
+        "profession_category_id": str(category.id) if category else "",
+        "type": "profession_request_approved",
+    }
+    return notify_user(
+        user=user,
+        title=title,
+        message=message,
+        notification_type="profession_request_approved",
+        payload=extra,
+        log_prefix="[Push][ProfessionRequest]",
+    )
+
+
+def send_profession_request_rejected_push(user, profession_request):
+    title = "Заявка на профессию отклонена"
+    reason = (profession_request.reason or "").strip()
+    message = (
+        f"«{profession_request.name}»: {reason}" if reason
+        else f"К сожалению, профессию «{profession_request.name}» добавить не получится."
+    )
+    extra = {
+        "profession_request_id": str(profession_request.id),
+        "type": "profession_request_rejected",
+        "reason": reason,
+    }
+    return notify_user(
+        user=user,
+        title=title,
+        message=message,
+        notification_type="profession_request_rejected",
+        payload=extra,
+        log_prefix="[Push][ProfessionRequest]",
+    )

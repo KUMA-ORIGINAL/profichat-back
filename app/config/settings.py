@@ -293,6 +293,10 @@ REST_FRAMEWORK = {
         'djangorestframework_camel_case.parser.CamelCaseJSONParser',
     ),
     'EXCEPTION_HANDLER': 'common.error_handler.api_exception_handler',
+    'DEFAULT_THROTTLE_RATES': {
+        # заявки на новую профессию — защита от спама в очередь модерации
+        'profession_requests': env('PROFESSION_REQUESTS_THROTTLE_RATE', default='10/hour'),
+    },
 }
 
 SIMPLE_JWT = {

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from ..models import Application, ApplicationEducation, WorkExperience, Organization
+from ..services.profession_request import create_application_request
 
 
 class ApplicationEducationSerializer(serializers.ModelSerializer):
@@ -46,6 +47,13 @@ class ApplicationSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    custom_profession_description = serializers.CharField(
+        max_length=500,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        error_messages={'max_length': 'Описание — не длиннее 500 символов.'},
+    )
 
     class Meta:
         model = Application
@@ -57,6 +65,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             'profession',
             'organization',
             'custom_profession',
+            'custom_profession_description',
             'custom_organization',
             'education',
             'work_experiences',
@@ -75,6 +84,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
         if custom_profession:
             attrs['custom_profession'] = custom_profession
 
+        # Описание имеет смысл только вместе со своей профессией; старые сборки его не шлют.
+        description = (attrs.get('custom_profession_description') or '').strip()
+        attrs['custom_profession_description'] = description if custom_profession else ''
+
         custom_organization = (attrs.get('custom_organization') or '').strip()
         if custom_organization:
             attrs['custom_organization'] = custom_organization
@@ -92,6 +105,10 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
         for work_data in work_experiences_data:
             WorkExperience.objects.create(application=application, **work_data)
+
+        # Своя профессия попадает в общую очередь заявок на профессии
+        if application.custom_profession:
+            create_application_request(application)
 
         # Отправляем уведомление в Telegram о новой заявке на специалиста
         from common.telegram_notifier import notify_specialist_application

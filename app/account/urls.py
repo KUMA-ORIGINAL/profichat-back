@@ -8,6 +8,7 @@ from . import views
 
 router = SimpleRouter()
 router.register('profession-categories', views.ProfessionCategoryViewSet, basename='profession-categories')
+router.register('profession-requests', views.ProfessionRequestViewSet, basename='profession-requests')
 router.register('organizations', views.OrganizationViewSet, basename='organizations')
 router.register('specialists', views.SpecialistViewSet, basename='specialist')
 router.register('apply', views.ApplicationCreateViewSet, basename='application-create'),

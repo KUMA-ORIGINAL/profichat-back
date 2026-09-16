@@ -13,3 +13,4 @@ from .work_schedule import *
 from .invite_delivery import *
 from .notification import *
 from .push_device_status import *
+from .profession_request import *

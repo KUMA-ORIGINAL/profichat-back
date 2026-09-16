@@ -1,15 +1,19 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from account.models import (
+    ROLE_SPECIALIST,
     Application,
     ApplicationEducation,
     Notification,
+    ProfessionCategory,
+    ProfessionRequest,
     UserEducation,
     UserWorkplace,
     WorkExperience,
@@ -17,7 +21,12 @@ from account.models import (
 )
 from account.serializers import WorkScheduleSerializer
 from account.services.application_review import apply_approval_effects
-from common.notifications import notify_user
+from account.services.profession_request import (
+    ProfessionRequestAlreadyReviewed,
+    approve_profession_request,
+    reject_profession_request,
+)
+from common.notifications import notify_user, send_profession_request_approved_push
 
 User = get_user_model()
 
@@ -225,6 +234,287 @@ class ApplicationProfileHistoryApiTests(APITestCase):
 
         self.assertEqual(self.user.educations.get().institution, "КГМА")
         self.assertEqual(self.user.workplaces.get().organization, "МЦ Мама Доктор")
+
+
+APPLICATION_HISTORY = {
+    "education": [{
+        "institution": "КГМА",
+        "faculty": "Стоматология",
+        "start_date": "2014-09-01",
+        "end_date": "2020-06-30",
+    }],
+    "work_experiences": [{
+        "organization": "МЦ Мама Доктор",
+        "position": "Кинолог",
+        "start_date": "2020-07-01",
+        "end_date": None,
+        "is_current": True,
+    }],
+}
+
+
+@patch("common.telegram_notifier.notify_specialist_application")
+class ApplicationCustomProfessionApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="applicant_2", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    def _apply(self, **extra):
+        return self.client.post(
+            reverse("application-create-list"),
+            data={"first_name": "Дастан", "last_name": "Азимжанов", **APPLICATION_HISTORY, **extra},
+            format="json",
+        )
+
+    def test_description_is_saved_and_queued_for_moderation(self, notify_mock):
+        response = self._apply(
+            custom_profession="  Кинолог ",
+            custom_profession_description="Специалист по дрессировке собак",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        application = Application.objects.get()
+        self.assertEqual(application.custom_profession, "Кинолог")
+        self.assertEqual(application.custom_profession_description, "Специалист по дрессировке собак")
+
+        profession_request = application.profession_request
+        self.assertEqual(profession_request.source, ProfessionRequest.SOURCE_APPLICATION)
+        self.assertEqual(profession_request.status, ProfessionRequest.STATUS_PENDING)
+        self.assertEqual(profession_request.user, self.user)
+        self.assertEqual(profession_request.description, "Специалист по дрессировке собак")
+
+    def test_custom_profession_without_description_still_accepted(self, notify_mock):
+        response = self._apply(custom_profession="Кинолог")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(Application.objects.get().custom_profession_description, "")
+        self.assertEqual(ProfessionRequest.objects.get().description, "")
+
+    def test_description_without_custom_profession_is_dropped(self, notify_mock):
+        category = ProfessionCategory.objects.create(name="Разработчик")
+
+        response = self._apply(profession=category.id, custom_profession_description="лишнее")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(Application.objects.get().custom_profession_description, "")
+        self.assertFalse(ProfessionRequest.objects.exists())
+
+    def test_too_long_description_is_rejected(self, notify_mock):
+        response = self._apply(custom_profession="Кинолог", custom_profession_description="x" * 501)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["code"], "VALIDATION_ERROR")
+        self.assertIn("custom_profession_description", response.data["errors"])
+
+
+# throttle считает запросы в кэше — в тестах он в памяти, а не в Redis
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
+@patch("common.telegram_notifier.notify_profession_request")
+class ProfessionRequestApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="requester", password="pass")
+        self.client.force_authenticate(user=self.user)
+        self.url = reverse("profession-requests-list")
+        self.payload = {
+            "name": "Кинолог",
+            "description": "Кинолог — это специалист, который занимается дрессировкой собак",
+        }
+
+    def test_creates_pending_request(self, notify_mock):
+        response = self.client.post(self.url, data=self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["status"], "pending")
+        self.assertEqual(response.data["name"], "Кинолог")
+        self.assertIsNone(response.data["profession_category"])
+        self.assertIn("created_at", response.data)
+
+        profession_request = ProfessionRequest.objects.get()
+        self.assertEqual(profession_request.user, self.user)
+        self.assertEqual(profession_request.source, ProfessionRequest.SOURCE_PROFILE)
+        notify_mock.assert_called_once()
+
+    def test_requires_authentication(self, notify_mock):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.post(self.url, data=self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data["code"], "NOT_AUTHENTICATED")
+
+    def test_validates_required_fields_and_limits(self, notify_mock):
+        response = self.client.post(self.url, data={"name": "   ", "description": "x" * 501}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["code"], "VALIDATION_ERROR")
+        self.assertIn("name", response.data["errors"])
+        self.assertIn("description", response.data["errors"])
+        self.assertFalse(ProfessionRequest.objects.exists())
+
+        response = self.client.post(self.url, data={"name": "x" * 101, "description": "ok"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("name", response.data["errors"])
+
+    def test_conflict_when_category_already_exists(self, notify_mock):
+        ProfessionCategory.objects.create(name="кинолог")
+
+        response = self.client.post(self.url, data=self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data["code"], "CONFLICT")
+        self.assertIn("уже есть в списке", response.data["message"])
+        self.assertFalse(ProfessionRequest.objects.exists())
+
+    def test_conflict_when_own_pending_request_exists(self, notify_mock):
+        ProfessionRequest.objects.create(user=self.user, name="КИНОЛОГ", description="…")
+
+        response = self.client.post(self.url, data=self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data["code"], "CONFLICT")
+        self.assertEqual(response.data["message"], "Заявка на эту профессию уже на проверке")
+        self.assertEqual(ProfessionRequest.objects.count(), 1)
+
+    def test_rejected_request_can_be_resubmitted(self, notify_mock):
+        ProfessionRequest.objects.create(
+            user=self.user, name="Кинолог", description="…", status=ProfessionRequest.STATUS_REJECTED,
+        )
+
+        response = self.client.post(self.url, data=self.payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(ProfessionRequest.objects.count(), 2)
+
+    def test_list_returns_only_own_requests(self, notify_mock):
+        other = User.objects.create_user(username="other_requester", password="pass")
+        ProfessionRequest.objects.create(user=self.user, name="Кинолог", description="…")
+        ProfessionRequest.objects.create(user=other, name="Флорист", description="…")
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["name"] for item in response.data], ["Кинолог"])
+
+
+class ProfessionRequestModerationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="moderated", password="pass")
+
+    def _request(self, **kwargs):
+        return ProfessionRequest.objects.create(user=self.user, name="Кинолог", description="…", **kwargs)
+
+    @patch("account.services.profession_request.send_profession_request_approved_push")
+    def test_approval_creates_category_and_assigns_it_to_specialist(self, push_mock):
+        self.user.role = ROLE_SPECIALIST
+        self.user.save()
+        profession_request = self._request()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            approve_profession_request(profession_request, reviewed_by="tester")
+
+        profession_request.refresh_from_db()
+        self.user.refresh_from_db()
+        category = ProfessionCategory.objects.get(name="Кинолог")
+        self.assertEqual(profession_request.status, ProfessionRequest.STATUS_APPROVED)
+        self.assertEqual(profession_request.profession_category, category)
+        self.assertIsNotNone(profession_request.reviewed_at)
+        self.assertEqual(self.user.profession, category)
+        push_mock.assert_called_once_with(self.user, profession_request)
+
+    @patch("account.services.profession_request.send_profession_request_approved_push")
+    def test_approval_does_not_touch_client_profile(self, push_mock):
+        profession_request = self._request()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            approve_profession_request(profession_request)
+
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.profession)
+        self.assertTrue(ProfessionCategory.objects.filter(name="Кинолог").exists())
+
+    @patch("account.services.profession_request.send_profession_request_approved_push")
+    def test_approval_reuses_category_chosen_by_moderator(self, push_mock):
+        category = ProfessionCategory.objects.create(name="Дрессировщик")
+        profession_request = self._request()
+
+        approve_profession_request(profession_request, category=category)
+
+        profession_request.refresh_from_db()
+        self.assertEqual(profession_request.profession_category, category)
+        self.assertFalse(ProfessionCategory.objects.filter(name="Кинолог").exists())
+
+    @patch("account.services.profession_request.send_profession_request_approved_push")
+    def test_approval_fills_pending_application_then_profile_on_accept(self, push_mock):
+        application = Application.objects.create(
+            user=self.user, first_name="Д", last_name="А", custom_profession="Кинолог",
+        )
+        profession_request = self._request(
+            source=ProfessionRequest.SOURCE_APPLICATION, application=application,
+        )
+
+        approve_profession_request(profession_request)
+
+        application.refresh_from_db()
+        self.user.refresh_from_db()
+        category = ProfessionCategory.objects.get(name="Кинолог")
+        self.assertEqual(application.profession, category)
+        self.assertIsNone(self.user.profession)
+
+        application.status = "accepted"
+        application.save()
+        apply_approval_effects(application)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.role, ROLE_SPECIALIST)
+        self.assertEqual(self.user.profession, category)
+
+    @patch("account.services.profession_request.send_profession_request_approved_push")
+    def test_approval_after_accepted_application_sets_profile_profession(self, push_mock):
+        application = Application.objects.create(
+            user=self.user, first_name="Д", last_name="А", custom_profession="Кинолог", status="accepted",
+        )
+        profession_request = self._request(
+            source=ProfessionRequest.SOURCE_APPLICATION, application=application,
+        )
+
+        approve_profession_request(profession_request)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.profession, ProfessionCategory.objects.get(name="Кинолог"))
+
+    @patch("account.services.profession_request.send_profession_request_rejected_push")
+    def test_rejection_stores_reason_and_notifies(self, push_mock):
+        profession_request = self._request()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            reject_profession_request(profession_request, reason="Слишком общее название")
+
+        profession_request.refresh_from_db()
+        self.assertEqual(profession_request.status, ProfessionRequest.STATUS_REJECTED)
+        self.assertEqual(profession_request.reason, "Слишком общее название")
+        self.assertFalse(ProfessionCategory.objects.exists())
+        push_mock.assert_called_once_with(self.user, profession_request)
+
+    def test_second_decision_is_refused(self):
+        profession_request = self._request(status=ProfessionRequest.STATUS_REJECTED)
+
+        with self.assertRaises(ProfessionRequestAlreadyReviewed):
+            approve_profession_request(profession_request)
+
+    def test_approved_push_creates_notification(self):
+        category = ProfessionCategory.objects.create(name="Кинолог")
+        profession_request = self._request(
+            status=ProfessionRequest.STATUS_APPROVED, profession_category=category,
+        )
+
+        with patch("common.notifications.send_push", return_value={"ok": False}):
+            send_profession_request_approved_push(self.user, profession_request)
+
+        notification = Notification.objects.get(recipient=self.user)
+        self.assertEqual(notification.notification_type, Notification.TYPE_PROFESSION_REQUEST_APPROVED)
+        self.assertEqual(notification.payload["profession_category_id"], str(category.id))
+        self.assertEqual(notification.payload["source"], Notification.SOURCE_PROFICHAT)
 
 
 class NotificationApiTests(APITestCase):

@@ -46,6 +46,12 @@ class Application(models.Model):
         blank=True,
         verbose_name=_("Профессия (свой вариант)")
     )
+    custom_profession_description = models.CharField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name=_("Описание профессии (свой вариант)")
+    )
     custom_organization = models.CharField(
         max_length=255,
         null=True,

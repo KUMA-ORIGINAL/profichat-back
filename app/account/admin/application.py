@@ -26,7 +26,7 @@ class ApplicationEducationInline(TabularInline):
 class ApplicationAdmin(BaseModelAdmin):
     list_display = ("id", "first_name", "last_name", 'profession', 'custom_profession', 'organization', 'custom_organization', 'status', "created_at", 'detail_link')
     list_display_links = ("id", "first_name")
-    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "organization__name", "custom_organization", "educations__institution")
+    search_fields = ("first_name", "last_name", "profession__name", "custom_profession", "custom_profession_description", "organization__name", "custom_organization", "educations__institution")
     list_filter = ("profession", "organization", "created_at", 'status')
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
