@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -11,6 +12,7 @@ from account.models import (
     ROLE_SPECIALIST,
     Application,
     ApplicationEducation,
+    NonWorkingDate,
     Notification,
     ProfessionCategory,
     ProfessionRequest,
@@ -91,6 +93,102 @@ class WorkScheduleSerializerTests(APITestCase):
         updated = serializer.save()
         self.assertIsNone(updated.lunch_from_time)
         self.assertIsNone(updated.lunch_to_time)
+
+
+class NonWorkingDateApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="days_off_user", password="pass")
+        self.other = User.objects.create_user(username="days_off_other", password="pass")
+        self.client.force_authenticate(user=self.user)
+        self.today = timezone.localdate()
+
+    def day(self, offset):
+        return self.today + timedelta(days=offset)
+
+    @patch("account.views.non_working_date.broadcast_user_update")
+    def test_create_is_idempotent(self, broadcast_mock):
+        url = reverse("non-working-date-list")
+        first = self.client.post(url, {"date": self.day(3).isoformat()}, format="json")
+        second = self.client.post(url, {"date": self.day(3).isoformat()}, format="json")
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(first.data["id"], second.data["id"])
+        self.assertEqual(NonWorkingDate.objects.filter(user=self.user).count(), 1)
+        broadcast_mock.assert_called_once()
+
+    def test_rejects_past_and_too_far_dates(self):
+        url = reverse("non-working-date-list")
+        past = self.client.post(url, {"date": self.day(-1).isoformat()}, format="json")
+        far = self.client.post(url, {"date": self.day(400).isoformat()}, format="json")
+
+        self.assertEqual(past.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(far.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_returns_only_own_upcoming_dates(self):
+        NonWorkingDate.objects.create(user=self.user, date=self.day(-2))
+        NonWorkingDate.objects.create(user=self.user, date=self.day(0))
+        NonWorkingDate.objects.create(user=self.user, date=self.day(5))
+        NonWorkingDate.objects.create(user=self.other, date=self.day(1))
+
+        response = self.client.get(reverse("non-working-date-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["date"] for item in response.data],
+            [self.day(0).isoformat(), self.day(5).isoformat()],
+        )
+
+    @patch("account.views.non_working_date.broadcast_user_update")
+    def test_sync_replaces_upcoming_dates_and_keeps_past(self, broadcast_mock):
+        NonWorkingDate.objects.create(user=self.user, date=self.day(-3))
+        NonWorkingDate.objects.create(user=self.user, date=self.day(1))
+        NonWorkingDate.objects.create(user=self.user, date=self.day(2))
+
+        response = self.client.put(
+            reverse("non-working-date-sync"),
+            {"dates": [self.day(4).isoformat(), self.day(2).isoformat(), self.day(4).isoformat()]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(
+            [item["date"] for item in response.data],
+            [self.day(2).isoformat(), self.day(4).isoformat()],
+        )
+        self.assertEqual(
+            list(NonWorkingDate.objects.filter(user=self.user).values_list("date", flat=True)),
+            [self.day(-3), self.day(2), self.day(4)],
+        )
+        broadcast_mock.assert_called_once()
+
+    @patch("account.views.non_working_date.broadcast_user_update")
+    def test_delete_own_date_only(self, broadcast_mock):
+        own = NonWorkingDate.objects.create(user=self.user, date=self.day(1))
+        foreign = NonWorkingDate.objects.create(user=self.other, date=self.day(1))
+
+        foreign_response = self.client.delete(reverse("non-working-date-detail", args=[foreign.id]))
+        own_response = self.client.delete(reverse("non-working-date-detail", args=[own.id]))
+
+        self.assertEqual(foreign_response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(own_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(NonWorkingDate.objects.filter(id=foreign.id).exists())
+        self.assertFalse(NonWorkingDate.objects.filter(id=own.id).exists())
+
+    def test_specialist_detail_exposes_upcoming_dates(self):
+        specialist = User.objects.create_user(
+            username="days_off_specialist", password="pass", role=ROLE_SPECIALIST,
+        )
+        NonWorkingDate.objects.create(user=specialist, date=self.day(-1))
+        NonWorkingDate.objects.create(user=specialist, date=self.day(7))
+
+        response = self.client.get(reverse("specialist-detail", args=[specialist.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["date"] for item in response.data["non_working_dates"]],
+            [self.day(7).isoformat()],
+        )
 
 
 class UserProfileHistoryApiTests(APITestCase):

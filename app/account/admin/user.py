@@ -7,7 +7,7 @@ from unfold.admin import TabularInline
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from common.admin import BaseModelAdmin
-from ..models import User, WorkSchedule, UserEducation, UserWorkplace
+from ..models import User, WorkSchedule, NonWorkingDate, UserEducation, UserWorkplace
 
 admin.site.unregister(Group)
 
@@ -20,6 +20,12 @@ class GroupAdmin(GroupAdmin, BaseModelAdmin):
 class WorkScheduleInline(TabularInline):
     model = WorkSchedule
     extra = 0
+
+
+class NonWorkingDateInline(TabularInline):
+    model = NonWorkingDate
+    extra = 0
+    fields = ('date',)
 
 
 class UserEducationInline(TabularInline):
@@ -44,7 +50,7 @@ class UserAdmin(UserAdmin, BaseModelAdmin):
     list_display_links = ('id', 'first_name')
     search_fields = ('first_name', 'last_name', 'phone_number')
     ordering = ('-date_joined',)
-    inlines = (WorkScheduleInline, UserEducationInline, UserWorkplaceInline)
+    inlines = (WorkScheduleInline, NonWorkingDateInline, UserEducationInline, UserWorkplaceInline)
     list_per_page = 20
 
     fieldsets = (

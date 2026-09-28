@@ -13,6 +13,7 @@ router.register('organizations', views.OrganizationViewSet, basename='organizati
 router.register('specialists', views.SpecialistViewSet, basename='specialist')
 router.register('apply', views.ApplicationCreateViewSet, basename='application-create'),
 router.register(r'work-schedules', views.WorkScheduleViewSet, basename='work-schedule')
+router.register(r'non-working-dates', views.NonWorkingDateViewSet, basename='non-working-date')
 router.register(r'notifications', views.NotificationViewSet, basename='notifications')
 router.register(r'device/gcm', GCMDeviceAuthorizedViewSet)
 

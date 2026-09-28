@@ -4,8 +4,8 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.contrib.auth import get_user_model
 
-from account.models import WorkSchedule
-from account.serializers import UserMeSerializer, WorkScheduleSerializer
+from account.models import NonWorkingDate, WorkSchedule
+from account.serializers import NonWorkingDateSerializer, UserMeSerializer, WorkScheduleSerializer
 from chat_access.models import Chat
 
 User = get_user_model()
@@ -26,11 +26,15 @@ def broadcast_user_update(user, changes=None):
     # сериализуем расписание (может быть queryset)
     schedule_qs = WorkSchedule.objects.filter(user=user)
     schedule_data = WorkScheduleSerializer(schedule_qs, many=True).data
+    non_working_dates = NonWorkingDateSerializer(
+        NonWorkingDate.objects.filter(user=user).upcoming(), many=True
+    ).data
 
     payload = {
         "user": user_data,
         "changes": list(changes) if changes else [],
         "schedule": schedule_data,
+        "non_working_dates": non_working_dates,
     }
 
     chats = Chat.objects.filter(client=user) | Chat.objects.filter(specialist=user)

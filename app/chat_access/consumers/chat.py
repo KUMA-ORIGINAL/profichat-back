@@ -33,5 +33,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "type": "user_update",
             "user": event["user"],
             "schedule": event["schedule"],
+            "non_working_dates": event.get("non_working_dates", []),
             "changes": event.get("changes"),
         }))
