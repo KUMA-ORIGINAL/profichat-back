@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
@@ -136,8 +137,9 @@ class ChatListTests(ChatBaseTestCase):
         self.assertEqual(inactive_response.data[0]["channel_id"], self.second_chat.channel_id)
 
 
+@override_settings(MESSENGER_LEGACY_MODE=False)
 class ChatShouldReplyTests(ChatBaseTestCase):
-    """should_reply считается по последнему сообщению в БД (без GetStream)."""
+    """После переключения (MESSENGER_LEGACY_MODE=False) should_reply считается по последнему сообщению в БД."""
 
     def _send(self, sender, text="message"):
         from messenger.services.messages import send_message
@@ -178,6 +180,74 @@ class ChatShouldReplyTests(ChatBaseTestCase):
         self.assertFalse(response.data[0]["should_reply"])
 
     def test_should_reply_false_without_messages(self):
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(reverse("chat-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data[0]["should_reply"])
+
+
+@override_settings(MESSENGER_LEGACY_MODE=True)
+class ChatShouldReplyLegacyTests(ChatBaseTestCase):
+    """До переключения (MESSENGER_LEGACY_MODE=True) should_reply считается по GetStream, как раньше."""
+
+    def _mock_channels(self, sender_id=None, message_type="regular"):
+        if sender_id is None:
+            return {"channels": []}
+        return {
+            "channels": [
+                {
+                    "channel": {"id": self.chat.channel_id},
+                    "messages": [
+                        {
+                            "type": message_type,
+                            "user": {"id": str(sender_id)},
+                            "text": "message",
+                        }
+                    ],
+                }
+            ]
+        }
+
+    @patch("chat_access.services.chat_list.chat_client")
+    def test_should_reply_true_when_last_message_from_companion(self, chat_client_mock):
+        chat_client_mock.query_channels.return_value = self._mock_channels(sender_id=self.specialist_user.id)
+
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(reverse("chat-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertTrue(response.data[0]["should_reply"])
+
+    @patch("chat_access.services.chat_list.chat_client")
+    def test_should_reply_false_when_last_message_from_current_user(self, chat_client_mock):
+        chat_client_mock.query_channels.return_value = self._mock_channels(sender_id=self.client_user.id)
+
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(reverse("chat-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertFalse(response.data[0]["should_reply"])
+
+    @patch("chat_access.services.chat_list.chat_client")
+    def test_should_reply_false_for_system_message(self, chat_client_mock):
+        chat_client_mock.query_channels.return_value = self._mock_channels(
+            sender_id=self.specialist_user.id,
+            message_type="system",
+        )
+
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(reverse("chat-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data[0]["should_reply"])
+
+    @patch("chat_access.services.chat_list.chat_client")
+    def test_should_reply_false_when_stream_fails(self, chat_client_mock):
+        chat_client_mock.query_channels.side_effect = RuntimeError("stream down")
+
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-list"))
 

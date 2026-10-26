@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -34,13 +35,12 @@ class ChatListTests(MessengerTestCase):
         )
 
     def test_chat_list_has_last_message_unread_and_should_reply_from_db(self):
-        from chat_access.services import chat_list
-
-        self.assertFalse(hasattr(chat_list, "chat_client"))  # список больше не ходит в GetStream
         self.send(self.specialist, "first")
         last = self.send(self.specialist, "second")
 
-        [client_item] = self.get_list(self.client_user)
+        with patch("chat_access.services.chat_list.chat_client") as stream_mock:
+            [client_item] = self.get_list(self.client_user)
+        stream_mock.query_channels.assert_not_called()  # без legacy-режима список не ходит в GetStream
         self.assertEqual(client_item["lastMessage"]["id"], last.id)
         self.assertEqual(client_item["lastMessage"]["text"], "second")
         self.assertEqual(client_item["lastMessage"]["channelId"], self.chat.channel_id)
@@ -127,6 +127,84 @@ class ChatListTests(MessengerTestCase):
             self.send(specialist, "msg", chat=chat)
         self.assertEqual(len(self._app_queries()), baseline)
         self.assertLessEqual(baseline, 8)  # +1 запрос: вложения последнего сообщения
+
+
+def stream_channels(chat, sender_id, message_type="regular"):
+    """Ответ GetStream query_channels с одним последним сообщением канала."""
+    return {
+        "channels": [
+            {
+                "channel": {"id": chat.channel_id},
+                "messages": [{"type": message_type, "user": {"id": str(sender_id)}, "text": "message"}],
+            }
+        ]
+    }
+
+
+@override_settings(MESSENGER_LEGACY_MODE=True)
+class LegacyModeChatListTests(MessengerTestCase):
+    """
+    MESSENGER_LEGACY_MODE=True (до переключения): старое приложение пишет только в GetStream,
+    поэтому shouldReply считается по GetStream, а порядок чатов — как до мессенджера (-created_at).
+    """
+
+    def setUp(self):
+        super().setUp()
+        patcher = patch("chat_access.services.chat_list.chat_client")
+        self.stream_mock = patcher.start()
+        self.addCleanup(patcher.stop)
+        push_patcher = patch("messenger.services.push.send_push")
+        push_patcher.start()
+        self.addCleanup(push_patcher.stop)
+
+    def get_list(self, user):
+        self.auth(user)
+        response = self.client.get("/api/chats/")
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_should_reply_from_stream_not_db(self):
+        # в нашей БД последнее сообщение от клиента, а в Stream (старое приложение) — от специалиста
+        message_service.send_message(self.chat, self.client_user, text="из нового приложения")
+        self.stream_mock.query_channels.return_value = stream_channels(self.chat, self.specialist.pk)
+
+        [item] = self.get_list(self.client_user)
+
+        self.assertTrue(item["shouldReply"])
+        kwargs = self.stream_mock.query_channels.call_args.kwargs
+        self.assertEqual(kwargs["filter_conditions"]["id"], {"$in": [self.chat.channel_id]})
+
+    def test_should_reply_false_for_own_or_system_stream_message(self):
+        for sender_id, message_type in ((self.client_user.pk, "regular"), (self.specialist.pk, "system")):
+            self.stream_mock.query_channels.return_value = stream_channels(self.chat, sender_id, message_type)
+            [item] = self.get_list(self.client_user)
+            self.assertFalse(item["shouldReply"], (sender_id, message_type))
+
+    def test_should_reply_false_when_stream_fails(self):
+        message_service.send_message(self.chat, self.specialist, text="привет")  # по БД было бы True
+        self.stream_mock.query_channels.side_effect = RuntimeError("stream down")
+
+        [item] = self.get_list(self.client_user)
+
+        self.assertFalse(item["shouldReply"])
+
+    def test_retrieve_uses_stream(self):
+        self.stream_mock.query_channels.return_value = stream_channels(self.chat, self.specialist.pk)
+        self.auth(self.client_user)
+        response = self.client.get(f"/api/chats/{self.chat.channel_id}/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["shouldReply"])
+
+    def test_chat_order_by_created_at(self):
+        self.stream_mock.query_channels.return_value = {"channels": []}
+        newer_specialist = User.objects.create_user(username="sp_new", password="p", role=ROLE_SPECIALIST)
+        newer_chat = create_or_get_chat(self.client_user, newer_specialist)
+        # сообщение в старом чате: по last_message_at он был бы первым
+        message_service.send_message(self.chat, self.specialist, text="свежее")
+
+        ids = [item["channelId"] for item in self.get_list(self.client_user)]
+
+        self.assertEqual(ids, [newer_chat.channel_id, self.chat.channel_id])
 
 
 class ChatRetrieveTests(MessengerTestCase):

@@ -1,6 +1,8 @@
 
 import logging
 
+from django.conf import settings
+
 from account.services.stream import (
     create_stream_channel,
     show_channel_for_user,
@@ -20,12 +22,14 @@ def send_greeting(chat, specialist) -> None:
 
     Отправляется всегда, в обход тарифной проверки (Ruling 1: `send_message` тариф не проверяет).
     Ошибка не ломает создание чата: приветствие — не критичная часть.
+    В MESSENGER_LEGACY_MODE без нашего FCM-пуша: старое приложение уже получает пуш приветствия
+    от Stream и пуш-приглашение.
     """
     greeting = (specialist.invite_greeting or "").strip()
     if not greeting:
         return
     try:
-        message_service.send_message(chat, specialist, text=greeting)
+        message_service.send_message(chat, specialist, text=greeting, push=not settings.MESSENGER_LEGACY_MODE)
     except Exception:
         logger.exception("Failed to send greeting to chat %s", chat.pk)
 

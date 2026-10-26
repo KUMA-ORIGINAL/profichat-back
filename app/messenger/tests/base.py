@@ -14,10 +14,13 @@ from config.celery import app as celery_app
 User = get_user_model()
 
 
-@override_settings(CELERY_TASK_ALWAYS_EAGER=True)
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, MESSENGER_LEGACY_MODE=False)
 class MessengerTestCase(APITestCase):
     """
     Общая база тестов мессенджера.
+
+    - Режим после переключения: MESSENGER_LEGACY_MODE=False (список чатов из нашей БД, без GetStream).
+      Поведение переходного режима проверяется отдельными тестами с override_settings(MESSENGER_LEGACY_MODE=True).
 
     - Celery выполняет задачи синхронно: CELERY_TASK_ALWAYS_EAGER=True (override_settings) и явно в конфигурации
       приложения Celery. Исключения задач не пробрасываются (task_eager_propagates=False), как в проде.

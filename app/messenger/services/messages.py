@@ -76,12 +76,14 @@ def send_message(
     client_msg_id: UUID | None = None,
     reply_to_id: int | None = None,
     attachment_ids: list[UUID] | None = None,
+    push: bool = True,
 ) -> Message:
     """
     Отправка обычного сообщения участником чата.
 
     Тариф здесь не проверяется (Ruling 1): это делают вьюхи через `access.ensure_can_send`.
     Повтор с тем же `client_msg_id` возвращает уже созданное сообщение без событий и пушей.
+    `push=False` — без FCM-пуша получателю (событие `message.new` и непрочитанные — как обычно).
     """
     text = (text or "").strip()
     attachment_ids = list(attachment_ids or [])
@@ -130,7 +132,8 @@ def send_message(
             unread_count=F("unread_count") + 1
         )
         _publish_message(chat, message, "message.new")
-        transaction.on_commit(lambda: _schedule_push(message.id), robust=True)
+        if push:
+            transaction.on_commit(lambda: _schedule_push(message.id), robust=True)
     return message
 
 

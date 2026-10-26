@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.utils import timezone
 
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
@@ -211,6 +212,26 @@ class GreetingTestCase(MessengerTestCase):
         chat.refresh_from_db()
         self.assertEqual(chat.last_message_id, message.id)
         self.assertEqual(ChatMember.objects.get(chat=chat, user=self.new_client).unread_count, 1)
+
+    @override_settings(MESSENGER_LEGACY_MODE=True)
+    def test_greeting_without_push_in_legacy_mode(self):
+        # старое приложение уже получает пуш приветствия от Stream и пуш-приглашение
+        with patch("messenger.tasks.send_message_push.delay") as push_mock, \
+                self.captureOnCommitCallbacks(execute=True):
+            chat = create_or_get_chat(self.new_client, self.greeting_specialist)
+
+        push_mock.assert_not_called()
+        message = Message.objects.get(chat=chat)
+        self.assertEqual(ChatMember.objects.get(chat=chat, user=self.new_client).unread_count, 1)
+        self.assertIn("message.new", [c.args[1]["type"] for c in self.broadcast_mock.call_args_list])
+        self.assertEqual(message.text, "Здравствуйте! Чем могу помочь?")
+
+    def test_greeting_pushed_after_cutover(self):
+        with patch("messenger.tasks.send_message_push.delay") as push_mock, \
+                self.captureOnCommitCallbacks(execute=True):
+            chat = create_or_get_chat(self.new_client, self.greeting_specialist)
+
+        push_mock.assert_called_once_with(Message.objects.get(chat=chat).pk)
 
     def test_greeting_sent_only_once(self):
         create_or_get_chat(self.new_client, self.greeting_specialist)

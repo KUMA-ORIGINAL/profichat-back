@@ -285,6 +285,11 @@ APNS_TEAM_ID = env("APNS_TEAM_ID", default="")
 APNS_BUNDLE_ID = env("APNS_BUNDLE_ID", default="")
 APNS_USE_SANDBOX = env.bool("APNS_USE_SANDBOX", default=False)
 
+# Переходный режим до переключения клиентов (MESSENGER_MIGRATION.md, C1): старое приложение пишет
+# только в GetStream, поэтому shouldReply в списке чатов считается по GetStream, порядок чатов —
+# как раньше (-created_at), а приветствие не дублируется нашим FCM-пушем. False — всё из нашей БД.
+MESSENGER_LEGACY_MODE = env.bool("MESSENGER_LEGACY_MODE", default=True)
+
 MESSENGER_CALL_RING_TIMEOUT_SECONDS = 45
 # Принятый звонок дольше этого считается зависшим и завершается (= TTL токена LiveKit)
 MESSENGER_CALL_MAX_DURATION_SECONDS = 2 * 60 * 60

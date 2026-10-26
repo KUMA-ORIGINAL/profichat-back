@@ -1,9 +1,15 @@
+import logging
+
+from django.conf import settings
 from django.db.models import F, Prefetch
 from django.utils import timezone
 
 from account.models import InviteDelivery
 from chat_access.models import AccessOrder, BlockedChat, FavoriteChat
+from common.stream_client import chat_client
 from messenger.models import ChatMember, Message
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_role(chat, user):
@@ -56,7 +62,7 @@ def get_specialist_note(chat, user):
     return None
 
 
-def get_should_reply(chat, user):
+def _db_should_reply(chat, user):
     """Нужно ли пользователю ответить: последнее сообщение обычное и не от него (по данным БД)."""
     last_message = chat.last_message
     if last_message is None or last_message.type != Message.Type.REGULAR:
@@ -64,8 +70,106 @@ def get_should_reply(chat, user):
     return last_message.sender_id is not None and last_message.sender_id != user.id
 
 
+# --- MESSENGER_LEGACY_MODE: до переключения старое приложение пишет только в GetStream ---
+
+def _stream_should_reply(chat, user):
+    try:
+        channel = chat_client.channel("messaging", chat.channel_id)
+        response = channel.query(
+            limit=1,
+            sort=[{"field": "created_at", "direction": -1}],
+        )
+        messages = response.get("messages", [])
+        if not messages:
+            return False
+
+        last_message = messages[0]
+        if last_message.get("type") == "system":
+            return False
+
+        sender_id = last_message.get("user", {}).get("id") or last_message.get("user_id")
+        return str(sender_id) != str(user.id)
+    except Exception:
+        logger.exception(
+            "Failed to compute should_reply for channel_id=%s user_id=%s",
+            chat.channel_id,
+            user.id,
+        )
+        return False
+
+
+def _extract_channel_id(channel_payload):
+    channel_data = channel_payload.get("channel", {})
+    return channel_data.get("id") or channel_payload.get("channel_id") or channel_payload.get("id")
+
+
+def _extract_last_message(channel_payload):
+    messages = channel_payload.get("messages", [])
+    if messages:
+        return messages[0]
+    state_messages = channel_payload.get("state", {}).get("messages", [])
+    if state_messages:
+        return state_messages[-1]
+    return None
+
+
+def _stream_should_reply_map(chats, user):
+    channel_ids = [chat.channel_id for chat in chats]
+    should_reply_map = {channel_id: False for channel_id in channel_ids}
+
+    if not channel_ids:
+        return should_reply_map
+
+    try:
+        response = chat_client.query_channels(
+            filter_conditions={"type": "messaging", "id": {"$in": channel_ids}},
+            sort=[{"field": "last_message_at", "direction": -1}],
+            watch=False,
+            state=True,
+            presence=False,
+            message_limit=1,
+            member_limit=0,
+            limit=len(channel_ids),
+        )
+        channels = response.get("channels", []) if isinstance(response, dict) else []
+    except Exception:
+        logger.exception(
+            "Failed to fetch channels for should_reply_map user_id=%s channel_ids_count=%s",
+            user.id,
+            len(channel_ids),
+        )
+        return should_reply_map
+
+    for channel_payload in channels:
+        channel_id = _extract_channel_id(channel_payload)
+        if not channel_id:
+            continue
+
+        last_message = _extract_last_message(channel_payload)
+        if not last_message or last_message.get("type") == "system":
+            continue
+
+        sender_id = last_message.get("user", {}).get("id") or last_message.get("user_id")
+        should_reply_map[channel_id] = str(sender_id) != str(user.id)
+
+    return should_reply_map
+
+
+def get_should_reply(chat, user):
+    """
+    Нужно ли пользователю ответить на последнее сообщение чата.
+    MESSENGER_LEGACY_MODE — по GetStream (ошибка → False), иначе — по нашей БД.
+    """
+    if settings.MESSENGER_LEGACY_MODE:
+        return _stream_should_reply(chat, user)
+    return _db_should_reply(chat, user)
+
+
 def get_should_reply_map(chats, user):
-    return {chat.channel_id: get_should_reply(chat, user) for chat in chats}
+    """{channel_id: should_reply} одним запросом к GetStream (MESSENGER_LEGACY_MODE) или по нашей БД."""
+    if settings.MESSENGER_LEGACY_MODE:
+        return _stream_should_reply_map(chats, user)
+    return {chat.channel_id: _db_should_reply(chat, user) for chat in chats}
 
 
 def get_member(chat, user):
@@ -101,6 +205,16 @@ def get_tariff(chat):
         "activated_at": order.activated_at,
         "expires_at": order.expires_at,
     }
+
+
+def chat_list_ordering():
+    """
+    Порядок списка чатов: по последнему сообщению (наша БД) или, в MESSENGER_LEGACY_MODE, как до
+    мессенджера — по дате создания чата (last_message_at в нашей БД не знает о сообщениях из Stream).
+    """
+    if settings.MESSENGER_LEGACY_MODE:
+        return ("-created_at",)
+    return (F("last_message_at").desc(nulls_last=True), "-created_at")
 
 
 def chat_list_queryset(base_qs, user):
@@ -145,7 +259,7 @@ def chat_list_queryset(base_qs, user):
             queryset=BlockedChat.objects.filter(user=user),
             to_attr="prefetched_my_blocks",
         ),
-    ).order_by(F("last_message_at").desc(nulls_last=True), "-created_at")
+    ).order_by(*chat_list_ordering())
 
 
 def build_chat_list_item(chat, user, should_reply_map=None):
