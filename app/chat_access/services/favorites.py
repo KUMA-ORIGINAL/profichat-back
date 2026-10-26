@@ -2,6 +2,7 @@ import logging
 
 from account.services.stream import update_channel_extra_data
 from chat_access.models import BlockedChat, FavoriteChat
+from messenger.services import events
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,9 @@ def get_favorite_by(chat):
 
 
 def sync_favorite_by_to_stream(chat):
+    """Синхронизирует избранное в Stream и публикует `chat.updated` участникам."""
     favorite_by = get_favorite_by(chat)
+    events.publish_chat_updated(chat)
     try:
         update_channel_extra_data(chat.channel_id, {"favoriteBy": favorite_by})
     except Exception:
@@ -27,7 +30,9 @@ def get_blocked_by(chat):
 
 
 def sync_blocked_by_to_stream(chat):
+    """Синхронизирует чёрный список в Stream и публикует `chat.updated` участникам."""
     blocked_by = get_blocked_by(chat)
+    events.publish_chat_updated(chat)
     try:
         update_channel_extra_data(chat.channel_id, {"blockedBy": blocked_by})
     except Exception:

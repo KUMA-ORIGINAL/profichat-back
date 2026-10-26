@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from account.models import InviteDelivery
 from chat_access.services import update_chat_data_from_order
+from chat_access.services.chat_commands import send_greeting
 from .notify import send_notification
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
@@ -140,6 +141,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
             # Не оставляем "битый" новый чат без канала
             chat.delete()
             raise
+        send_greeting(chat, specialist)
 
     try:
         update_chat_data_from_order(access_order)

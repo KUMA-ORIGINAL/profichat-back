@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from account.models import NonWorkingDate, WorkSchedule
 from account.serializers import NonWorkingDateSerializer, UserMeSerializer, WorkScheduleSerializer
 from chat_access.models import Chat
+from messenger.services import events as messenger_events
 
 User = get_user_model()
 
@@ -37,8 +38,14 @@ def broadcast_user_update(user, changes=None):
         "non_working_dates": non_working_dates,
     }
 
-    chats = Chat.objects.filter(client=user) | Chat.objects.filter(specialist=user)
+    chats = list(Chat.objects.filter(client=user) | Chat.objects.filter(specialist=user))
     layer = get_channel_layer()
+
+    # Свой мессенджер: `chat.user_updated` в личные каналы собеседников (Centrifugo, после коммита)
+    companion_ids = sorted(
+        {chat.specialist_id if chat.client_id == user.pk else chat.client_id for chat in chats}
+    )
+    messenger_events.publish(companion_ids, "chat.user_updated", payload)
 
     for chat in chats:
         async_to_sync(layer.group_send)(

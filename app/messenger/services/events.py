@@ -42,3 +42,31 @@ def publish(user_ids: Iterable[int], event_type: str, data: dict) -> None:
             logger.exception("Failed to publish %s", event_type)
 
     transaction.on_commit(_send)
+
+
+def chat_updated_payload(chat, user) -> dict:
+    """
+    Данные `chat.updated` для одного участника — те же значения, что в списке чатов.
+
+    `specialist_note` отдаётся только специалисту; `is_favorite`/`is_blocked` — свои у каждого.
+    """
+    from chat_access.serializers.chat import ChatTariffSerializer
+    from chat_access.services.chat_list import build_chat_list_item
+
+    item = build_chat_list_item(chat, user)
+    data = {
+        "channel_id": item["channel_id"],
+        "client_can_send_voice": item["client_can_send_voice"],
+        "tariff": dict(ChatTariffSerializer(item["tariff"]).data) if item["tariff"] else None,
+        "is_favorite": item["is_favorite"],
+        "is_blocked": item["is_blocked"],
+    }
+    if chat.specialist_id == user.pk:
+        data["specialist_note"] = item["specialist_note"]
+    return data
+
+
+def publish_chat_updated(chat) -> None:
+    """`chat.updated` обоим участникам: отдельный payload каждому (после коммита)."""
+    for user in (chat.client, chat.specialist):
+        publish([user.pk], "chat.updated", chat_updated_payload(chat, user))

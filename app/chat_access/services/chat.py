@@ -1,6 +1,7 @@
 from django.utils import timezone
 
 from account.services.stream import update_channel_extra_data
+from messenger.services import events
 
 
 def _as_iso(value):
@@ -43,6 +44,7 @@ def update_chat_extra_data(chat, now=None, prefetched_orders=None):
 def update_chat_data_from_order(order):
     if not order.chat_id:
         return
+    events.publish_chat_updated(order.chat)
     update_channel_extra_data(
         order.chat.channel_id,
         {

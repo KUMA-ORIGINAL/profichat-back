@@ -1,10 +1,15 @@
+import logging
+
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
 from account.services import send_system_message_once
+from messenger.services import system_messages as messenger_system_messages
 from ..models import Chat
 from ..serializers import StreamSystemMessageSerializer
 from common.errors import ErrorCode, error_response
+
+logger = logging.getLogger(__name__)
 
 
 class StreamSystemMessageViewSet(viewsets.ViewSet):
@@ -36,6 +41,13 @@ class StreamSystemMessageViewSet(viewsets.ViewSet):
 
         # === Отправляем системное сообщение ===
         result = send_system_message_once(channel_id, custom_type, text)
+
+        # Переходный период: то же сообщение пишем и в свой мессенджер (двойная запись).
+        # Ошибка нашей БД не должна ломать старое приложение, работающее через Stream.
+        try:
+            messenger_system_messages.send_system_message_once(chat, custom_type, text)
+        except Exception:
+            logger.exception("Failed to write system message %s to messenger for %s", custom_type, channel_id)
 
         return Response({
             "success": bool(result),

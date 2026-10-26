@@ -1,4 +1,6 @@
 
+import logging
+
 from account.services.stream import (
     create_stream_channel,
     show_channel_for_user,
@@ -6,7 +8,26 @@ from account.services.stream import (
 )
 from chat_access.models import Chat
 from common.errors import AppError, ErrorCode
-from messenger.services import ensure_members
+from messenger.services import ensure_members, events
+from messenger.services import messages as message_service
+
+logger = logging.getLogger(__name__)
+
+
+def send_greeting(chat, specialist) -> None:
+    """
+    Приветствие специалиста первым сообщением нового чата.
+
+    Отправляется всегда, в обход тарифной проверки (Ruling 1: `send_message` тариф не проверяет).
+    Ошибка не ломает создание чата: приветствие — не критичная часть.
+    """
+    greeting = (specialist.invite_greeting or "").strip()
+    if not greeting:
+        return
+    try:
+        message_service.send_message(chat, specialist, text=greeting)
+    except Exception:
+        logger.exception("Failed to send greeting to chat %s", chat.pk)
 
 
 def create_or_get_chat(client, specialist):
@@ -26,6 +47,7 @@ def create_or_get_chat(client, specialist):
                 f"Ошибка создания канала в GetStream: {exc}",
                 code=ErrorCode.STREAM_CHANNEL_CREATE_FAILED,
             )
+        send_greeting(chat, specialist)
     else:
         update_fields = []
         was_deleted_by_client = chat.deleted_by_client_at is not None
@@ -49,6 +71,7 @@ def update_chat_and_stream(instance, validated_data):
     for field, value in validated_data.items():
         setattr(instance, field, value)
     instance.save(update_fields=[*validated_data.keys(), "updated_at"])
+    events.publish_chat_updated(instance)
 
     try:
         update_channel_extra_data(channel_id=instance.channel_id, data=validated_data)
