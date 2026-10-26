@@ -1,11 +1,18 @@
+from types import SimpleNamespace
+
 from django.apps import apps as django_apps
+from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 
-from chat_access.models import Chat
+from account.models import ROLE_CLIENT
+from chat_access.models import Chat, Tariff
+from chat_access.serializers.access_order import AccessOrderCreateSerializer
 from chat_access.services.chat_commands import create_or_get_chat
 from messenger.models import Call, ChatMember, Message
 from messenger.services import ensure_members
 from messenger.tests.base import MessengerTestCase
+
+User = get_user_model()
 
 
 class EnsureMembersTests(MessengerTestCase):
@@ -77,3 +84,34 @@ class MessageModelTests(MessengerTestCase):
     def test_enums(self):
         self.assertEqual(Call.ACTIVE_STATUSES, (Call.Status.RINGING, Call.Status.ACCEPTED))
         self.assertEqual(Message.Type.CALL, "call")
+
+
+class ChatCreationPathsCreateMembersTests(MessengerTestCase):
+    def test_raw_chat_create_creates_members(self):
+        client = User.objects.create_user(username="c2", password="pass", role=ROLE_CLIENT)
+        chat = Chat.objects.create(client=client, specialist=self.specialist, channel_id="raw_chat")
+        self.assertEqual(
+            set(ChatMember.objects.filter(chat=chat).values_list("user_id", "role")),
+            {(client.id, "client"), (self.specialist.id, "specialist")},
+        )
+
+    def test_access_order_for_new_pair_creates_members(self):
+        client = User.objects.create_user(username="c3", password="pass", role=ROLE_CLIENT)
+        tariff = Tariff.objects.create(
+            name="Платный", price=100, duration_hours=24, tariff_type="paid",
+            is_active=True, specialist=self.specialist,
+        )
+        serializer = AccessOrderCreateSerializer(
+            data={
+                "specialist": self.specialist.id,
+                "tariff": tariff.id,
+                "channel_id": f"chat_{client.id}_{self.specialist.id}",
+            },
+            context={"request": SimpleNamespace(user=client)},
+        )
+        serializer.is_valid(raise_exception=True)
+        order = serializer.save()
+
+        self.assertEqual(ChatMember.objects.filter(chat=order.chat).count(), 2)
+        self.assertIsNotNone(order.chat.member_for(client))
+        self.assertIsNotNone(order.chat.member_for(self.specialist))
