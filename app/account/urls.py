@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.urls import path, include
-from push_notifications.api.rest_framework import GCMDeviceAuthorizedViewSet
 from rest_framework.routers import SimpleRouter
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -15,7 +14,7 @@ router.register('apply', views.ApplicationCreateViewSet, basename='application-c
 router.register(r'work-schedules', views.WorkScheduleViewSet, basename='work-schedule')
 router.register(r'non-working-dates', views.NonWorkingDateViewSet, basename='non-working-date')
 router.register(r'notifications', views.NotificationViewSet, basename='notifications')
-router.register(r'device/gcm', GCMDeviceAuthorizedViewSet)
+router.register(r'device/gcm', views.PushDeviceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

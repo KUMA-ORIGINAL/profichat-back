@@ -5,6 +5,7 @@ from drf_spectacular.utils import (
     extend_schema,
     inline_serializer,
 )
+from push_notifications.api.rest_framework import GCMDeviceAuthorizedViewSet
 from push_notifications.models import GCMDevice
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -14,12 +15,30 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework.views import APIView
 
+from common.notifications import looks_like_apns_token
+
 from ..models import Notification
 from ..serializers import (
     NotificationReadSerializer,
     NotificationSerializer,
     RegisterFCMTokenSerializer,
 )
+
+ATTEMPT_SUCCESS = "success"
+ATTEMPT_FAILURE = "failure"
+
+
+def _last_attempt(device):
+    """Чем кончилась последняя отправка на устройство; None — отправок не было."""
+    delivery = getattr(device, "delivery_status", None)
+    if delivery is None:
+        return None
+    success_at, failure_at = delivery.last_success_at, delivery.last_failure_at
+    if success_at and (not failure_at or success_at >= failure_at):
+        return ATTEMPT_SUCCESS
+    if failure_at:
+        return ATTEMPT_FAILURE
+    return None
 
 
 class RegisterFCMTokenView(APIView):
@@ -60,6 +79,10 @@ class RegisterFCMTokenView(APIView):
         serializer.is_valid(raise_exception=True)
 
         reg_id = serializer.validated_data["registration_id"]
+        if looks_like_apns_token(reg_id):
+            # 200, а не 400: старые сборки шлют токен молча при входе и
+            # на ошибку показали бы модалку.
+            return Response({"status": "ignored", "created": False})
 
         device, created = GCMDevice.objects.update_or_create(
             registration_id=reg_id,
@@ -300,15 +323,23 @@ class PushStatusView(APIView):
                 "",
             )
 
+        # Причину решают только живые устройства и только их собственная
+        # последняя попытка. Сравнивать общие максимумы по всем устройствам
+        # нельзя: давно погашенный токен с ошибкой держал «ошибку провайдера»
+        # на телефоне, до которого пуши доходят.
+        active_attempts = [_last_attempt(d) for d in active_devices]
+
         if not active_devices:
             reason = self.REASON_TOKEN_INVALID if devices else self.REASON_NO_DEVICES
             action_hint = "reregister_token"
-        elif last_success_at and (not last_failure_at or last_success_at >= last_failure_at):
+        elif ATTEMPT_SUCCESS in active_attempts:
             reason, action_hint = self.REASON_OK, ""
-        elif last_failure_at:
-            reason, action_hint = self.REASON_PROVIDER_ERROR, "retry_later"
-        else:
+        elif None in active_attempts:
+            # Есть устройство, на которое ещё ничего не отправляли (обычно —
+            # свежий токен того же телефона): ошибкой это не считаем.
             reason, action_hint = self.REASON_UNKNOWN, ""
+        else:
+            reason, action_hint = self.REASON_PROVIDER_ERROR, "retry_later"
 
         return Response(
             {
@@ -324,3 +355,19 @@ class PushStatusView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class PushDeviceViewSet(GCMDeviceAuthorizedViewSet):
+    """`/api/device/gcm/` из django-push-notifications, но без APNs-токенов.
+
+    Повторная регистрация того же токена (UPDATE_ON_DUPLICATE_REG_ID) уже
+    переносит устройство на текущего пользователя — это делает библиотека.
+    """
+
+    def create(self, request, *args, **kwargs):
+        if looks_like_apns_token(request.data.get(self.lookup_field)):
+            # Старые iOS-сборки шлют сюда APNs-токен при каждом входе. Отвечаем
+            # 200, чтобы у них не всплыла модалка ошибки, но не сохраняем:
+            # отправка на такой токен всегда падает и портит статус пушей.
+            return Response({"status": "ignored", "active": False})
+        return super().create(request, *args, **kwargs)
