@@ -22,3 +22,11 @@ def send_message_push(message_id):
     from messenger.services.push import send_message_push as _send_message_push
 
     _send_message_push(message_id)
+
+
+@shared_task(ignore_result=True)
+def cleanup_pending_attachments():
+    """Удаляет не отправленные вложения (PENDING старше 24 часов) вместе с объектами в хранилище."""
+    from messenger.services import attachments
+
+    return attachments.cleanup_pending()

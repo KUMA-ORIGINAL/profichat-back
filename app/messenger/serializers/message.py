@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from messenger.models import Message
+from messenger.serializers.attachment import AttachmentSerializer
 
 
 class ReplyToSerializer(serializers.ModelSerializer):
@@ -23,7 +24,7 @@ class MessageSerializer(serializers.ModelSerializer):
     Сообщение в истории, событиях и списке чатов.
 
     Удалённое сообщение отдаётся с пустым текстом и без вложений (мягкое удаление).
-    `attachments` и `call` заполняются в задачах 5 и 7.
+    `call` заполняется в задаче 7.
     """
 
     channel_id = serializers.CharField(source="chat.channel_id", read_only=True)
@@ -62,10 +63,13 @@ class MessageSerializer(serializers.ModelSerializer):
             return None
         return ReplyToSerializer(obj.reply_to).data
 
-    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    @extend_schema_field(AttachmentSerializer(many=True))
     def get_attachments(self, obj):
-        # Task 5: presigned GET-ссылки вложений; у удалённого сообщения — пусто
-        return []
+        if obj.deleted_at:
+            return []
+        # сортировка в Python, чтобы использовать prefetch_related("attachments") без N+1
+        attachments = sorted(obj.attachments.all(), key=lambda attachment: (attachment.created_at, attachment.pk))
+        return AttachmentSerializer(attachments, many=True).data
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_call(self, obj):

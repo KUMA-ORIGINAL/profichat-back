@@ -13,7 +13,7 @@ from common.errors import AppError, ErrorCode
 from messenger import tasks
 from messenger.models import ChatMember, Message
 from messenger.serializers import MessageSerializer
-from messenger.services import events
+from messenger.services import attachments as attachment_service, events
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +121,9 @@ def send_message(
                 raise
             return existing
 
-        # Task 5: attachments.claim_for_message(message, sender, attachment_ids) — проверка
-        # (свои, из этого чата, ready, голосовые по ensure_can_send_voice) и привязка вложений.
+        if attachment_ids:
+            claimed = attachment_service.claim_for_message(chat, sender, attachment_ids)
+            attachment_service.attach_to_message(message, claimed)
 
         _apply_new_message(chat, message)
         ChatMember.objects.filter(chat=chat).exclude(user_id=sender.pk).update(
@@ -131,6 +132,11 @@ def send_message(
         _publish_message(chat, message, "message.new")
         transaction.on_commit(lambda: _schedule_push(message.id), robust=True)
     return message
+
+
+def find_by_client_msg_id(chat, sender, client_msg_id) -> Message | None:
+    """Уже созданное сообщение с таким `client_msg_id` (для идемпотентного повтора)."""
+    return _find_by_client_msg_id(chat, sender, client_msg_id)
 
 
 def _find_by_client_msg_id(chat, sender, client_msg_id):
@@ -232,7 +238,7 @@ def list_messages(
         raise _param_invalid("Нельзя передавать before и after одновременно")
     limit = max(1, min(int(limit), MAX_LIMIT))
 
-    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to")
+    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to").prefetch_related("attachments")
     if after:
         created_at, message_id = decode_cursor(after)
         qs = qs.filter(

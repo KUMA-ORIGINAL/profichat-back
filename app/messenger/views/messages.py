@@ -15,7 +15,6 @@ class SendMessageRequestSerializer(serializers.Serializer):
     client_msg_id = serializers.UUIDField(required=False, allow_null=True)
     text = serializers.CharField(required=False, allow_blank=True, default="", trim_whitespace=False, max_length=10000)
     reply_to_id = serializers.IntegerField(required=False, allow_null=True)
-    # проверка и привязка вложений — Task 5 (attachments.claim_for_message)
     attachment_ids = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
 
 
@@ -101,12 +100,19 @@ class ChatMessagesView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # Повтор с тем же clientMsgId возвращает уже созданное сообщение, даже если тариф успел истечь
+        client_msg_id = data.get("client_msg_id")
+        if client_msg_id is not None:
+            existing = message_service.find_by_client_msg_id(chat, request.user, client_msg_id)
+            if existing is not None:
+                return Response(MessageSerializer(existing).data, status=status.HTTP_201_CREATED)
+
         access.ensure_can_send(chat, request.user)
         message = message_service.send_message(
             chat,
             request.user,
             text=data.get("text") or "",
-            client_msg_id=data.get("client_msg_id"),
+            client_msg_id=client_msg_id,
             reply_to_id=data.get("reply_to_id"),
             attachment_ids=data.get("attachment_ids") or [],
         )

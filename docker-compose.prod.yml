@@ -159,6 +159,22 @@ services:
       redis:
         condition: service_healthy
 
+  celery-beat:
+    build:
+      context: app
+      dockerfile: Dockerfile.prod
+    command: celery -A config beat -l info
+    env_file:
+      - .env.prod
+    restart: unless-stopped
+    volumes:
+      - ./app:/app
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   database-storage:
   redis-data:

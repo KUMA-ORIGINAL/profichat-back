@@ -126,7 +126,7 @@ class ChatListTests(MessengerTestCase):
             chat = create_or_get_chat(self.client_user, specialist)
             self.send(specialist, "msg", chat=chat)
         self.assertEqual(len(self._app_queries()), baseline)
-        self.assertLessEqual(baseline, 7)
+        self.assertLessEqual(baseline, 8)  # +1 запрос: вложения последнего сообщения
 
 
 class ChatRetrieveTests(MessengerTestCase):

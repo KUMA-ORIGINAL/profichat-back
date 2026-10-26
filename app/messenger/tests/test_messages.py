@@ -159,10 +159,10 @@ class SendMessageTests(MessageApiTestCase):
         self.assertIsNone(self.chat.deleted_by_specialist_at)
         self.assertIsNone(self.chat.deleted_by_client_at)
 
-    def test_attachment_ids_accepted_without_text(self):
-        # Проверка вложений — Task 5; здесь параметр только принимается
+    def test_unknown_attachment_id_rejected(self):
         response = self.post_message(self.specialist, attachmentIds=[str(uuid.uuid4())])
-        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["code"], "ATTACHMENT_INVALID")
 
     def test_invalid_payload_rejected(self):
         response = self.post_message(self.specialist, text="x", clientMsgId="not-a-uuid")
@@ -497,3 +497,48 @@ class PublishHardeningTests(MessengerTestCase):
                 with self.captureOnCommitCallbacks(execute=True):
                     events.publish([1], "message.new", {"channel_id": "c"})
         apply_async.assert_not_called()
+
+
+class IdempotentResendTests(MessageApiTestCase):
+    def test_resend_after_tariff_expiry_returns_existing_message(self):
+        order = self.activate_tariff()
+        client_msg_id = str(uuid.uuid4())
+        first = self.post_message(self.client_user, text="hello", clientMsgId=client_msg_id)
+        self.assertEqual(first.status_code, 201)
+        pushes = self.send_push_mock.call_count
+        published = len(self.events_of_type("message.new"))
+
+        order.expires_at = timezone.now() - timedelta(minutes=1)
+        order.save(update_fields=["expires_at"])
+
+        second = self.post_message(self.client_user, text="hello", clientMsgId=client_msg_id)
+        self.assertEqual(second.status_code, 201, second.content)
+        self.assertEqual(second.json()["id"], first.json()["id"])
+        self.assertEqual(self.send_push_mock.call_count, pushes)
+        self.assertEqual(len(self.events_of_type("message.new")), published)
+
+        # новое сообщение без тарифа по-прежнему запрещено
+        third = self.post_message(self.client_user, text="new", clientMsgId=str(uuid.uuid4()))
+        self.assertEqual(third.status_code, 403)
+        self.assertEqual(third.json()["code"], "TARIFF_REQUIRED")
+
+    def test_insert_race_falls_back_to_existing_message(self):
+        client_msg_id = uuid.uuid4()
+        with self.captureOnCommitCallbacks(execute=True):
+            existing = message_service.send_message(
+                self.chat, self.specialist, text="hello", client_msg_id=client_msg_id
+            )
+        real_lookup = message_service._find_by_client_msg_id
+        # первая проверка «не видит» сообщение — вставка упирается в уникальный индекс
+        with patch.object(
+            message_service, "_find_by_client_msg_id", side_effect=[None, real_lookup(self.chat, self.specialist, client_msg_id)]
+        ) as lookup:
+            with self.captureOnCommitCallbacks(execute=True):
+                result = message_service.send_message(
+                    self.chat, self.specialist, text="hello", client_msg_id=client_msg_id
+                )
+
+        self.assertEqual(lookup.call_count, 2)
+        self.assertEqual(result.pk, existing.pk)
+        self.assertEqual(Message.objects.filter(chat=self.chat).count(), 1)
+        self.assertEqual(len(self.events_of_type("message.new")), 1)

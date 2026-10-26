@@ -1,6 +1,6 @@
 from django.urls import path
 
-from messenger.views import messages, realtime
+from messenger.views import attachments, messages, realtime
 
 urlpatterns = [
     path("messenger/connection-token/", realtime.ConnectionTokenView.as_view(), name="messenger-connection-token"),
@@ -14,6 +14,11 @@ urlpatterns = [
         "chats/<str:channel_id>/messages/<int:pk>/",
         messages.ChatMessageDetailView.as_view(),
         name="messenger-message-detail",
+    ),
+    path(
+        "chats/<str:channel_id>/attachments/",
+        attachments.ChatAttachmentUploadView.as_view(),
+        name="messenger-attachment-upload",
     ),
     path("chats/<str:channel_id>/read/", messages.ChatReadView.as_view(), name="messenger-chat-read"),
 ]

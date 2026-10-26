@@ -109,6 +109,7 @@ def chat_list_queryset(base_qs, user):
     return base_qs.select_related(
         "client", "specialist", "last_message", "last_message__reply_to"
     ).prefetch_related(
+        "last_message__attachments",
         Prefetch(
             "invite_deliveries",
             queryset=InviteDelivery.objects.order_by("-created_at"),
