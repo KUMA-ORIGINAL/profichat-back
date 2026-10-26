@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'chat_access',
     'payouts',
     'integrations',
+    'messenger',
 ]
 
 MIDDLEWARE = [
@@ -235,7 +236,7 @@ CACHALOT_TIMEOUT = 60 * 60
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://redis:6379/1',
+        'LOCATION': env("REDIS_URL", default="redis://redis:6379") + "/1",
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }
@@ -250,7 +251,7 @@ CHANNEL_LAYERS = {
             # socket_timeout обязан быть больше brpop_timeout (5с) у channels_redis:
             # иначе блокирующий BZPOPMIN всегда упирается в дедлайн чтения и рвёт WebSocket
             "hosts": [{
-                "address": "redis://redis:6379/2",  # Используем другой слот Redis (например, /2)
+                "address": env("REDIS_URL", default="redis://redis:6379") + "/2",  # Используем другой слот Redis (например, /2)
                 "socket_timeout": 30,
                 "socket_connect_timeout": 5,
                 "health_check_interval": 30,
@@ -258,6 +259,42 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+
+# --- Мессенджер: Centrifugo (realtime), MinIO/S3 (вложения), LiveKit (звонки), APNs (VoIP), Celery ---
+CENTRIFUGO_API_URL = env("CENTRIFUGO_API_URL", default="")          # внутренний http API, напр. http://centrifugo:8000/api
+CENTRIFUGO_API_KEY = env("CENTRIFUGO_API_KEY", default="")
+CENTRIFUGO_TOKEN_SECRET = env("CENTRIFUGO_TOKEN_SECRET", default="")  # HMAC-секрет connection/subscription токенов
+CENTRIFUGO_WS_URL = env("CENTRIFUGO_WS_URL", default="")            # публичный wss://.../connection/websocket
+
+S3_ENDPOINT_URL = env("S3_ENDPOINT_URL", default="")                # внутренний адрес MinIO
+S3_PUBLIC_ENDPOINT_URL = env("S3_PUBLIC_ENDPOINT_URL", default="")  # адрес для presigned URL, доступный клиентам
+S3_ACCESS_KEY = env("S3_ACCESS_KEY", default="")
+S3_SECRET_KEY = env("S3_SECRET_KEY", default="")
+S3_BUCKET = env("S3_BUCKET", default="messenger")
+S3_REGION = env("S3_REGION", default="us-east-1")
+
+LIVEKIT_URL = env("LIVEKIT_URL", default="")                        # публичный wss
+LIVEKIT_API_URL = env("LIVEKIT_API_URL", default="")                # внутренний http
+LIVEKIT_API_KEY = env("LIVEKIT_API_KEY", default="")
+LIVEKIT_API_SECRET = env("LIVEKIT_API_SECRET", default="")
+
+APNS_KEY_PATH = env("APNS_KEY_PATH", default="")
+APNS_KEY_ID = env("APNS_KEY_ID", default="")
+APNS_TEAM_ID = env("APNS_TEAM_ID", default="")
+APNS_BUNDLE_ID = env("APNS_BUNDLE_ID", default="")
+APNS_USE_SANDBOX = env.bool("APNS_USE_SANDBOX", default=False)
+
+MESSENGER_CALL_RING_TIMEOUT_SECONDS = 45
+MESSENGER_ATTACHMENT_MAX_BYTES = {
+    "image": 20 * 1024 * 1024,
+    "video": 200 * 1024 * 1024,
+    "file": 50 * 1024 * 1024,
+    "voice": 20 * 1024 * 1024,
+}
+
+CELERY_BROKER_URL = env("REDIS_URL", default="redis://redis:6379") + "/3"
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
 
 SPECTACULAR_SETTINGS = {

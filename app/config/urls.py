@@ -35,6 +35,7 @@ urlpatterns = [
     path('api/', include('account.urls')),
     path('api/', include('chat_access.urls')),
     path('api/', include('payouts.urls')),
+    path('api/', include('messenger.urls')),
     path('api/integration/', include('integrations.urls')),
 ]
 

@@ -1,0 +1,27 @@
+{
+  "client": {
+    "allowed_origins": ["*"]
+  },
+  "engine": {
+    "type": "redis",
+    "redis": {
+      "address": "redis://redis:6379/4"
+    }
+  },
+  "channel": {
+    "namespaces": [
+      {
+        "name": "personal",
+        "allow_subscribe_for_client": false,
+        "presence": true
+      },
+      {
+        "name": "chat",
+        "allow_publish_for_subscriber": true,
+        "presence": true,
+        "join_leave": true,
+        "force_push_join_leave": true
+      }
+    ]
+  }
+}
