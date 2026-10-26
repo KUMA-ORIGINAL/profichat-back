@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Куда идём на корпоратив</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --ink:#14211f; --muted:#5d6b68; --line:#d9e0de;
+  --accent:#e3a21a; --accent-ink:#2b1d00; --pick:#0f6b5c; --pick-soft:#dff0ec;
+  --display:"Unbounded","Golos Text",system-ui,sans-serif;
+  --body:"Golos Text",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1716; --surface:#16211f; --ink:#e8efed; --muted:#93a39f; --line:#26332f;
+  --accent:#f0b43a; --accent-ink:#231700; --pick:#5cc7b2; --pick-soft:#16332d; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding:28px 16px 48px}
+.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(26px,6vw,38px);line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1 mark{background:var(--accent);color:var(--accent-ink);padding:0 .18em;border-radius:4px}
+.lede{color:var(--muted);margin:10px 0 0;max-width:56ch}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+.chip{font-size:13px;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-variant-numeric:tabular-nums}
+form,.me{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px}
+h2{font-family:var(--display);font-weight:500;font-size:17px;margin:0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>input{flex:1 1 200px;min-width:0}
+input,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
+textarea{resize:vertical;min-height:44px}
+input:focus-visible,textarea:focus-visible,button:focus-visible,label.vote:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:8px;border:0;padding:10px 16px}
+.primary{background:var(--accent);color:var(--accent-ink)}
+.primary:disabled{opacity:.5;cursor:default}
+.ghost{background:none;color:var(--muted);padding:4px 6px;font-weight:500;font-size:13px}
+.ghost:hover{color:var(--ink)}
+.hint{font-size:13px;color:var(--muted);margin:0;flex:1 1 200px}
+.err{color:#c0392b;font-size:13px;margin:0}
+.sec{display:flex;flex-direction:column;gap:12px}
+.list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.opt{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start}
+.opt.mine-pick{border-color:var(--pick);background:var(--pick-soft)}
+.rank{font-family:var(--display);font-size:13px;color:var(--muted);width:22px;padding-top:3px;font-variant-numeric:tabular-nums}
+.opt.lead .rank{color:var(--accent)}
+.body{min-width:0;display:flex;flex-direction:column;gap:6px}
+.title{font-weight:600;font-size:16px;overflow-wrap:anywhere}
+.note{color:var(--muted);font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}
+.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.bar{height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
+.faces,.people{display:flex;flex-wrap:wrap;gap:4px}
+.av{width:22px;height:22px;border-radius:50%;background:var(--pick);color:var(--bg);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;flex:none}
+label.vote{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;user-select:none;min-width:58px;padding:8px 6px;border-radius:10px;border:1px solid var(--line);background:var(--bg);position:relative}
+label.vote input{position:absolute;opacity:0;width:1px;height:1px}
+label.vote .n{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums}
+label.vote .t{font-size:11px;color:var(--muted)}
+label.vote.on{background:var(--pick);border-color:var(--pick)}
+label.vote.on .n,label.vote.on .t{color:var(--bg)}
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:22px;color:var(--muted)}
+.people{gap:8px}
+.person{display:flex;align-items:center;gap:6px;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 10px 3px 3px}
+.wishes{display:flex;flex-direction:column;gap:8px}
+.wish{font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Опрос команды</div>
+    <h1>Куда идём на <mark>корпоратив</mark>?</h1>
+    <p class="lede">Предложите своё место и отметьте все варианты, которые вам нравятся. Голосовать можно за несколько. Результаты видны всем и обновляются сразу.</p>
+    <div class="status"><span class="chip" id="cnt-people">Ответили: 0</span><span class="chip" id="cnt-places">Вариантов: 0</span></div>
+  </header>
+
+  <div class="me" id="me">
+    <h2>Как вас зовут?</h2>
+    <div class="row">
+      <input id="f-name" maxlength="60" placeholder="Имя, чтобы коллеги видели ваш голос" autocomplete="name">
+      <button class="primary" id="name-btn" type="button">Продолжить</button>
+    </div>
+  </div>
+
+  <form id="add" autocomplete="off">
+    <h2>Предложить место</h2>
+    <input id="f-title" maxlength="80" placeholder="Например: боулинг, баня, ресторан, выезд в горы" required>
+    <textarea id="f-note" maxlength="300" placeholder="Подробности: адрес, цена на человека, почему туда (необязательно)"></textarea>
+    <div class="row">
+      <p class="hint">Ваш вариант сразу получит ваш голос.</p>
+      <button class="primary" id="f-btn" type="submit">Добавить</button>
+    </div>
+    <p class="err" id="add-err" hidden></p>
+  </form>
+
+  <section class="sec">
+    <h2>Варианты</h2>
+    <ul class="list" id="list"></ul>
+    <div class="empty" id="empty">Пока никто ничего не предложил. Добавьте первый вариант в форме выше, и коллеги смогут за него проголосовать.</div>
+  </section>
+
+  <section class="sec">
+    <h2>Пожелания</h2>
+    <form id="wishform" style="padding:14px">
+      <textarea id="f-wish" maxlength="300" placeholder="Даты, бюджет, что точно не подходит (необязательно)"></textarea>
+      <div class="row">
+        <p class="hint" id="wish-hint">Видно всем. Можно изменить в любой момент.</p>
+        <button class="primary" id="w-btn" type="submit">Сохранить</button>
+      </div>
+    </form>
+    <div class="wishes" id="wishes"></div>
+  </section>
+
+  <section class="sec">
+    <h2>Кто уже ответил</h2>
+    <div class="people" id="people"></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const API = "/api/corporate-poll/";
+  const store = {
+    get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+    set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
+  };
+  const uuid = () => crypto.randomUUID ? crypto.randomUUID()
+    : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c === "x" ? r : (r&3|8)).toString(16); });
+
+  let token = store.get("poll_token"); if (!token){ token = uuid(); store.set("poll_token", token); }
+  let name = store.get("poll_name") || "";
+  let state = { places: [], people: [] };
+  let wishTouched = false;
+
+  const api = async (path, opts = {}) => {
+    const r = await fetch(API + path, { headers: { "Content-Type": "application/json" }, ...opts });
+    if (!r.ok) throw new Error(r.status);
+    return r.status === 204 ? null : r.json();
+  };
+  const post = (path, body) => api(path, { method: "POST", body: JSON.stringify({ token, name, ...body }) });
+
+  const syncMe = () => {
+    $("me").hidden = !!name;
+    ["f-title","f-note","f-btn","f-wish","w-btn"].forEach(id => $(id).disabled = !name);
+  };
+  $("name-btn").onclick = () => {
+    const v = $("f-name").value.trim(); if (!v) return;
+    name = v; store.set("poll_name", name); syncMe(); render();
+  };
+  $("f-name").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); $("name-btn").click(); } });
+
+  async function load(){
+    try { state = await api(""); } catch(e){ return; }
+    const mine = state.people.find(p => p.token === token);
+    if (mine && !wishTouched && document.activeElement !== $("f-wish")) $("f-wish").value = mine.wish || "";
+    render();
+  }
+
+  const avatar = n => { const a = document.createElement("span"); a.className = "av"; a.textContent = (n || "?").trim().charAt(0).toUpperCase(); a.title = n; return a; };
+
+  function render(){
+    const nm = {}; state.people.forEach(p => nm[p.token] = p.name);
+    state.places.forEach(p => nm[p.author] = p.authorName);
+    const sorted = [...state.places].sort((a, b) => b.voters.length - a.voters.length);
+    const max = Math.max(1, ...sorted.map(p => p.voters.length));
+
+    $("cnt-people").textContent = "Ответили: " + state.people.length;
+    $("cnt-places").textContent = "Вариантов: " + state.places.length;
+    $("empty").hidden = state.places.length > 0;
+
+    const list = $("list"); list.replaceChildren();
+    sorted.forEach((p, i) => {
+      const n = p.voters.length, on = p.voters.includes(token);
+      const li = document.createElement("li");
+      li.className = "opt" + (on ? " mine-pick" : "") + (i === 0 && n > 0 ? " lead" : "");
+      const rank = document.createElement("div"); rank.className = "rank"; rank.textContent = String(i + 1).padStart(2, "0");
+      const body = document.createElement("div"); body.className = "body";
+      const t = document.createElement("div"); t.className = "title"; t.textContent = p.title; body.append(t);
+      if (p.note){ const no = document.createElement("div"); no.className = "note"; no.textContent = p.note; body.append(no); }
+      const bar = document.createElement("div"); bar.className = "bar"; const bi = document.createElement("i"); bi.style.width = (n / max * 100) + "%"; bar.append(bi); body.append(bar);
+      const meta = document.createElement("div"); meta.className = "meta";
+      const faces = document.createElement("div"); faces.className = "faces";
+      p.voters.forEach(u => faces.append(avatar(nm[u] || "Коллега")));
+      const by = document.createElement("span"); by.textContent = "предложил(а): " + p.authorName;
+      meta.append(faces, by);
+      if (p.author === token){
+        const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Удалить";
+        del.onclick = async () => {
+          if (del.dataset.armed){ try { await api("places/" + p.id + "/?token=" + token, { method: "DELETE" }); } catch(e){} load(); }
+          else { del.dataset.armed = "1"; del.textContent = "Точно удалить?"; setTimeout(() => { delete del.dataset.armed; del.textContent = "Удалить"; }, 3000); }
+        };
+        meta.append(del);
+      }
+      body.append(meta);
+      const lab = document.createElement("label"); lab.className = "vote" + (on ? " on" : "");
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = on; cb.disabled = !name;
+      cb.setAttribute("aria-label", "Голос за " + p.title);
+      cb.onchange = async () => { try { await post("votes/", { placeId: p.id, on: cb.checked }); } catch(e){} load(); };
+      const nn = document.createElement("span"); nn.className = "n"; nn.textContent = n;
+      const tt = document.createElement("span"); tt.className = "t"; tt.textContent = on ? "мой голос" : "голосовать";
+      lab.append(cb, nn, tt);
+      li.append(rank, body, lab); list.append(li);
+    });
+
+    const pe = $("people"); pe.replaceChildren();
+    if (!state.people.length){ const h = document.createElement("span"); h.className = "hint"; h.textContent = "Пока никого."; pe.append(h); }
+    state.people.forEach(p => {
+      const d = document.createElement("span"); d.className = "person";
+      const s = document.createElement("span"); s.textContent = p.name; d.append(avatar(p.name), s); pe.append(d);
+    });
+
+    const w = $("wishes"); w.replaceChildren();
+    state.people.filter(p => p.wish).forEach(p => {
+      const d = document.createElement("div"); d.className = "wish";
+      const b = document.createElement("b"); b.textContent = p.name + ": ";
+      d.append(b, document.createTextNode(p.wish)); w.append(d);
+    });
+  }
+
+  $("add").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const title = $("f-title").value.trim(); if (!title || !name) return;
+    $("f-btn").disabled = true; $("add-err").hidden = true;
+    try {
+      await post("places/", { title, note: $("f-note").value.trim() });
+      $("f-title").value = ""; $("f-note").value = "";
+    } catch(e){ $("add-err").textContent = "Не получилось добавить. Попробуйте ещё раз."; $("add-err").hidden = false; }
+    $("f-btn").disabled = false; load();
+  });
+
+  $("f-wish").addEventListener("input", () => wishTouched = true);
+  $("wishform").addEventListener("submit", async ev => {
+    ev.preventDefault(); if (!name) return;
+    try { await post("wish/", { wish: $("f-wish").value.trim() }); wishTouched = false; $("wish-hint").textContent = "Сохранено."; }
+    catch(e){ $("wish-hint").textContent = "Не получилось сохранить."; }
+    setTimeout(() => $("wish-hint").textContent = "Видно всем. Можно изменить в любой момент.", 2000);
+    load();
+  });
+
+  $("f-name").value = name;
+  syncMe(); render(); load();
+  setInterval(() => { if (!document.hidden) load(); }, 5000);
+})();
+</script>
+</body>
+</html>
