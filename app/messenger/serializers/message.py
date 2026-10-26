@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from messenger.models import Message
 from messenger.serializers.attachment import AttachmentSerializer
+from messenger.serializers.call import CallSerializer
 
 
 class ReplyToSerializer(serializers.ModelSerializer):
@@ -24,7 +25,7 @@ class MessageSerializer(serializers.ModelSerializer):
     Сообщение в истории, событиях и списке чатов.
 
     Удалённое сообщение отдаётся с пустым текстом и без вложений (мягкое удаление).
-    `call` заполняется в задаче 7.
+    `call` — звонок для `type=call` (иначе null); в выборках нужен select_related("call").
     """
 
     channel_id = serializers.CharField(source="chat.channel_id", read_only=True)
@@ -71,7 +72,11 @@ class MessageSerializer(serializers.ModelSerializer):
         attachments = sorted(obj.attachments.all(), key=lambda attachment: (attachment.created_at, attachment.pk))
         return AttachmentSerializer(attachments, many=True).data
 
-    @extend_schema_field(serializers.DictField(allow_null=True))
+    @extend_schema_field(CallSerializer(allow_null=True))
     def get_call(self, obj):
-        # Task 7: данные звонка для type=call
-        return None
+        if obj.call_id is None or obj.call is None:
+            return None
+        call = obj.call
+        if call.chat_id == obj.chat_id:
+            call.chat = obj.chat  # channel_id без лишнего запроса
+        return CallSerializer(call).data

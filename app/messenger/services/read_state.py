@@ -22,7 +22,8 @@ def mark_read(chat, user, message_id: int) -> ChatMember:
     Отметка «прочитано до сообщения message_id».
 
     Монотонно: сообщение раньше уже прочитанного (по created_at, id) игнорируется.
-    unread_count пересчитывается как число сообщений собеседника после прочитанного.
+    unread_count пересчитывается как число обычных сообщений собеседника после прочитанного
+    (системные и звонковые сообщения непрочитанными не считаются).
     Событие `chat.read` уходит собеседнику и себе (синхронизация устройств).
     """
     message = Message.objects.filter(chat=chat, pk=message_id).first()
@@ -39,7 +40,9 @@ def mark_read(chat, user, message_id: int) -> ChatMember:
                 return member
 
         member.last_read_message_id = message.id
-        member.unread_count = _messages_after(chat, message).filter(sender_id=companion_id).count()
+        member.unread_count = (
+            _messages_after(chat, message).filter(sender_id=companion_id, type=Message.Type.REGULAR).count()
+        )
         member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
         events.publish(
             [companion_id, user.pk],

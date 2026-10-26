@@ -141,7 +141,7 @@ def find_by_client_msg_id(chat, sender, client_msg_id) -> Message | None:
 
 def _find_by_client_msg_id(chat, sender, client_msg_id):
     return (
-        Message.objects.select_related("chat", "reply_to")
+        Message.objects.select_related("chat", "reply_to", "call")
         .filter(chat=chat, sender=sender, client_msg_id=client_msg_id)
         .first()
     )
@@ -161,6 +161,30 @@ def create_system_message(chat, custom_type: str, text: str, extra_data: dict | 
         _apply_new_message(chat, message)
         _publish_message(chat, message, "message.new")
     return message
+
+
+def create_call_message(chat, call) -> Message:
+    """
+    Сообщение `type=call` от звонящего: последнее сообщение чата и `message.new`,
+    но без пуша (у звонка свои пуши) и без увеличения непрочитанных.
+    """
+    with transaction.atomic():
+        message = Message.objects.create(
+            chat=chat,
+            sender_id=call.caller_id,
+            type=Message.Type.CALL,
+            call=call,
+        )
+        _apply_new_message(chat, message)
+        _publish_message(chat, message, "message.new")
+    return message
+
+
+def publish_call_message_updated(call) -> None:
+    """`message.updated` для сообщения звонка после смены его статуса."""
+    for message in Message.objects.filter(call_id=call.pk).select_related("chat", "reply_to"):
+        message.call = call
+        _publish_message(message.chat, message, "message.updated")
 
 
 # --- изменение ---
@@ -238,7 +262,7 @@ def list_messages(
         raise _param_invalid("Нельзя передавать before и after одновременно")
     limit = max(1, min(int(limit), MAX_LIMIT))
 
-    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to").prefetch_related("attachments")
+    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to", "call").prefetch_related("attachments")
     if after:
         created_at, message_id = decode_cursor(after)
         qs = qs.filter(

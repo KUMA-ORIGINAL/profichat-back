@@ -127,7 +127,7 @@ class ChatMessageDetailView(APIView):
 
     def _get_message(self, request, channel_id, pk):
         chat = access.ensure_member(request.user, channel_id)
-        message = Message.objects.select_related("reply_to").filter(chat=chat, pk=pk).first()
+        message = Message.objects.select_related("reply_to", "call").filter(chat=chat, pk=pk).first()
         if message is None:
             raise AppError("Сообщение не найдено", code=ErrorCode.MESSAGE_NOT_FOUND, status_code=404)
         message.chat = chat

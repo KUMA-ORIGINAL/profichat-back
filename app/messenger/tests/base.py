@@ -57,25 +57,30 @@ class MessengerTestCase(APITestCase):
         self.client.force_authenticate(user=user)
         return user
 
-    def activate_tariff(self, hours=24):
-        """Создаёт оплаченный заказ доступа, активный на `hours` часов от текущего момента."""
-        now = timezone.now()
-        tariff = Tariff.objects.create(
-            name="Тестовый тариф",
-            price=0,
-            duration_hours=hours,
-            is_active=True,
-            specialist=self.specialist,
-        )
-        return AccessOrder.objects.create(
-            tariff=tariff,
-            client=self.client_user,
-            specialist=self.specialist,
-            chat=self.chat,
-            duration_hours=hours,
-            tariff_type=tariff.tariff_type,
-            price=tariff.price,
-            payment_status="success",
-            activated_at=now,
-            expires_at=now + timedelta(hours=hours),
-        )
+    def activate_tariff(self, hours=24, chat=None):
+        """Создаёт оплаченный заказ доступа (по умолчанию для self.chat), активный на `hours` часов."""
+        return activate_tariff(chat or self.chat, hours=hours)
+
+
+def activate_tariff(chat, hours=24):
+    """Оплаченный заказ доступа для чата, активный на `hours` часов от текущего момента."""
+    now = timezone.now()
+    tariff = Tariff.objects.create(
+        name="Тестовый тариф",
+        price=0,
+        duration_hours=hours,
+        is_active=True,
+        specialist=chat.specialist,
+    )
+    return AccessOrder.objects.create(
+        tariff=tariff,
+        client=chat.client,
+        specialist=chat.specialist,
+        chat=chat,
+        duration_hours=hours,
+        tariff_type=tariff.tariff_type,
+        price=tariff.price,
+        payment_status="success",
+        activated_at=now,
+        expires_at=now + timedelta(hours=hours),
+    )

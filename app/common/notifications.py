@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django.utils import timezone
 from firebase_admin import messaging
@@ -180,6 +181,55 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta
             "error_message": "; ".join(error_messages),
         }
     return result
+
+
+def send_data_push(user, data, ttl_seconds, log_prefix="[Push][Data]"):
+    """Data-only FCM-сообщение (без notification) с высоким приоритетом Android и TTL.
+
+    Нужен там, где приложение само показывает UI (входящий звонок): data-only будит
+    Android-приложение, а TTL не даёт доставить устаревшее событие. В ленту не пишется.
+    """
+    devices = list(GCMDevice.objects.filter(user=user, active=True))
+    if not devices:
+        logger.info("%s No active devices for user_id=%s", log_prefix, _safe_user_ref(user))
+        return False
+
+    payload = {k: str(v) for k, v in (data or {}).items()}
+    success_count = 0
+    for device in devices:
+        try:
+            firebase_message = messaging.Message(
+                data=payload,
+                token=device.registration_id,
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    ttl=timedelta(seconds=ttl_seconds),
+                ),
+            )
+            response = device.send_message(firebase_message)
+            ok, error_code, error_message = _read_batch_response(response)
+            if ok:
+                success_count += 1
+                _record_device_result(device, ok=True)
+                continue
+            logger.warning(
+                "%s Data push rejected by FCM for user_id=%s device_id=%s code=%s: %s",
+                log_prefix,
+                _safe_user_ref(user),
+                getattr(device, "id", None),
+                error_code,
+                error_message,
+            )
+            _record_device_result(device, ok=False, error_code=error_code, error_message=error_message)
+        except Exception as e:
+            logger.exception(
+                "%s Data push failed for user_id=%s device_id=%s",
+                log_prefix,
+                _safe_user_ref(user),
+                getattr(device, "id", None),
+            )
+            _record_device_result(device, ok=False, error_code="EXCEPTION", error_message=str(e))
+    return success_count > 0
 
 
 def create_notification(user, title, message, notification_type, payload=None):

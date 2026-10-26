@@ -107,7 +107,7 @@ def chat_list_queryset(base_qs, user):
     """Подгрузка всего, что нужно `build_chat_list_item`, без запросов на каждый чат."""
     now = timezone.now()
     return base_qs.select_related(
-        "client", "specialist", "last_message", "last_message__reply_to"
+        "client", "specialist", "last_message", "last_message__reply_to", "last_message__call"
     ).prefetch_related(
         "last_message__attachments",
         Prefetch(

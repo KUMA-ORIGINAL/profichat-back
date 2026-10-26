@@ -1,7 +1,10 @@
 import logging
 
-from common.notifications import send_push
-from messenger.models import Attachment, ChatMember, Message
+from django.conf import settings
+
+from common.notifications import send_data_push, send_push
+from messenger.clients import apns
+from messenger.models import Attachment, Call, ChatMember, Message, VoipDevice
 
 logger = logging.getLogger(__name__)
 
@@ -65,4 +68,38 @@ def send_message_push(message_id: int) -> None:
         },
         log_prefix="[Push][Message]",
         thread_id=chat.channel_id,
+    )
+
+
+def incoming_call_payload(call) -> dict:
+    """Данные пуша о входящем звонке (одинаковые для iOS VoIP и Android data-only)."""
+    return {
+        "type": "incoming_call",
+        "callId": str(call.pk),
+        "channelId": call.chat.channel_id,
+        "kind": call.kind,
+        "callerId": call.caller_id,
+        "callerName": sender_display_name(call.caller),
+    }
+
+
+def send_call_push(call_id) -> None:
+    """
+    Пуш о входящем звонке вызываемому, пока звонок ещё звонит.
+
+    iOS — VoIP (PushKit) на все активные VoipDevice; Android — FCM data-only, priority high,
+    TTL = таймаут дозвона (FCM-токены iOS-устройств получают тот же data-only, приложение его игнорирует).
+    """
+    call = Call.objects.select_related("chat", "caller", "callee").filter(pk=call_id).first()
+    if call is None or call.status != Call.Status.RINGING:
+        return
+
+    payload = incoming_call_payload(call)
+    for token in VoipDevice.objects.filter(user_id=call.callee_id, active=True).values_list("token", flat=True):
+        apns.send_voip(token, payload)
+    send_data_push(
+        call.callee,
+        payload,
+        ttl_seconds=settings.MESSENGER_CALL_RING_TIMEOUT_SECONDS,
+        log_prefix="[Push][Call]",
     )

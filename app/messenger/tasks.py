@@ -1,7 +1,11 @@
 # Celery-задачи мессенджера (autodiscover подхватывает этот модуль).
+import logging
+
 from celery import shared_task
 
 from messenger.clients import centrifugo
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(
@@ -30,3 +34,30 @@ def cleanup_pending_attachments():
     from messenger.services import attachments
 
     return attachments.cleanup_pending()
+
+
+@shared_task(ignore_result=True)
+def send_call_push(call_id):
+    """Пуш о входящем звонке: iOS VoIP (PushKit) и Android data-only."""
+    from messenger.services.push import send_call_push as _send_call_push
+
+    _send_call_push(call_id)
+
+
+@shared_task(ignore_result=True)
+def expire_call(call_id):
+    """Таймаут дозвона: RINGING → MISSED + пуш «Пропущенный звонок»."""
+    from messenger.services import calls
+
+    calls.expire_call(call_id)
+
+
+@shared_task(ignore_result=True)
+def delete_call_room(room_name):
+    """Закрывает комнату LiveKit завершённого звонка (пустая комната и так закроется по empty_timeout)."""
+    from messenger.clients import livekit
+
+    try:
+        livekit.delete_room(room_name)
+    except livekit.LiveKitError:
+        logger.warning("LiveKit delete_room failed for %s", room_name, exc_info=True)
