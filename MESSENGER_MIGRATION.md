@@ -114,6 +114,29 @@ ufw allow from 172.16.0.0/12 to any port 7880,5349 proto tcp   # docker-сети
 docker compose -f docker-compose.prod.yml logs nginx | grep '"POST .* 301 ' | tail
 ```
 
+### 0.6. Образ MinIO собирается из исходников
+
+MinIO больше не публикует образы `minio/minio` и `minio/mc` (Docker Hub отвечает
+`pull access denied`). Сервисы `minio` и `minio-init` используют один локальный образ
+`profichat/minio:<релиз>`, который compose собирает из `minio/Dockerfile`: исходники
+MinIO и mc клонируются с GitHub по тегу `RELEASE.*` и собираются Go из официального
+образа `golang`. Бинарник `minio` внутри — тот же релиз (`minio --version`), процесс
+работает не от root (uid 10001).
+
+- **Первая сборка** — около 2–4 минут на ноутбуке разработчика (замер с `--no-cache`),
+  на небольшом VPS дольше: скачиваются Go-модули (нужен доступ к GitHub и proxy.golang.org)
+  и компилируется MinIO, что требовательно к памяти — на сервере с 1–2 ГБ RAM добавьте swap.
+  Сборку делает обычный `up -d --build`; можно заранее:
+  `docker compose -f docker-compose.prod.yml build minio`. Дальше образ берётся из кэша.
+- **Обновление релиза:** в `minio/Dockerfile` поменять `MINIO_RELEASE` (и при
+  необходимости `MC_RELEASE`; теги — github.com/minio/minio/tags, github.com/minio/mc/tags),
+  сверить `GO_IMAGE` с директивами `go`/`toolchain` в `go.mod` релиза, затем поменять тег
+  `image: profichat/minio:<релиз>` у `minio` и `minio-init` в обоих compose-файлах (новый тег —
+  сигнал compose пересобрать) и выполнить `up -d --build minio minio-init`.
+- Том `minio-data`, созданный **старым** образом `minio/minio` (работал от root), новому
+  непривилегированному процессу недоступен на запись. Если такой том уже есть:
+  `docker compose -f docker-compose.prod.yml run --rm --no-deps --user root --entrypoint chown minio -R 10001:10001 /data`.
+
 ---
 
 ## A. Staging (обязательно до прода)

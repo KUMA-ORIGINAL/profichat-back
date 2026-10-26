@@ -12,7 +12,7 @@
 
 2. **Запустите контейнеры**
 
-   Используйте docker-compose для сборки и запуска контейнеров:
+   Используйте docker-compose для сборки и запуска контейнеров (первый запуск дольше: образ MinIO собирается из исходников — `minio/Dockerfile`, см. [MESSENGER_MIGRATION.md](MESSENGER_MIGRATION.md), п. 0.6):
 
    ```bash
    docker-compose up
