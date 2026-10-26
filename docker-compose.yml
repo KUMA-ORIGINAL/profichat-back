@@ -75,7 +75,10 @@ services:
         condition: service_healthy
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Собирается локально из исходников (minio/Dockerfile): MinIO больше не публикует образы на Docker Hub.
+    # Тег = релиз MinIO; при обновлении менять вместе с MINIO_RELEASE в minio/Dockerfile.
+    build: minio
+    image: profichat/minio:RELEASE.2025-10-15T17-29-55Z
     restart: unless-stopped
     env_file:
       - .env.dev
@@ -94,7 +97,9 @@ services:
       - '9001:9001'
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # Тот же образ, что у minio (внутри есть mc)
+    build: minio
+    image: profichat/minio:RELEASE.2025-10-15T17-29-55Z
     env_file:
       - .env.dev
     restart: "no"
