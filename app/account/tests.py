@@ -886,3 +886,48 @@ class PushDeviceRegistrationTests(APITestCase):
         fcm_device.refresh_from_db()
         self.assertFalse(apns_device.active)
         self.assertTrue(fcm_device.active)
+
+
+class PushDeviceDuplicatesTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="dup_owner", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    def _duplicates(self):
+        GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+
+    def test_register_fcm_survives_duplicate_rows(self):
+        # На проде здесь был 500: update_or_create → MultipleObjectsReturned.
+        self._duplicates()
+
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+
+    def test_device_gcm_drops_duplicate_rows(self):
+        self._duplicates()
+
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+
+    def test_migration_keeps_newest_row_per_token(self):
+        self._duplicates()
+        newest = GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        single = GCMDevice.objects.create(user=self.user, registration_id="other-token")
+        migration = importlib.import_module("account.migrations.0058_drop_duplicate_devices")
+
+        migration.drop_duplicate_devices(django_apps, None)
+
+        self.assertEqual(
+            list(GCMDevice.objects.filter(registration_id=FCM_TOKEN).values_list("id", flat=True)),
+            [newest.id],
+        )
+        self.assertTrue(GCMDevice.objects.filter(id=single.id).exists())

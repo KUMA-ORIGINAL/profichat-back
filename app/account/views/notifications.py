@@ -28,6 +28,25 @@ ATTEMPT_SUCCESS = "success"
 ATTEMPT_FAILURE = "failure"
 
 
+def drop_duplicate_devices(registration_id):
+    """Оставляет у токена одну строку GCMDevice — самую новую.
+
+    Уникальности на registration_id в таблице нет, и параллельные регистрации
+    одного токена создают дубли. С ними update_or_create падает
+    MultipleObjectsReturned (500 на register-fcm), а send_push шлёт на один
+    телефон столько пушей, сколько строк.
+    """
+    if not registration_id:
+        return
+    ids = list(
+        GCMDevice.objects.filter(registration_id=registration_id)
+        .order_by("-id")
+        .values_list("id", flat=True)
+    )
+    if len(ids) > 1:
+        GCMDevice.objects.filter(id__in=ids[1:]).delete()
+
+
 def _last_attempt(device):
     """Чем кончилась последняя отправка на устройство; None — отправок не было."""
     delivery = getattr(device, "delivery_status", None)
@@ -84,6 +103,7 @@ class RegisterFCMTokenView(APIView):
             # на ошибку показали бы модалку.
             return Response({"status": "ignored", "created": False})
 
+        drop_duplicate_devices(reg_id)
         device, created = GCMDevice.objects.update_or_create(
             registration_id=reg_id,
             defaults={"user": request.user, "active": True}
@@ -370,4 +390,5 @@ class PushDeviceViewSet(GCMDeviceAuthorizedViewSet):
             # 200, чтобы у них не всплыла модалка ошибки, но не сохраняем:
             # отправка на такой токен всегда падает и портит статус пушей.
             return Response({"status": "ignored", "active": False})
+        drop_duplicate_devices(request.data.get(self.lookup_field))
         return super().create(request, *args, **kwargs)
