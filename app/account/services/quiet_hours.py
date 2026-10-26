@@ -84,6 +84,12 @@ def quiet_until(user, moment):
     return next_start
 
 
+def available_from(user, moment):
+    """С какого момента специалист отвечает: `moment`, если смена идёт или
+    графика нет, иначе начало следующей смены."""
+    return quiet_until(user, moment) or moment
+
+
 def _stream_time(moment):
     return moment.astimezone(dt_timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

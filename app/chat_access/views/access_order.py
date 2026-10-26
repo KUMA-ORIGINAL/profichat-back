@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from account.models import ROLE_SPECIALIST
+from account.services.quiet_hours import quiet_until
 from common.errors import ErrorCode, error_response
 from ..models import AccessOrder, Chat
 from ..serializers.access_order import (
@@ -19,6 +20,15 @@ from ..services import update_chat_data_from_order
 from ..services.open_banking import generate_payment_link
 
 logger = logging.getLogger(__name__)
+
+
+def _available_from(access_order):
+    """Когда специалист начнёт отвечать, если сейчас он вне графика; иначе None.
+
+    С этого же момента пойдёт срок тарифа (см. AccessOrder.activate) —
+    приложение предупреждает об этом перед оплатой.
+    """
+    return quiet_until(access_order.specialist, timezone.now())
 
 
 class AccessOrderViewSet(viewsets.ModelViewSet):
@@ -50,6 +60,7 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
                 {
                     "id": access_order.id,
                     "message": "Доступ активирован сразу, так как выбран бесплатный тариф.",
+                    "available_from": _available_from(access_order),
                 },
                 status=status.HTTP_201_CREATED,
             )
@@ -66,6 +77,7 @@ class AccessOrderViewSet(viewsets.ModelViewSet):
             "id": access_order.id,
             "payment_url": payment_url,
             "specialist": specialist_data,
+            "available_from": _available_from(access_order),
         }
         return Response(data, status=status.HTTP_201_CREATED)
 
