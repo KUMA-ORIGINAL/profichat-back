@@ -230,6 +230,35 @@ class StartCallTests(CallTestCase):
         self.assertFalse(Call.objects.exists())
         self.livekit_mocks["create_room"].assert_not_called()
 
+    def test_callee_disabled_call_kind_not_allowed(self):
+        self.activate_tariff()
+        for kind, flag in (("audio", "can_audio_call"), ("video", "can_video_call")):
+            with self.subTest(kind=kind):
+                User.objects.filter(pk=self.specialist.pk).update(can_audio_call=True, can_video_call=True)
+                User.objects.filter(pk=self.specialist.pk).update(**{flag: False})
+
+                self.assertError(self.start(self.client_user, kind=kind), 403, "CALL_NOT_ALLOWED")
+                self.assertFalse(Call.objects.exists())
+                self.assertFalse(Message.objects.filter(type=Message.Type.CALL).exists())
+                self.livekit_mocks["create_room"].assert_not_called()
+
+        # другой тип звонка при этом разрешён
+        response = self.start(self.client_user, kind="audio")
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_callee_disabled_calls_checked_before_busy(self):
+        # даже когда собеседник занят, запрет звонков — 403 без BUSY-записи и сообщения
+        self.activate_tariff()
+        other_client = User.objects.create_user(username="client_2", password="pass", role=ROLE_CLIENT)
+        other_chat = create_or_get_chat(other_client, self.specialist)
+        self.activate_tariff(chat=other_chat)
+        self.ring()
+        User.objects.filter(pk=self.specialist.pk).update(can_audio_call=False)
+
+        self.assertError(self.start(other_client, chat=other_chat), 403, "CALL_NOT_ALLOWED")
+        self.assertEqual(Call.objects.count(), 1)
+        self.assertFalse(Message.objects.filter(chat=other_chat, type=Message.Type.CALL).exists())
+
     def test_second_call_while_active_is_busy(self):
         self.activate_tariff()
         first = self.ring()
@@ -406,6 +435,26 @@ class LiveKitWebhookTests(CallTestCase):
     def setUp(self):
         super().setUp()
         self.activate_tariff()
+        participants_patcher = patch("messenger.clients.livekit.room_participants", return_value=set())
+        self.room_participants = participants_patcher.start()
+        self.addCleanup(participants_patcher.stop)
+        recheck_patcher = patch("messenger.tasks.check_call_room.apply_async")
+        self.recheck_mock = recheck_patcher.start()
+        self.addCleanup(recheck_patcher.stop)
+
+    def accepted_call(self):
+        call = self.ring()
+        self.act(self.specialist, call, "accept")
+        self.client.force_authenticate(user=None)
+        self.broadcast_mock.reset_mock()
+        return call
+
+    def participant_left(self, call, user):
+        return self.signed_webhook({
+            "event": "participant_left",
+            "room": {"name": call.room_name},
+            "participant": {"identity": str(user.pk)},
+        })
 
     def test_webhook_rejects_bad_signature(self):
         payload = {"event": "room_finished", "room": {"name": "call_x"}}
@@ -456,6 +505,62 @@ class LiveKitWebhookTests(CallTestCase):
             self.assertEqual(self.signed_webhook(payload).status_code, 200)
         call.refresh_from_db()
         self.assertEqual(call.end_reason, "disconnected")
+
+    def test_participant_left_keeps_call_while_someone_remains(self):
+        call = self.accepted_call()
+        # LiveKit может ещё перечислять ушедшего — он не считается оставшимся
+        self.room_participants.return_value = {str(self.specialist.pk), str(self.client_user.pk)}
+
+        response = self.participant_left(call, self.client_user)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.room_participants.assert_called_once_with(call.room_name)
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ACCEPTED)
+        self.assertNotIn("call.ended", self.event_types(self.specialist))
+        self.recheck_mock.assert_not_called()
+
+    def test_participant_left_only_leaver_listed_ends_call(self):
+        call = self.accepted_call()
+        self.room_participants.return_value = {str(self.client_user.pk)}
+
+        self.participant_left(call, self.client_user)
+
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ENDED)
+
+    def test_participant_left_livekit_unreachable_schedules_recheck(self):
+        call = self.accepted_call()
+        self.room_participants.side_effect = livekit.LiveKitError("down")
+
+        response = self.participant_left(call, self.client_user)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ACCEPTED)
+        self.recheck_mock.assert_called_once_with((str(call.pk),), countdown=30)
+
+    def test_recheck_task_ends_call_when_room_empty(self):
+        call = self.accepted_call()
+
+        with self.captureOnCommitCallbacks(execute=True):
+            tasks.check_call_room(str(call.pk))
+
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ENDED)
+        self.assertEqual(call.end_reason, "disconnected")
+
+    def test_recheck_task_keeps_call_when_occupied_or_unreachable(self):
+        call = self.accepted_call()
+        for side_effect, value in ((None, {str(self.specialist.pk)}), (livekit.LiveKitError("down"), set())):
+            self.room_participants.side_effect = side_effect
+            self.room_participants.return_value = value
+            with self.captureOnCommitCallbacks(execute=True):
+                tasks.check_call_room(str(call.pk))
+            call.refresh_from_db()
+            self.assertEqual(call.status, Call.Status.ACCEPTED)
+        # повторно не планируется: дальше страхуют room_finished и reconcile_calls
+        self.recheck_mock.assert_not_called()
 
     def test_webhook_room_finished_ends_call(self):
         call = self.ring()
@@ -767,6 +872,28 @@ class LiveKitRoomsClientTests(SimpleTestCase):
         with patch("messenger.clients.livekit.asyncio.run") as run:
             self.assertEqual(livekit.existing_rooms([]), set())
         run.assert_not_called()
+
+    @override_settings(**LIVEKIT_SETTINGS)
+    def test_room_participants_identities_and_errors(self):
+        from livekit.api import TwirpError
+
+        def fake_run(result=None, error=None):
+            def run(coro):
+                coro.close()
+                if error is not None:
+                    raise error
+                return result
+            return run
+
+        with patch("messenger.clients.livekit.asyncio.run", side_effect=fake_run(result={"1", "2"})):
+            self.assertEqual(livekit.room_participants("call_x"), {"1", "2"})
+        # комнаты уже нет — в ней никого
+        with patch("messenger.clients.livekit.asyncio.run", side_effect=fake_run(error=TwirpError("not_found", "no room"))):
+            self.assertEqual(livekit.room_participants("call_x"), set())
+        for error in (TwirpError("unavailable", "down"), OSError("refused")):
+            with patch("messenger.clients.livekit.asyncio.run", side_effect=fake_run(error=error)):
+                with self.assertRaises(livekit.LiveKitError):
+                    livekit.room_participants("call_x")
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True, **LIVEKIT_SETTINGS)
 class ConcurrentStartTests(TransactionTestCase):

@@ -11,6 +11,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -26,6 +27,7 @@ from messenger.services import access, events, messages as message_service
 from messenger.services.push import sender_display_name
 
 logger = logging.getLogger(__name__)
+User = get_user_model()
 
 # Пространство advisory-локов «звонки пользователя» (второй ключ — id пользователя)
 CALL_LOCK_NAMESPACE = 7301
@@ -33,6 +35,8 @@ CALL_LOCK_NAMESPACE = 7301
 STALE_RINGING_GRACE = timedelta(seconds=15)
 RECONCILE_ROOMS_BATCH = 100
 WEBHOOK_END_EVENTS = frozenset({"participant_left", "room_finished"})
+# LiveKit не ответил на participant_left — повторная проверка комнаты через столько секунд
+ROOM_RECHECK_DELAY_SECONDS = 30
 MISSED_CALL_TITLE = "Пропущенный звонок"
 
 
@@ -190,14 +194,20 @@ def start_call(chat, caller, kind) -> tuple[Call, str | None]:
     """
     Начать звонок собеседнику по чату.
 
-    Нужен активный тариф (обеим сторонам); если собеседник внёс чат в ЧС — CALL_NOT_ALLOWED.
-    Если у звонящего или собеседника уже идёт звонок — создаётся Call со статусом BUSY
-    (токена нет, клиент показывает «Абонент занят»).
+    Нужен активный тариф (обеим сторонам). CALL_NOT_ALLOWED (без записи звонка и сообщения),
+    если собеседник внёс чат в ЧС или отключил у себя этот тип звонков (`can_audio_call` /
+    `can_video_call`). Если у звонящего или собеседника уже идёт звонок — создаётся Call со
+    статусом BUSY (токена нет, клиент показывает «Абонент занят»).
     """
     access.ensure_can_call(chat, caller)
     callee_id = _companion_id(chat, caller.pk)
     if BlockedChat.objects.filter(user_id=callee_id, chat=chat).exists():
         raise _not_allowed("Собеседник ограничил звонки в этом чате")
+    flag = "can_video_call" if kind == Call.Kind.VIDEO else "can_audio_call"
+    if not User.objects.filter(pk=callee_id, **{flag: True}).exists():
+        raise _not_allowed(
+            "Собеседник не принимает видеозвонки" if kind == Call.Kind.VIDEO else "Собеседник не принимает звонки"
+        )
 
     call_id = uuid.uuid4()
     room_name = f"call_{call_id}"
@@ -384,8 +394,12 @@ def _notify_missed(call) -> None:
 
 def handle_livekit_event(event: dict) -> None:
     """
-    `participant_left` / `room_finished` для принятого звонка → ENDED (reason=disconnected),
-    даже если клиент не прислал `end/`. Прочие события и чужие комнаты игнорируются.
+    Завершение принятого звонка по вебхуку (reason=disconnected), даже если клиент не прислал `end/`:
+    - `room_finished` — сразу;
+    - `participant_left` — только если в комнате больше никого нет (короткий обрыв сети у одного
+      участника звонок не завершает). LiveKit недоступен — повторная проверка через
+      ROOM_RECHECK_DELAY_SECONDS (задача `check_call_room`).
+    Прочие события и чужие комнаты игнорируются.
     """
     if event.get("event") not in WEBHOOK_END_EVENTS:
         return
@@ -399,11 +413,35 @@ def handle_livekit_event(event: dict) -> None:
     call = Call.objects.filter(pk=call_id, room_name=room_name).first()
     if call is None or call.status != Call.Status.ACCEPTED:
         return
+    if event["event"] == "participant_left":
+        left_identity = str((event.get("participant") or {}).get("identity") or "")
+        try:
+            remaining = livekit.room_participants(room_name) - {left_identity}
+        except livekit.LiveKitError:
+            logger.warning("[Call] LiveKit list_participants failed for %s, recheck scheduled", room_name, exc_info=True)
+            tasks.check_call_room.apply_async((str(call.pk),), countdown=ROOM_RECHECK_DELAY_SECONDS)
+            return
+        if remaining:
+            return
+    _end_by_system(call.pk, "disconnected")
+
+
+def check_call_room(call_id) -> bool:
+    """
+    Повторная проверка после `participant_left`, когда LiveKit не ответил: принятый звонок в пустой
+    комнате завершается. Если LiveKit снова недоступен — ничего не делаем: дальше страхуют
+    вебхук `room_finished` (пустая комната закрывается сама) и `reconcile_calls`.
+    """
+    call = Call.objects.filter(pk=call_id, status=Call.Status.ACCEPTED).first()
+    if call is None:
+        return False
     try:
-        end_call(call, None, reason="disconnected")
-    except AppError:
-        # параллельно завершён через API — ничего делать не нужно
-        pass
+        if livekit.room_participants(call.room_name):
+            return False
+    except livekit.LiveKitError:
+        logger.warning("[Call] recheck: LiveKit list_participants failed for %s", call.room_name, exc_info=True)
+        return False
+    return _end_by_system(call.pk, "disconnected")
 
 
 # --- сверка зависших звонков (Celery beat) ---

@@ -91,6 +91,31 @@ def existing_rooms(names: list[str]) -> set[str]:
         raise LiveKitError(f"LiveKit list_rooms не выполнен: {exc}") from exc
 
 
+async def _list_participant_identities(name: str) -> set[str]:
+    key, secret = _credentials()
+    if not settings.LIVEKIT_API_URL:
+        raise LiveKitError("LIVEKIT_API_URL не задан")
+    async with api.LiveKitAPI(
+        settings.LIVEKIT_API_URL, key, secret, timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+    ) as lkapi:
+        response = await lkapi.room.list_participants(api.ListParticipantsRequest(room=name))
+    return {participant.identity for participant in response.participants}
+
+
+def room_participants(name: str) -> set[str]:
+    """identity участников, которые сейчас в комнате; комнаты нет — пустое множество."""
+    try:
+        return asyncio.run(_list_participant_identities(name))
+    except LiveKitError:
+        raise
+    except api.TwirpError as exc:
+        if exc.code == api.TwirpErrorCode.NOT_FOUND:
+            return set()
+        raise LiveKitError(f"LiveKit list_participants не выполнен: {exc.code} {exc.message}") from exc
+    except Exception as exc:
+        raise LiveKitError(f"LiveKit list_participants не выполнен: {exc}") from exc
+
+
 def access_token(user, room: str, *, video: bool) -> str:
     """Токен участника комнаты: identity = id пользователя, публикация микрофона (+ камеры для видео)."""
     key, secret = _credentials()

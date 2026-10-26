@@ -53,6 +53,14 @@ def expire_call(call_id):
 
 
 @shared_task(ignore_result=True)
+def check_call_room(call_id):
+    """Повторная проверка комнаты после participant_left, если LiveKit тогда не ответил."""
+    from messenger.services import calls
+
+    calls.check_call_room(call_id)
+
+
+@shared_task(ignore_result=True)
 def reconcile_calls():
     """Ежеминутно: завершает зависшие RINGING/ACCEPTED звонки (потерянные таймауты и вебхуки)."""
     from messenger.services import calls
