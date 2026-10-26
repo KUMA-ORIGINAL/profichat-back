@@ -6,6 +6,10 @@ rtc:
   tcp_port: 7881
   udp_port: 7882   # один UDP-порт (mux) вместо диапазона
   use_external_ip: true
+room:
+  # комнаты создаёт только backend (start_call → create_room до выдачи токена): токен не может
+  # «оживить» закрытую комнату завершённого звонка
+  auto_create: false
 redis:
   address: 127.0.0.1:6379
   db: 5
