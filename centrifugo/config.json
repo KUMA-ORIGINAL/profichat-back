@@ -19,6 +19,7 @@
         "name": "chat",
         "allow_publish_for_subscriber": true,
         "presence": true,
+        "allow_presence_for_subscriber": true,
         "join_leave": true,
         "force_push_join_leave": true
       }

@@ -9,6 +9,9 @@ services:
       - ./app:/app
     ports:
       - '8000:8000'
+    # LIVEKIT_API_URL=http://host.docker.internal:7880 — как в проде, где LiveKit в сети хоста
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       database:
         condition: service_healthy
@@ -112,13 +115,16 @@ services:
     env_file:
       - .env.dev
     # LIVEKIT_KEYS="<api_key>: <api_secret>" собирается из LIVEKIT_API_KEY / LIVEKIT_API_SECRET;
-    # домен TURN подставляется из LIVEKIT_TURN_DOMAIN в копию конфига
+    # домен TURN подставляется из LIVEKIT_TURN_DOMAIN в копию конфига, вебхуки — из LIVEKIT_WEBHOOK_URL
     entrypoint:
       - sh
       - -c
       - >-
         export LIVEKIT_KEYS="$$LIVEKIT_API_KEY: $$LIVEKIT_API_SECRET";
         sed "s|__LIVEKIT_TURN_DOMAIN__|$${LIVEKIT_TURN_DOMAIN:-turn.localhost}|" /etc/livekit.yaml > /tmp/livekit.yaml;
+        if [ -n "$$LIVEKIT_WEBHOOK_URL" ]; then
+        printf 'webhook:\n  api_key: %s\n  urls:\n    - %s\n' "$$LIVEKIT_API_KEY" "$$LIVEKIT_WEBHOOK_URL" >> /tmp/livekit.yaml;
+        fi;
         exec /livekit-server --config /tmp/livekit.yaml --redis-host redis:6379 --node-ip 127.0.0.1
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
@@ -139,6 +145,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./app:/app
+    # LIVEKIT_API_URL=http://host.docker.internal:7880 — как в проде, где LiveKit в сети хоста
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       database:
         condition: service_healthy
@@ -153,6 +162,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./app:/app
+    # LIVEKIT_API_URL=http://host.docker.internal:7880 — как в проде, где LiveKit в сети хоста
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       database:
         condition: service_healthy

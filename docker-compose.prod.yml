@@ -13,6 +13,9 @@ services:
       - ./app:/app
       - static_volume:/app/static
       - media_volume:/app/media
+    # LiveKit работает в сети хоста (network_mode: host) — до него через host.docker.internal
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       database:
         condition: service_healthy
@@ -62,8 +65,13 @@ services:
       - static_volume:/app/static
       - media_volume:/app/media
       - certs:/etc/letsencrypt
+    # LiveKit работает в сети хоста (network_mode: host) — до него через host.docker.internal
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       - backend
+      - centrifugo
+      - minio
 
   centrifugo:
     image: centrifugo/centrifugo:v6
@@ -128,13 +136,16 @@ services:
     env_file:
       - .env.prod
     # LIVEKIT_KEYS="<api_key>: <api_secret>" собирается из LIVEKIT_API_KEY / LIVEKIT_API_SECRET;
-    # домен TURN подставляется из LIVEKIT_TURN_DOMAIN в копию конфига
+    # домен TURN подставляется из LIVEKIT_TURN_DOMAIN в копию конфига (обязателен), вебхуки — из LIVEKIT_WEBHOOK_URL
     entrypoint:
       - sh
       - -c
       - >-
         export LIVEKIT_KEYS="$$LIVEKIT_API_KEY: $$LIVEKIT_API_SECRET";
-        sed "s|__LIVEKIT_TURN_DOMAIN__|$${LIVEKIT_TURN_DOMAIN:-turn.localhost}|" /etc/livekit.yaml > /tmp/livekit.yaml;
+        sed "s|__LIVEKIT_TURN_DOMAIN__|$${LIVEKIT_TURN_DOMAIN:?LIVEKIT_TURN_DOMAIN is required}|" /etc/livekit.yaml > /tmp/livekit.yaml;
+        if [ -n "$$LIVEKIT_WEBHOOK_URL" ]; then
+        printf 'webhook:\n  api_key: %s\n  urls:\n    - %s\n' "$$LIVEKIT_API_KEY" "$$LIVEKIT_WEBHOOK_URL" >> /tmp/livekit.yaml;
+        fi;
         exec /livekit-server --config /tmp/livekit.yaml
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
@@ -153,6 +164,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./app:/app
+    # LiveKit работает в сети хоста (network_mode: host) — до него через host.docker.internal
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       database:
         condition: service_healthy
@@ -169,6 +183,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./app:/app
+    # LiveKit работает в сети хоста (network_mode: host) — до него через host.docker.internal
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       database:
         condition: service_healthy

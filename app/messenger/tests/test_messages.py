@@ -247,6 +247,24 @@ class HistoryTests(MessageApiTestCase):
         self.assertEqual(rest["results"][0]["id"], first.id)
         self.assertFalse(rest["hasMore"])
 
+    def test_after_cursor_built_from_message_json(self):
+        # контракт MESSENGER_API.md: курсор = base64url("<createdAt>|<id>") без '=' из JSON сообщения
+        # (например, полученного по realtime) — так клиент догружает пропущенное после переподключения
+        base = timezone.now() - timedelta(minutes=1)
+        for i in range(3):
+            self.make_message(sender=self.specialist, text=f"m{i}", created_at=base + timedelta(seconds=i))
+        known = self.get_history(limit=1).json()["results"][0]  # m2 — последнее известное клиенту
+        self.make_message(sender=self.specialist, text="new", created_at=base + timedelta(seconds=10))
+
+        page = self.get_history().json()
+        m1 = next(m for m in page["results"] if m["text"] == "m1")
+        cursor = base64.urlsafe_b64encode(f"{m1['createdAt']}|{m1['id']}".encode()).decode().rstrip("=")
+        newer = self.get_history(after=cursor).json()
+        self.assertEqual([m["text"] for m in newer["results"]], ["m2", "new"])
+
+        cursor = base64.urlsafe_b64encode(f"{known['createdAt']}|{known['id']}".encode()).decode().rstrip("=")
+        self.assertEqual([m["text"] for m in self.get_history(after=cursor).json()["results"]], ["new"])
+
     def test_invalid_cursor_and_limit(self):
         for params in (
             {"before": "garbage!!"},

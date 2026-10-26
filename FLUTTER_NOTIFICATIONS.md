@@ -5,7 +5,7 @@
 | Поле | Вопрос | Значения |
 |---|---|---|
 | `source` | **чьё** это событие | `profichat` \| `erkinai` |
-| `type` (`notificationType` в ленте) | **что** случилось | `system`, `payment_success`, `chat_invite`, `application_accepted`, `application_rejected`, `erkinai` |
+| `type` (`notificationType` в ленте) | **что** случилось | `system`, `payment_success`, `chat_invite`, `application_accepted`, `application_rejected`, `missed_call`, `erkinai` |
 
 Ветвитесь сначала по `source`, потом по `type`. `source` — узкий закрытый
 список из двух значений, он не будет расти; `type` пополняется по мере
@@ -64,7 +64,12 @@ GET /api/notifications/
 | `chat_invite` | чат | `chatId`, `channelId`, `senderId` |
 | `payment_success` | экран тарифа/оплаты | `order_id` |
 | `application_accepted` / `application_rejected` | заявка | зависит от сценария |
+| `missed_call` | чат `channelId` | `callId`, `channelId`, `kind`, `callerId`, `callerName` |
 | `system` | общий экран уведомлений | — |
+
+Пуши мессенджера `chat_message` (новое сообщение) и `incoming_call` (входящий звонок,
+data-only) **в ленту не пишутся** и не содержат `source` — их формат в
+[MESSENGER_API.md](MESSENGER_API.md) (раздел 8) и [CALLS_API.md](CALLS_API.md) (раздел 5).
 
 ### `source: "erkinai"` — событие из CRM
 

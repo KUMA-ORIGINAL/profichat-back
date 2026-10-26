@@ -6,6 +6,11 @@
 
 .env.dev
 .env.prod
+.env.staging
+
+# ключи APNs (.p8) для VoIP-пушей — кладутся в app/secrets/ на сервере
+/app/secrets/
+*.p8
 
 /app/firebase.json
 

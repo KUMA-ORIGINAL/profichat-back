@@ -1,5 +1,6 @@
 # Ключи API передаются через переменную окружения LIVEKIT_KEYS="<api_key>: <api_secret>".
-# Файл — шаблон: entrypoint в docker-compose подставляет __LIVEKIT_TURN_DOMAIN__ и запускает копию в /tmp.
+# Файл — шаблон: entrypoint в docker-compose подставляет __LIVEKIT_TURN_DOMAIN__, при заданном
+# LIVEKIT_WEBHOOK_URL дописывает блок webhook и запускает копию в /tmp.
 port: 7880
 rtc:
   tcp_port: 7881
@@ -14,8 +15,9 @@ turn:
   # (entrypoint в docker-compose; в проде turn.<DOMAIN>).
   domain: __LIVEKIT_TURN_DOMAIN__
   udp_port: 3478
-  # TLS-слушатель без сертификатов: TLS для TURN/TLS завершается снаружи (nginx stream, задача 8).
-  # Если в задаче 8 выбран passthrough (ssl_preread), заменить external_tls на cert_file/key_file.
+  # TURN/TLS: TLS завершает nginx на 443 (stream + ssl_preread по SNI turn.<DOMAIN>, сертификат
+  # certbot) и передаёт обычный TCP сюда. LiveKit объявляет клиентам turns:<domain>:443 независимо
+  # от tls_port, поэтому tls_port — внутренний порт, наружу его открывать не нужно.
   tls_port: 5349
   external_tls: true
 

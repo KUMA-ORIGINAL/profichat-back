@@ -31,3 +31,7 @@
 - **GET schema/**
 - [API_ERROR_CODES.md](API_ERROR_CODES.md) — формат ошибок API и коды ошибок для клиента
 - [PROFESSION_REQUEST_API.md](PROFESSION_REQUEST_API.md) — заявка на новую профессию (из анкеты и из профиля), модерация
+- [MESSENGER_API.md](MESSENGER_API.md) — мессенджер вместо GetStream: Centrifugo, чаты, сообщения, вложения, события, пуши
+- [CALLS_API.md](CALLS_API.md) — аудио- и видеозвонки (LiveKit, CallKit/PushKit, FCM)
+- [MESSENGER_MIGRATION.md](MESSENGER_MIGRATION.md) — runbook перехода с GetStream: staging, импорт истории, сверка, уборка
+- [FLUTTER_NOTIFICATIONS.md](FLUTTER_NOTIFICATIONS.md) — уведомления: лента и push
