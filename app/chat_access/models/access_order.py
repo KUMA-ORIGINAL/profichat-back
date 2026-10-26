@@ -90,12 +90,20 @@ class AccessOrder(models.Model):
         verbose_name_plural = "Заказы доступа"
 
     def activate(self):
-        """Активировать доступ (после оплаты)"""
+        """Активировать доступ (после оплаты).
+
+        Писать можно сразу, но срок тарифа считается от момента, когда
+        специалист начнёт отвечать: оплатили ночью — время пойдёт с начала
+        его следующей смены, а не сгорит, пока он спит.
+        """
+        from account.services.quiet_hours import available_from
+
         self.activated_at = timezone.now()
         duration_hours = self.duration_hours
         if duration_hours is None and self.tariff_id:
             duration_hours = self.tariff.duration_hours
-        self.expires_at = self.activated_at + timedelta(hours=duration_hours or 0)
+        starts_at = available_from(self.specialist, self.activated_at)
+        self.expires_at = starts_at + timedelta(hours=duration_hours or 0)
         self.save()
 
     @property

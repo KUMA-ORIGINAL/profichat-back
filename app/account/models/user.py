@@ -136,6 +136,14 @@ class User(AbstractUser):
         ),
     )
     show_in_search = models.BooleanField(default=True, verbose_name="Показывать в поиске")
+    notify_outside_work_hours = models.BooleanField(
+        default=False,
+        verbose_name="Уведомления вне рабочего времени",
+        help_text=(
+            "Выключено — в нерабочее время по графику пуши чата не приходят, "
+            "в начале смены приходит сводка пропущенного."
+        ),
+    )
     invite_greeting = models.TextField(
         blank=True,
         null=True,

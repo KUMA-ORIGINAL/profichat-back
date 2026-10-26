@@ -67,7 +67,8 @@ class UserMeSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'phone_number', 'first_name', 'last_name', 'middle_name', 'gender', 'balance', 'birthdate', 'description',
                   'photo', 'role', 'application_status', 'show_in_search', 'invite_greeting',
-                  'can_audio_call', 'can_video_call', 'education', 'work_experience', 'profession', 'organization')
+                  'can_audio_call', 'can_video_call', 'notify_outside_work_hours',
+                  'education', 'work_experience', 'profession', 'organization')
 
     def get_application_status(self, obj):
         last_application = Application.objects.filter(user=obj).order_by('-created_at').first()
@@ -122,6 +123,12 @@ class InviteGreetingSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('invite_greeting',)
+
+
+class NotifyOutsideWorkHoursSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('notify_outside_work_hours',)
 
 
 class CanCallSerializer(serializers.ModelSerializer):
