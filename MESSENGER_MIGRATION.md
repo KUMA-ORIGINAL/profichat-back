@@ -73,6 +73,16 @@ ufw allow from 172.16.0.0/12 to any port 7880,5349 proto tcp   # docker-сети
 | `LIVEKIT_TURN_DOMAIN` | `turn.<DOMAIN>` (обязателен, без него livekit не стартует) |
 | `LIVEKIT_WEBHOOK_URL` | `https://<DOMAIN>/api/messenger/livekit-webhook/` |
 | `APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_USE_SANDBOX` | .p8-ключ APNs для VoIP-пушей; путь — внутри контейнера, например `/app/secrets/AuthKey_XXXX.p8` (файл `app/secrets/…` на сервере, в git не коммитить) |
+| `MESSENGER_LEGACY_MODE` | `True` до переключения (B), `False` — с шага C1. На staging — `False` |
+
+**`MESSENGER_LEGACY_MODE`** (по умолчанию `True`) — переходный режим, пока клиенты пользуются
+старым приложением, которое пишет только в GetStream:
+
+| | `True` (прод до C1) | `False` (staging; прод с C1) |
+|---|---|---|
+| `shouldReply` в `GET /api/chats/`, `GET /api/chats/<id>/`, ответе приглашения | по последнему сообщению в GetStream (как раньше; Stream недоступен → `false`) | по последнему сообщению в нашей БД |
+| Порядок `GET /api/chats/` | по дате создания чата (как раньше) | по `lastMessageAt` |
+| Приветствие нового чата | сохраняется и публикуется, но **без** нашего FCM-пуша (старое приложение получает пуш от Stream и пуш-приглашение) | с пушем, как обычное сообщение |
 
 > ⚠️ **`S3_KMS_SECRET_KEY` терять и менять нельзя**: все файлы в MinIO зашифрованы им
 > (SSE-S3). Сохраните его в хранилище секретов вместе с бэкапом тома `minio-data`.
@@ -84,6 +94,25 @@ ufw allow from 172.16.0.0/12 to any port 7880,5349 proto tcp   # docker-сети
 
 Импорт скачивает все вложения из GetStream в MinIO (том `minio-data`). Оцените объём по
 статистике хранилища в панели GetStream и оставьте запас ×1.5.
+
+### 0.5. Внешние вызовы — только https
+
+С сертификатом nginx отвечает на `http://<DOMAIN>/…` редиректом **301** на https (кроме
+проверки certbot). POST после 301 большинство клиентов повторяет как GET или не повторяет
+вовсе — запрос теряется. До деплоя проверьте, что все, кто вызывает бэкенд снаружи,
+настроены на `https://<DOMAIN>`:
+
+- платёжный провайдер — URL колбэка `https://<DOMAIN>/api/payment/webhook/…`
+  (в личном кабинете провайдера);
+- MedCRM — базовый URL интеграции `https://<DOMAIN>/api/integration/medcrm/…`;
+- Telegram-боты — `getWebhookInfo` каждого бота: `url` начинается с `https://`;
+- прочие партнёры (MamaDoc и т. п.), если они ходят к нам.
+
+После деплоя — проверить в логах nginx, что на `:80` не приходят POST с ответом 301:
+
+```bash
+docker compose -f docker-compose.prod.yml logs nginx | grep '"POST .* 301 ' | tail
+```
 
 ---
 
@@ -109,8 +138,18 @@ cp .env.staging .env.prod
   GetStream или заглушка). Пока GetStream-код не удалён, бэкенд пишет в Stream при создании
   чата, правке чата, оплате тарифа, сохранении профиля — с боевыми ключами staging менял бы
   каналы реальных пользователей. Боевые ключи передаются только команде импорта (A4).
+- `MESSENGER_LEGACY_MODE=False` — staging проверяет новое приложение (0.3).
 - `APNS_USE_SANDBOX=True` — для сборок из Xcode (sandbox-токены PushKit).
-- Платёжные ключи — тестовый режим; `TELEGRAM_ERROR_ALERTS_ENABLED=False` (или отдельный чат).
+- Все внешние интеграции — **не боевые** (копия `.env.prod` с прода сюда не годится):
+  - `RAVEN_API_KEY` (SMS/WhatsApp: OTP, приглашения) — тестовый ключ или заглушка, иначе
+    staging шлёт SMS/WhatsApp реальным номерам из копии базы;
+  - `MEDCRM_API_KEY`, `MEDCRM_SSO_INTEGRATION_SECRET`, `MEDCRM_SSO_WEB_URL` — тестовые/пустые;
+  - `MAMADOC_API_URL`, `MAMADOC_API_KEY` — тестовый стенд или пусто;
+  - `PAYMENT_API_TOKEN` — тестовый режим провайдера (колбэки провайдера — на staging-домен);
+  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTH_BOT_TOKEN` — отдельные тестовые боты (у одного
+    токена Telegram один webhook: боевой токен на staging перехватит webhook прода),
+    `TELEGRAM_*_WEBHOOK_SECRET` — свои, `TELEGRAM_ERROR_ALERTS_ENABLED=False` (или отдельный чат);
+  - `SENTRY_DSN` — пусто или отдельный проект.
 - Не ставьте на staging cron с `update_chat_status`.
 
 Известные эффекты не-боевых ключей Stream на staging (на проде их нет): `PATCH /api/chats/<id>/`
@@ -245,6 +284,24 @@ attachments=… errors=N messages_updated=… messages_linked=… unknown_users=
 `errors > 0` строки ошибок — в логе (`<channel_id>: …`); после исправления перезапустите
 для этих каналов (`--channel`).
 
+Не скачавшееся вложение не теряется: исходное вложение Stream с ключом
+`import_failed_index` (номер вложения в сообщении) остаётся в `extra_data["stream_attachments"]`
+сообщения и убирается, когда повторный запуск файл скачал. Найти такие сообщения:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend python manage.py shell -c "
+from messenger.models import Message
+qs = Message.objects.filter(extra_data__has_key='stream_attachments')
+bad = [m.pk for m in qs if any('import_failed_index' in a for a in m.extra_data['stream_attachments'])]
+print(len(bad), bad[:50])
+"
+```
+
+Связывание с сообщениями «двойной записи» (`messages_linked`) — только для системных
+сообщений и приветствия (первого обычного сообщения специалиста), в пределах ±60 с и с
+текстом без учёта пробелов по краям. Одинаковые обычные сообщения (например, «Да» в старом и
+в новом приложении) остаются двумя сообщениями.
+
 Сверка по каналам — раздел C4 (на staging так же).
 
 ### A6. Тестирование Flutter
@@ -271,10 +328,10 @@ docker compose -f docker-compose.prod.yml up -d --build
 Миграции применяются при старте backend. GetStream-код на месте: **старое приложение
 работает как раньше** (сообщения, звонки, пуши Stream). Проверки — как A3.
 
-Что старое приложение заметит уже сейчас: `GET /api/chats/` считает `shouldReply`,
-порядок и `lastMessage` по **нашей** базе. Пока не прошёл импорт (и между импортами),
-эти поля отстают от Stream. Держите окно между B2 и C коротким; при необходимости
-повторяйте дельта-импорт (C2) по расписанию.
+`MESSENGER_LEGACY_MODE=True` (по умолчанию, раздел 0.3): `shouldReply` и порядок чатов в
+`GET /api/chats/` — как раньше, по GetStream и дате создания; приветствие не шлёт второй пуш.
+Новые поля списка (`lastMessage`, `lastMessageAt`, `unreadCount`) старое приложение не
+читает; они отстают от Stream, пока не прошёл импорт (и между импортами).
 
 ### B2. Полный импорт
 
@@ -297,6 +354,17 @@ tail -f app/import_full.log
 Новое приложение в сторах; включить принудительное обновление (минимальная версия) —
 механизм на стороне приложения/стора. С этого момента старое приложение не пишет в Stream.
 Это **точка невозврата**.
+
+Одновременно выключить переходный режим: `shouldReply` и порядок чатов — из нашей базы,
+приветствие — с нашим пушем (раздел 0.3):
+
+```bash
+sed -i 's/^MESSENGER_LEGACY_MODE=.*/MESSENGER_LEGACY_MODE=False/' .env.prod
+grep -q '^MESSENGER_LEGACY_MODE=' .env.prod || echo 'MESSENGER_LEGACY_MODE=False' >> .env.prod
+docker compose -f docker-compose.prod.yml up -d backend celery celery-beat
+docker compose -f docker-compose.prod.yml exec backend python manage.py shell -c \
+  "from django.conf import settings; print(settings.MESSENGER_LEGACY_MODE)"   # False
+```
 
 ### C2. Дельта-импорт
 
