@@ -37,6 +37,9 @@ class VoterSerializer(serializers.Serializer):
 
 
 class StateView(PollView):
+    # чтение дешёвое, а опрашивают его все коллеги из одного офиса (один IP)
+    throttle_scope = 'corporate_poll_read'
+
     def get(self, request):
         places = Place.objects.select_related('author').prefetch_related('votes__voter')
         return Response({
