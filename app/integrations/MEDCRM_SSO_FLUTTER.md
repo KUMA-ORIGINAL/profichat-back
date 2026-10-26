@@ -1,152 +1,267 @@
-# MedCRM SSO Flutter Integration
+# ErkinAI CRM в приложении ProfiChat — гайд для Flutter
 
-This guide is for the Flutter app that opens MedCRM in a WebView.
+Как специалист, вошедший в ProfiChat, попадает в CRM ErkinAI без второго логина
+и как приложение работает с CRM дальше: токен, организации, ошибки.
 
-## Goal
+> Старое имя CRM — MedCRM / MamaDoc. В путях API оно осталось
+> (`/api/integration/medcrm/...`), в интерфейсе пишем «ErkinAI CRM».
 
-The Flutter app asks Django for a one-time MedCRM SSO URL, then opens that URL in a WebView.
+## Кто участвует
 
-## Django Endpoint
+| Кто | Что делает |
+|---|---|
+| **ProfiChat backend** | Выпускает одноразовый SSO-токен для текущего пользователя ProfiChat и подтверждает его CRM. |
+| **CRM backend** | Меняет SSO-токен на свой API-токен сотрудника. Пускает только тех, у кого в CRM есть активная карточка сотрудника с тем же телефоном. |
+| **Flutter** | Берёт ссылку у ProfiChat, отдаёт токен из неё в CRM, хранит API-токен CRM, ведёт выбор организации. |
+
+Адреса CRM API (`crmApiBaseUrl`) — в конфиге сборки:
+
+| Контур | CRM API |
+|---|---|
+| Production | `https://crm.operator.kg` |
+| Тест | `https://test.crm.operator.kg` |
+
+## Схема
 
 ```text
-POST /api/integration/medcrm/webview-url/
-Authorization: Bearer <django_access_token>
+Flutter                       ProfiChat backend               CRM backend
+   │ POST /api/integration/medcrm/webview-url/  │                    │
+   │ ──────────────────────────────────────────►│                    │
+   │ { url: "https://crm…/sso?token=T&next=/" } │                    │
+   │ ◄──────────────────────────────────────────│                    │
+   │                                            │                    │
+   │ POST {crmApiBaseUrl}/api/auth/sso/profichat/  { token: T }      │
+   │ ───────────────────────────────────────────────────────────────►│
+   │                                            │  verify-sso-token  │
+   │                                            │ ◄──────────────────│
+   │                                            │  телефон, ФИО      │
+   │                                            │ ──────────────────►│
+   │ { token: CRM_TOKEN, memberships: [...], activeOrganization, … } │
+   │ ◄───────────────────────────────────────────────────────────────│
+   │                                                                 │
+   │ дальше любые запросы:                                            │
+   │ Authorization: Bearer CRM_TOKEN                                 │
+   │ X-Organization-Id: <id выбранной организации>                   │
+   │ ───────────────────────────────────────────────────────────────►│
+```
+
+## Шаг 1. Одноразовая ссылка от ProfiChat
+
+```text
+POST {profichatApiBaseUrl}/api/integration/medcrm/webview-url/
+Authorization: Bearer <токен ProfiChat>
 Content-Type: application/json
+
+{ "next": "/" }
 ```
 
-Request:
+`next` необязателен; если передан — относительный путь с `/` в начале
+(`/`, `/appointments`). Нативному клиенту он не нужен, CRM вернёт его обратно
+как есть.
+
+Ответ `200`:
 
 ```json
-{
-  "next": "/dashboard"
-}
+{ "url": "https://crm.operator.kg/sso?token=8f3c…&next=%2F" }
 ```
 
-`next` is optional. If provided, it must start with `/`.
-
-Valid:
-
-```text
-/login
-/dashboard
-/patients
-```
-
-Invalid:
-
-```text
-login
-https://example.com
-//example.com
-```
-
-Success response:
-
-```json
-{
-  "url": "https://crm.pediatr.kg/sso?token=...&next=%2Fdashboard"
-}
-```
-
-## Flutter Flow
-
-1. User taps "Open MedCRM".
-2. Flutter calls Django `/api/integration/medcrm/webview-url/`.
-3. Flutter receives `url`.
-4. Flutter opens `url` in WebView.
-5. MedCRM frontend completes Supabase login.
-
-## Example Dart Code
+Из `url` нужен только query-параметр `token`:
 
 ```dart
-import 'dart:convert';
+final ssoToken = Uri.parse(url).queryParameters['token'];
+```
 
-import 'package:http/http.dart' as http;
+Ошибки — в общем формате ProfiChat (`code`, `message`, `detail`), решение
+принимается по `code`:
 
-Future<String> getMedcrmWebViewUrl({
-  required String apiBaseUrl,
-  required String djangoAccessToken,
-  String next = '/dashboard',
-}) async {
-  final response = await http.post(
-    Uri.parse('$apiBaseUrl/api/integration/medcrm/webview-url/'),
-    headers: {
-      'Authorization': 'Bearer $djangoAccessToken',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+| HTTP | `code` | Что делать |
+|---|---|---|
+| 401 | (стандартный) | Токен ProfiChat протух — обновить его и повторить. |
+| 400 | `PHONE_NUMBER_MISSING` | У пользователя нет телефона — CRM найти его не сможет. Показать «Укажите номер телефона в профиле». |
+| 400 | `VALIDATION_ERROR` | Неверный `next` — ошибка в приложении. |
+| 500 | `SSO_NOT_CONFIGURED` | Интеграция не настроена на сервере. Показать общую ошибку. |
+
+## Шаг 2. Обмен токена в CRM
+
+```text
+POST {crmApiBaseUrl}/api/auth/sso/profichat/
+Content-Type: application/json
+
+{ "token": "8f3c…" }
+```
+
+Ответ `200` — профиль сотрудника и его доступы (тот же объект, что
+`GET /api/auth/me/`) плюс API-токен:
+
+```json
+{
+  "token": "eyJ1c2VyX2lkIjoyNH0:…",
+  "tokenType": "Bearer",
+  "expiresIn": 2592000,
+  "next": "/",
+  "user": {
+    "id": 24, "username": "…", "firstName": "Игорь", "lastName": "Князев",
+    "hasPassword": false
+  },
+  "memberships": [
+    {
+      "id": 101,
+      "organization": { "id": 1, "name": "Мама Доктор", "logoUrl": "…", "vertical": "clinic" },
+      "role": { "id": 7, "name": "Врач", "code": "doctor" },
+      "isOwner": false,
+      "isActive": true,
+      "branches": [ { "id": 3, "name": "Главный", "timezone": "Asia/Bishkek", "isActive": true } ],
+      "permissions": ["appointments.view", "…"]
     },
-    body: jsonEncode({
-      'next': next,
-    }),
-  );
-
-  final body = jsonDecode(response.body) as Map<String, dynamic>;
-
-  if (response.statusCode != 200) {
-    throw Exception(body['detail'] ?? body.toString());
-  }
-
-  final url = body['url'] as String?;
-  if (url == null || url.isEmpty) {
-    throw Exception('MedCRM SSO URL was not returned');
-  }
-
-  return url;
+    {
+      "id": 205,
+      "organization": { "id": 4, "name": "Клиника 21", "…": "…" },
+      "…": "…"
+    }
+  ],
+  "activeMembership": { "id": 101, "…": "…" },
+  "activeOrganization": { "id": 1, "name": "Мама Доктор", "…": "…" },
+  "activeBranch": { "id": 3, "name": "Главный", "…": "…" },
+  "permissions": ["…"],
+  "allPermissions": ["…"],
+  "enabledModules": ["…"]
 }
 ```
 
-## Opening WebView
+Токен из шага 1 одноразовый и живёт ~2 минуты: ссылку не кэшировать, на каждый
+вход запрашивать новую. Сам SSO-токен нигде не сохранять.
 
-Use your existing WebView package. The important part is to open the exact URL returned by Django.
+Ошибки CRM — `{"error": "<текст>"}`, решение по HTTP-статусу:
 
-Pseudo-flow:
+| HTTP | Значение | Что делать |
+|---|---|---|
+| 400 | Нет `token` в теле | Ошибка в приложении. |
+| 401 | SSO-токен протух или уже использован | Один раз повторить с шага 1. Повторный 401 — общая ошибка. |
+| **403** | **Нет доступа к CRM** — у этого телефона нет активной карточки сотрудника в CRM, или (реже) номер стоит на карточках нескольких разных учётных записей | **Не повторять.** Показать «Нет доступа к CRM. Обратитесь к администратору клиники». Автоповтор ничего не изменит — нужна правка данных в CRM (см. «Если у врача 403»). |
+| 404 | Интеграция выключена на этом контуре | Скрыть вход в CRM / общая ошибка. |
+| 502 | CRM не достучалась до ProfiChat | Временная проблема — предложить «Повторить». |
 
-```dart
-final url = await getMedcrmWebViewUrl(
-  apiBaseUrl: 'https://profichat.operator.kg',
-  djangoAccessToken: accessToken,
-  next: '/dashboard',
-);
+## Шаг 3. API-токен CRM
 
-openWebView(url);
+- Хранить `token` в защищённом хранилище (`flutter_secure_storage`), отдельно от
+  токена ProfiChat. Срок — `expiresIn` секунд (сейчас 30 дней).
+- Каждый запрос в CRM: `Authorization: Bearer <token>`. Куки CRM не нужны и не
+  используются.
+- `401` на любом запросе в CRM (на неизвестный или протухший токен CRM отвечает
+  `{"error": "invalid_api_key", …}`) — токен протух или доступ отозван. Один раз молча
+  повторить вход (шаги 1–2) и повторить запрос. Если вход отвечает `403` —
+  доступ к CRM у человека закрыт (уволен, отключён): стереть токен CRM и
+  показать «Нет доступа к CRM».
+- При выходе из ProfiChat стирать и токен CRM, и выбранную организацию.
+
+## Шаг 4. Организация
+
+Один человек — **одна учётная запись CRM**, даже если он работает в нескольких
+клиниках: у него несколько `memberships`, по одному на организацию. Организация
+— это контекст запроса, а не отдельный вход.
+
+**После входа:**
+
+| `memberships` | Поведение |
+|---|---|
+| 1 | Сразу открыть CRM в этой организации, экран выбора не показывать. |
+| 2 и больше | Если в приложении уже сохранён выбор и такой `membership.id` есть в списке — открыть его. Иначе показать экран выбора. |
+
+**Экран выбора организации:** список `memberships` — логотип
+(`organization.logoUrl`), название (`organization.name`), роль (`role.name`).
+По умолчанию подсвечен `activeOrganization` — это последняя организация, которую
+человек выбирал (на любом устройстве и в веб-версии).
+
+**Когда человек выбрал организацию:**
+
+1. Сообщить CRM — это запоминает выбор на сервере, и `activeOrganization` в
+   следующих ответах совпадёт с ним:
+
+   ```text
+   POST {crmApiBaseUrl}/api/auth/context/
+   Authorization: Bearer <token>
+   Content-Type: application/json
+
+   { "membershipId": 205 }
+   ```
+
+   Можно сразу передать филиал: `{ "membershipId": 205, "branchId": 9 }`.
+   Ответ — тот же объект, что у `/api/auth/me/`, уже с новой
+   `activeOrganization`. `403 "Membership is not available"` — членство
+   отключено: обновить `/api/auth/me/` и показать выбор заново.
+2. Сохранить `membership.id` и `organization.id` локально.
+3. Во **все** последующие запросы в CRM добавлять заголовок
+   `X-Organization-Id: <organization.id>`. Он однозначно задаёт организацию
+   запроса и имеет приоритет над сохранённой на сервере.
+
+**Смена организации** — пункт в меню/профиле, доступный только при
+`memberships.length > 1`. Тот же экран выбора и тот же `POST /api/auth/context/`.
+После смены сбросить всё, что загружено в контексте прежней организации:
+записи, пациентов, кэши, открытые экраны.
+
+**`403` на обычном запросе.** API данных отвечает ошибкой в формате
+`{"error": {"code": "FORBIDDEN", "message": "…", "trace_id": "…"}}`, и `403`
+там значит одно из двух: у роли нет нужного права, или человека отключили от
+выбранной организации. Различать так: перечитать `GET /api/auth/me/`.
+- Выбранной организации больше нет в `memberships` — убрать сохранённый выбор
+  и показать экран выбора (или сразу открыть единственную оставшуюся).
+- Организация на месте — это нехватка прав: показать `error.message`, контекст
+  не трогать. Права роли видны заранее в `activeMembership.permissions`, по ним
+  стоит прятать недоступные разделы.
+
+**Филиал.** Если у членства один филиал — CRM выбирает его сам
+(`activeBranch`). Если несколько — выбор филиала делается так же, через
+`branchId` в `POST /api/auth/context/`; список — `membership.branches`.
+
+## Чего не делать
+
+- Не хранить и не переиспользовать SSO-токен и ссылку из шага 1.
+- Не выбирать организацию «наугад» при нескольких `memberships` без сохранённого
+  выбора — спросить человека.
+- Не повторять вход автоматически на `403` от `/api/auth/sso/profichat/`.
+- Не слать в CRM токен ProfiChat и наоборот.
+- Не строить логику на тексте ошибки CRM — только на HTTP-статусе (и
+  `error.code`, где он есть). Формат ошибок у CRM двух видов: эндпоинты входа
+  (`/api/auth/...`) отвечают `{"error": "<текст>"}`, API данных —
+  `{"error": {"code": "…", "message": "…"}}`.
+
+## Тексты для пользователя
+
+| Ситуация | Текст |
+|---|---|
+| 403 при входе | Нет доступа к CRM. Обратитесь к администратору клиники. |
+| Нет телефона (`PHONE_NUMBER_MISSING`) | Укажите номер телефона в профиле, чтобы открыть CRM. |
+| 502 / сеть | Не удалось открыть CRM. Попробуйте ещё раз. |
+| Экран выбора | Выберите организацию |
+
+## Проверка перед релизом
+
+На тестовом контуре (`https://test.crm.operator.kg`):
+
+1. Сотрудник с одной организацией — CRM открывается сразу, без экрана выбора.
+2. Сотрудник с двумя организациями — экран выбора; после выбора данные второй
+   организации; после перезапуска приложения открывается последняя выбранная.
+3. Смена организации из меню — данные прежней организации пропали с экранов.
+4. Пользователь ProfiChat без карточки в CRM — текст «Нет доступа к CRM», без
+   бесконечных повторов.
+5. Протухший токен CRM (стереть его вручную или подменить) — приложение молча
+   входит заново.
+6. Двойной вход по одной ссылке — второй раз 401 и новый вход с шага 1.
+
+## Если у врача 403
+
+Значит, CRM не нашла по его телефону ровно одну учётную запись. Это правится в
+CRM, не в приложении. Администратор CRM запускает на сервере:
+
+```bash
+python manage.py find_shared_login_phones --phone +996XXXXXXXXX
 ```
 
-## Error Handling
-
-Handle these cases in Flutter:
-
-- `401`: Django access token is missing/expired. Refresh token or ask user to log in again.
-- `400`: invalid `next` or current user has no `phone_number`.
-- `500`: Django SSO settings are missing on backend.
-
-Show a user-friendly message:
-
-```text
-Не удалось открыть MedCRM. Попробуйте еще раз.
-```
-
-## Important Notes
-
-- Do not parse or store the SSO token in Flutter.
-- Do not reuse old URLs.
-- Always request a fresh URL before opening WebView.
-- The returned URL is valid for about 120 seconds and only once.
-- Send `next` as `/login`, `/dashboard`, etc. Never send `login` without `/`.
-
-## Quick Manual Test
-
-1. Login in Flutter and get a valid Django access token.
-2. Call:
-
-```text
-POST /api/integration/medcrm/webview-url/
-```
-
-3. Confirm response contains:
-
-```text
-https://crm.pediatr.kg/sso?token=...
-```
-
-4. Open that URL in WebView.
-5. MedCRM should complete login automatically.
+- Номера нет в отчёте и карточек нет — врача нужно добавить сотрудником в CRM
+  (с этим же телефоном).
+- Номер стоит на двух учётных записях одного человека (так было у врача,
+  работающего в двух клиниках) — их объединяют:
+  `python manage.py merge_staff_accounts --keep <id> --drop <id>` (без `--apply`
+  — только план). После этого у врача одна учётная запись с двумя
+  организациями, и в приложении появляется экран выбора из шага 4.
+- Номер стоит на карточках разных людей — исправить телефон на чужой карточке.
