@@ -288,6 +288,8 @@ APNS_USE_SANDBOX = env.bool("APNS_USE_SANDBOX", default=False)
 MESSENGER_CALL_RING_TIMEOUT_SECONDS = 45
 # Принятый звонок дольше этого считается зависшим и завершается (= TTL токена LiveKit)
 MESSENGER_CALL_MAX_DURATION_SECONDS = 2 * 60 * 60
+# Максимум вложений в одном сообщении (attachmentIds)
+MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE = 10
 MESSENGER_ATTACHMENT_MAX_BYTES = {
     "image": 20 * 1024 * 1024,
     "video": 200 * 1024 * 1024,

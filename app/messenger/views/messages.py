@@ -1,3 +1,4 @@
+from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -15,7 +16,17 @@ class SendMessageRequestSerializer(serializers.Serializer):
     client_msg_id = serializers.UUIDField(required=False, allow_null=True)
     text = serializers.CharField(required=False, allow_blank=True, default="", trim_whitespace=False, max_length=10000)
     reply_to_id = serializers.IntegerField(required=False, allow_null=True)
-    attachment_ids = serializers.ListField(child=serializers.UUIDField(), required=False, default=list)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # attachment_ids: лимит MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE читается при создании сериализатора,
+        # а не при импорте модуля (так его видит и override_settings)
+        self.fields["attachment_ids"] = serializers.ListField(
+            child=serializers.UUIDField(),
+            required=False,
+            default=list,
+            max_length=settings.MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE,
+        )
 
 
 class EditMessageRequestSerializer(serializers.Serializer):

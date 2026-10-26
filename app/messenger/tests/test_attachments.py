@@ -311,6 +311,27 @@ class SendWithAttachmentTests(AttachmentTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["code"], "ATTACHMENT_INVALID")
 
+    @override_settings(MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE=2)
+    def test_too_many_attachment_ids_rejected(self):
+        attachments = [self.make_attachment() for _ in range(3)]
+        response = self.send(self.specialist, attachmentIds=[str(a.pk) for a in attachments])
+
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["code"], "VALIDATION_ERROR")
+        self.assertIn("attachmentIds", response.json()["errors"])
+        self.assertFalse(Message.objects.filter(chat=self.chat).exists())
+
+        ok = self.send(self.specialist, attachmentIds=[str(a.pk) for a in attachments[:2]])
+        self.assertEqual(ok.status_code, 201, ok.content)
+
+    def test_default_attachment_limit_is_10(self):
+        from django.conf import settings
+
+        self.assertEqual(settings.MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE, 10)
+        response = self.send(self.specialist, attachmentIds=[str(uuid.uuid4()) for _ in range(11)])
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()["code"], "VALIDATION_ERROR")
+
     def test_voice_attachment_requires_voice_permission(self):
         self.activate_tariff()
         self.enable_voice(False)
