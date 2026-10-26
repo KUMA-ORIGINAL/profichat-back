@@ -111,13 +111,15 @@ services:
     restart: unless-stopped
     env_file:
       - .env.dev
-    # LIVEKIT_KEYS="<api_key>: <api_secret>" собирается из LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+    # LIVEKIT_KEYS="<api_key>: <api_secret>" собирается из LIVEKIT_API_KEY / LIVEKIT_API_SECRET;
+    # домен TURN подставляется из LIVEKIT_TURN_DOMAIN в копию конфига
     entrypoint:
       - sh
       - -c
       - >-
         export LIVEKIT_KEYS="$$LIVEKIT_API_KEY: $$LIVEKIT_API_SECRET";
-        exec /livekit-server --config /etc/livekit.yaml --redis-host redis:6379 --node-ip 127.0.0.1
+        sed "s|__LIVEKIT_TURN_DOMAIN__|$${LIVEKIT_TURN_DOMAIN:-turn.localhost}|" /etc/livekit.yaml > /tmp/livekit.yaml;
+        exec /livekit-server --config /tmp/livekit.yaml --redis-host redis:6379 --node-ip 127.0.0.1
     volumes:
       - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
     ports:
