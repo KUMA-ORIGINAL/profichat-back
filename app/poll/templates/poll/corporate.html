@@ -4,90 +4,158 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Куда идём на корпоратив</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Golos+Text:wght@400;500;600&display=swap">
 <style>
+/* Один акцент (янтарь) на всю страницу, одна шкала радиусов: 14px карточки, 999px интерактив. */
 :root{
-  --bg:#f3f5f4; --surface:#ffffff; --ink:#14211f; --muted:#5d6b68; --line:#d9e0de;
-  --accent:#e3a21a; --accent-ink:#2b1d00; --pick:#0f6b5c; --pick-soft:#dff0ec;
+  --bg:#f2f4f3; --surface:#ffffff; --ink:#14211f; --muted:#5a6866; --line:#dbe2e0;
+  --accent:#e8a317; --accent-ink:#2b1d00; --accent-soft:#fdf1d4;
+  --shadow:0 1px 2px rgba(20,33,31,.05),0 10px 30px -12px rgba(60,45,10,.18);
+  --r:14px; --ease:cubic-bezier(.16,1,.3,1);
   --display:"Unbounded","Golos Text",system-ui,sans-serif;
   --body:"Golos Text",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#0f1716; --surface:#16211f; --ink:#e8efed; --muted:#93a39f; --line:#26332f;
-  --accent:#f0b43a; --accent-ink:#231700; --pick:#5cc7b2; --pick-soft:#16332d; color-scheme:dark}}
+  --bg:#0e1514; --surface:#16211f; --ink:#e9f0ee; --muted:#93a39f; --line:#26332f;
+  --accent:#f2b335; --accent-ink:#231700; --accent-soft:#33290f;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 32px -14px rgba(0,0,0,.6); color-scheme:dark}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding:28px 16px 48px}
-.wrap{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
-h1{font-family:var(--display);font-weight:700;font-size:clamp(26px,6vw,38px);line-height:1.1;margin:0;text-wrap:balance;letter-spacing:-.01em}
-h1 mark{background:var(--accent);color:var(--accent-ink);padding:0 .18em;border-radius:4px}
-.lede{color:var(--muted);margin:10px 0 0;max-width:56ch}
-.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
-.status{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
-.chip{font-size:13px;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-variant-numeric:tabular-nums}
-form,.me{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px}
-h2{font-family:var(--display);font-weight:500;font-size:17px;margin:0}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;padding:0 16px 64px;overflow-x:hidden}
+.wrap{max-width:700px;margin:0 auto;display:flex;flex-direction:column;gap:32px;position:relative}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:56px 0 8px;isolation:isolate}
+.blob{position:absolute;z-index:-1;border-radius:50%;filter:blur(60px);opacity:.5;pointer-events:none;will-change:transform}
+.blob.a{width:260px;height:260px;background:var(--accent);top:-40px;right:-60px;animation:drift 14s ease-in-out infinite alternate}
+.blob.b{width:200px;height:200px;background:#3fb9a2;opacity:.28;bottom:-30px;left:-70px;animation:drift 18s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate3d(-40px,30px,0) scale(1.15)}}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,8vw,52px);line-height:1.04;margin:0;letter-spacing:-.02em;text-wrap:balance}
+h1 .w{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:.08em}
+h1 .w>span{display:inline-block;transform:translateY(110%);animation:rise .9s var(--ease) forwards;animation-delay:calc(var(--i)*90ms + 100ms)}
+h1 mark{background:var(--accent);color:var(--accent-ink);padding:0 .16em;border-radius:8px;box-decoration-break:clone}
+@keyframes rise{to{transform:none}}
+.lede{color:var(--muted);margin:16px 0 0;max-width:52ch;opacity:0;animation:fade .8s var(--ease) .6s forwards}
+.status{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;opacity:0;animation:fade .8s var(--ease) .75s forwards}
+@keyframes fade{from{transform:translateY(10px)}to{opacity:1;transform:none}}
+.chip{display:inline-flex;align-items:baseline;gap:8px;padding:6px 14px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-size:13px;color:var(--muted)}
+.chip b{font-family:var(--display);font-size:16px;color:var(--ink);font-variant-numeric:tabular-nums;display:inline-block}
+.chip b.bump{animation:bump .45s var(--ease)}
+@keyframes bump{40%{transform:scale(1.35)}}
+
+/* ---------- blocks ---------- */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+.reveal.in{opacity:1;transform:none}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+form.card,.me{padding:20px;display:flex;flex-direction:column;gap:12px}
+h2{font-family:var(--display);font-weight:500;font-size:18px;margin:0;letter-spacing:-.01em}
+label.l{font-size:13px;font-weight:600;color:var(--ink)}
+.field{display:flex;flex-direction:column;gap:6px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.row>input{flex:1 1 200px;min-width:0}
-input,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:100%}
-textarea{resize:vertical;min-height:44px}
-input:focus-visible,textarea:focus-visible,button:focus-visible,label.vote:focus-within{outline:2px solid var(--accent);outline-offset:2px}
-button{font:inherit;font-weight:600;cursor:pointer;border-radius:8px;border:0;padding:10px 16px}
-.primary{background:var(--accent);color:var(--accent-ink)}
-.primary:disabled{opacity:.5;cursor:default}
-.ghost{background:none;color:var(--muted);padding:4px 6px;font-weight:500;font-size:13px}
-.ghost:hover{color:var(--ink)}
+.row>.grow{flex:1 1 200px;min-width:0}
+input,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:11px 13px;width:100%;transition:border-color .2s,box-shadow .2s}
+input::placeholder,textarea::placeholder{color:#7b8987}
+@media (prefers-color-scheme:dark){input::placeholder,textarea::placeholder{color:#8a9b97}}
+textarea{resize:vertical;min-height:46px}
+input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:999px;border:0;padding:11px 22px;white-space:nowrap}
+.primary{background:var(--accent);color:var(--accent-ink);transition:transform .25s var(--ease),box-shadow .25s,filter .2s;box-shadow:0 6px 18px -8px var(--accent)}
+.primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 12px 22px -10px var(--accent)}
+.primary:active:not(:disabled){transform:translateY(0) scale(.97)}
+.primary:disabled{opacity:.45;cursor:default;box-shadow:none}
+button:focus-visible,label.vote:focus-within{outline:2px solid var(--ink);outline-offset:3px}
+.ghost{background:none;color:var(--muted);padding:4px 10px;font-weight:500;font-size:13px;border-radius:999px}
+.ghost:hover{color:var(--ink);background:var(--bg)}
 .hint{font-size:13px;color:var(--muted);margin:0;flex:1 1 200px}
-.err{color:#c0392b;font-size:13px;margin:0}
-.sec{display:flex;flex-direction:column;gap:12px}
-.list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
-.opt{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start}
-.opt.mine-pick{border-color:var(--pick);background:var(--pick-soft)}
-.rank{font-family:var(--display);font-size:13px;color:var(--muted);width:22px;padding-top:3px;font-variant-numeric:tabular-nums}
-.opt.lead .rank{color:var(--accent)}
-.body{min-width:0;display:flex;flex-direction:column;gap:6px}
-.title{font-weight:600;font-size:16px;overflow-wrap:anywhere}
+.err{color:#b3321f;font-size:13px;margin:0}
+@media (prefers-color-scheme:dark){.err{color:#ff8f7d}}
+.me{transition:opacity .35s,transform .35s var(--ease)}
+.me.gone{opacity:0;transform:scale(.97) translateY(-8px)}
+.sec{display:flex;flex-direction:column;gap:14px}
+.sec-head{display:flex;align-items:center;gap:10px}
+
+/* ---------- options ---------- */
+.list{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.opt{position:relative;border-radius:var(--r);padding:16px 18px;display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);transition:border-color .3s,background-color .3s,transform .3s var(--ease)}
+.opt:hover{transform:translateY(-2px)}
+.opt.mine{border-color:var(--accent);background:linear-gradient(var(--accent-soft),var(--accent-soft)),var(--surface)}
+.opt.enter{animation:cardIn .7s var(--ease) both;animation-delay:var(--d,0ms)}
+@keyframes cardIn{from{opacity:0;transform:translateY(22px) scale(.97)}}
+.rank{font-family:var(--display);font-weight:700;font-size:15px;color:var(--muted);width:30px;text-align:center;font-variant-numeric:tabular-nums}
+.opt.lead .rank{color:var(--accent-ink);background:var(--accent);border-radius:50%;width:30px;height:30px;line-height:30px;font-size:13px;animation:pop .6s var(--ease)}
+@keyframes pop{0%{transform:scale(.4) rotate(-20deg)}60%{transform:scale(1.2)}}
+.body{min-width:0;display:flex;flex-direction:column;gap:7px}
+.title{font-weight:600;font-size:17px;overflow-wrap:anywhere;line-height:1.3}
 .note{color:var(--muted);font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}
-.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
-.bar{height:5px;border-radius:3px;background:var(--line);overflow:hidden}
-.bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
-.faces,.people{display:flex;flex-wrap:wrap;gap:4px}
-.av{width:22px;height:22px;border-radius:50%;background:var(--pick);color:var(--bg);font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;flex:none}
-label.vote{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;user-select:none;min-width:58px;padding:8px 6px;border-radius:10px;border:1px solid var(--line);background:var(--bg);position:relative}
+.bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:100%;border-radius:inherit;background:var(--accent);transform-origin:left;transform:scaleX(var(--p,0));transition:transform .8s var(--ease)}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.faces{display:flex;padding-left:7px}
+.av{width:24px;height:24px;border-radius:50%;margin-left:-7px;border:2px solid var(--surface);color:#fff;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;flex:none;background:hsl(var(--h) 45% 38%);animation:avIn .45s var(--ease) both}
+.person .av{margin:0;border:0}
+@keyframes avIn{from{opacity:0;transform:scale(.3)}}
+
+/* vote button */
+label.vote{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;user-select:none;min-width:68px;padding:10px 8px;border-radius:var(--r);border:1.5px solid var(--line);background:var(--bg);transition:background-color .25s,border-color .25s,transform .25s var(--ease)}
+label.vote:hover{border-color:var(--accent);transform:scale(1.04)}
+label.vote:active{transform:scale(.94)}
 label.vote input{position:absolute;opacity:0;width:1px;height:1px}
-label.vote .n{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums}
-label.vote .t{font-size:11px;color:var(--muted)}
-label.vote.on{background:var(--pick);border-color:var(--pick)}
-label.vote.on .n,label.vote.on .t{color:var(--bg)}
-.empty{border:1.5px dashed var(--line);border-radius:12px;padding:22px;color:var(--muted)}
-.people{gap:8px}
-.person{display:flex;align-items:center;gap:6px;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 10px 3px 3px}
+.heart{width:22px;height:22px;display:block;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:fill .25s,stroke .25s}
+label.vote.on{background:var(--accent);border-color:var(--accent)}
+label.vote.on .heart{fill:var(--accent-ink);stroke:var(--accent-ink);animation:heartPop .6s var(--ease)}
+label.vote.on .n,label.vote.on .t{color:var(--accent-ink)}
+@keyframes heartPop{0%{transform:scale(.4)}45%{transform:scale(1.4)}}
+.n{font-family:var(--display);font-weight:700;font-size:18px;font-variant-numeric:tabular-nums;height:24px;line-height:24px;overflow:hidden;display:block}
+.n span{display:block}
+.t{font-size:11px;color:var(--muted)}
+
+/* confetti */
+.dot{position:fixed;left:0;top:0;width:8px;height:8px;border-radius:2px;pointer-events:none;z-index:50}
+
+.empty{border:2px dashed var(--line);border-radius:var(--r);padding:34px 22px;color:var(--muted);text-align:center}
+.empty b{display:block;font-family:var(--display);font-weight:500;color:var(--ink);font-size:16px;margin-bottom:6px}
+.skel{height:104px;border-radius:var(--r);background:linear-gradient(100deg,var(--surface) 30%,var(--line) 50%,var(--surface) 70%) 0 0/300% 100%;border:1px solid var(--line);animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{to{background-position:-300% 0}}
+.people{display:flex;flex-wrap:wrap;gap:8px}
+.person{display:flex;align-items:center;gap:8px;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 4px;animation:avIn .5s var(--ease) both}
 .wishes{display:flex;flex-direction:column;gap:8px}
-.wish{font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;overflow-wrap:anywhere}
-@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+.wish{font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 14px;overflow-wrap:anywhere;animation:cardIn .6s var(--ease) both}
 [hidden]{display:none!important}
+
+@media (max-width:520px){
+  .opt{grid-template-columns:auto 1fr;padding:14px}
+  .opt label.vote{grid-column:1 / -1;flex-direction:row;justify-content:center;gap:10px;min-width:0}
+  .rank{width:26px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important}
+  h1 .w>span{transform:none}.lede,.status{opacity:1}.reveal{opacity:1;transform:none}.blob{animation:none}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="eyebrow">Опрос команды</div>
-    <h1>Куда идём на <mark>корпоратив</mark>?</h1>
-    <p class="lede">Предложите своё место и отметьте все варианты, которые вам нравятся. Голосовать можно за несколько. Результаты видны всем и обновляются сразу.</p>
-    <div class="status"><span class="chip" id="cnt-people">Ответили: 0</span><span class="chip" id="cnt-places">Вариантов: 0</span></div>
+  <header class="hero">
+    <div class="blob a"></div><div class="blob b"></div>
+    <h1 id="h1"><span class="w" style="--i:0"><span>Куда</span></span> <span class="w" style="--i:1"><span>идём</span></span> <span class="w" style="--i:2"><span>на</span></span> <span class="w" style="--i:3"><span><mark>корпоратив</mark>?</span></span></h1>
+    <p class="lede">Предложите место и отметьте все варианты, которые вам нравятся. Голосов можно ставить сколько угодно, рейтинг обновляется сразу.</p>
+    <div class="status"><span class="chip"><b id="cnt-people">0</b> ответили</span><span class="chip"><b id="cnt-places">0</b> вариантов</span></div>
   </header>
 
-  <div class="me" id="me">
+  <div class="card me reveal" id="me">
     <h2>Как вас зовут?</h2>
     <div class="row">
-      <input id="f-name" maxlength="60" placeholder="Имя, чтобы коллеги видели ваш голос" autocomplete="name">
-      <button class="primary" id="name-btn" type="button">Продолжить</button>
+      <div class="field grow"><label class="l" for="f-name">Имя</label><input id="f-name" maxlength="60" placeholder="Например, Айдана" autocomplete="name"></div>
+      <button class="primary" id="name-btn" type="button" style="align-self:flex-end">Продолжить</button>
     </div>
+    <p class="hint">Нужно, чтобы коллеги видели, кто за что проголосовал.</p>
   </div>
 
-  <form id="add" autocomplete="off">
+  <form class="card reveal" id="add" autocomplete="off">
     <h2>Предложить место</h2>
-    <input id="f-title" maxlength="80" placeholder="Например: боулинг, баня, ресторан, выезд в горы" required>
-    <textarea id="f-note" maxlength="300" placeholder="Подробности: адрес, цена на человека, почему туда (необязательно)"></textarea>
+    <div class="field"><label class="l" for="f-title">Название</label><input id="f-title" maxlength="80" placeholder="Боулинг, баня, ресторан, выезд в горы" required></div>
+    <div class="field"><label class="l" for="f-note">Подробности</label><textarea id="f-note" maxlength="300" placeholder="Адрес, цена на человека, почему туда (необязательно)"></textarea></div>
     <div class="row">
       <p class="hint">Ваш вариант сразу получит ваш голос.</p>
       <button class="primary" id="f-btn" type="submit">Добавить</button>
@@ -95,16 +163,16 @@ label.vote.on .n,label.vote.on .t{color:var(--bg)}
     <p class="err" id="add-err" hidden></p>
   </form>
 
-  <section class="sec">
+  <section class="sec reveal">
     <h2>Варианты</h2>
-    <ul class="list" id="list"></ul>
-    <div class="empty" id="empty">Пока никто ничего не предложил. Добавьте первый вариант в форме выше, и коллеги смогут за него проголосовать.</div>
+    <ul class="list" id="list"><li class="skel"></li><li class="skel"></li></ul>
+    <div class="empty" id="empty" hidden><b>Пока пусто</b>Добавьте первый вариант в форме выше, и коллеги смогут за него проголосовать.</div>
   </section>
 
-  <section class="sec">
+  <section class="sec reveal">
     <h2>Пожелания</h2>
-    <form id="wishform" style="padding:14px">
-      <textarea id="f-wish" maxlength="300" placeholder="Даты, бюджет, что точно не подходит (необязательно)"></textarea>
+    <form class="card" id="wishform" style="padding:16px;gap:12px;display:flex;flex-direction:column">
+      <div class="field"><label class="l" for="f-wish">Ваше пожелание</label><textarea id="f-wish" maxlength="300" placeholder="Даты, бюджет, что точно не подходит"></textarea></div>
       <div class="row">
         <p class="hint" id="wish-hint">Видно всем. Можно изменить в любой момент.</p>
         <button class="primary" id="w-btn" type="submit">Сохранить</button>
@@ -113,7 +181,7 @@ label.vote.on .n,label.vote.on .t{color:var(--bg)}
     <div class="wishes" id="wishes"></div>
   </section>
 
-  <section class="sec">
+  <section class="sec reveal">
     <h2>Кто уже ответил</h2>
     <div class="people" id="people"></div>
   </section>
@@ -123,6 +191,7 @@ label.vote.on .n,label.vote.on .t{color:var(--bg)}
 (() => {
   const $ = id => document.getElementById(id);
   const API = "/api/corporate-poll/";
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const store = {
     get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
     set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
@@ -133,7 +202,7 @@ label.vote.on .n,label.vote.on .t{color:var(--bg)}
   let token = store.get("poll_token"); if (!token){ token = uuid(); store.set("poll_token", token); }
   let name = store.get("poll_name") || "";
   let state = { places: [], people: [] };
-  let wishTouched = false;
+  let wishTouched = false, loaded = false, busy = 0;
 
   const api = async (path, opts = {}) => {
     const r = await fetch(API + path, { headers: { "Content-Type": "application/json" }, ...opts });
@@ -141,83 +210,189 @@ label.vote.on .n,label.vote.on .t{color:var(--bg)}
     return r.status === 204 ? null : r.json();
   };
   const post = (path, body) => api(path, { method: "POST", body: JSON.stringify({ token, name, ...body }) });
+  const hue = s => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+
+  /* scroll reveal: IntersectionObserver, once */
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .12 });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
 
   const syncMe = () => {
-    $("me").hidden = !!name;
+    const had = !$("me").hidden;
+    if (name && had){ $("me").classList.add("gone"); setTimeout(() => $("me").hidden = true, reduce ? 0 : 350); }
     ["f-title","f-note","f-btn","f-wish","w-btn"].forEach(id => $(id).disabled = !name);
   };
   $("name-btn").onclick = () => {
     const v = $("f-name").value.trim(); if (!v) return;
-    name = v; store.set("poll_name", name); syncMe(); render();
+    name = v; store.set("poll_name", name); syncMe(); sync();
   };
   $("f-name").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); $("name-btn").click(); } });
 
   async function load(){
+    if (busy) return;
     try { state = await api(""); } catch(e){ return; }
     const mine = state.people.find(p => p.token === token);
     if (mine && !wishTouched && document.activeElement !== $("f-wish")) $("f-wish").value = mine.wish || "";
-    render();
+    sync();
   }
 
-  const avatar = n => { const a = document.createElement("span"); a.className = "av"; a.textContent = (n || "?").trim().charAt(0).toUpperCase(); a.title = n; return a; };
+  const avatar = (n, delay = 0) => {
+    const a = document.createElement("span"); a.className = "av"; a.style.setProperty("--h", hue(n));
+    a.style.animationDelay = delay + "ms";
+    a.textContent = (n || "?").trim().charAt(0).toUpperCase(); a.title = n; return a;
+  };
 
-  function render(){
+  /* number "roll" when a count changes */
+  function setNum(el, v){
+    const cur = el.dataset.v;
+    if (cur === String(v)) return;
+    const old = cur === undefined ? null : Number(cur);
+    el.dataset.v = v;
+    const s = document.createElement("span"); s.textContent = v;
+    el.replaceChildren(s);
+    if (old !== null && !reduce) s.animate([{ transform: `translateY(${v > old ? 100 : -100}%)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 420, easing: "cubic-bezier(.16,1,.3,1)" });
+  }
+  function bumpChip(el, v){
+    if (el.textContent === String(v)) return;
+    el.textContent = v; el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump");
+  }
+
+  function confetti(from){
+    if (reduce) return;
+    const r = from.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const colors = ["#e8a317", "#f2b335", "#3fb9a2", "#e5594b", "#8a6bd1", "#14211f"];
+    for (let i = 0; i < 16; i++){
+      const d = document.createElement("i"); d.className = "dot";
+      d.style.background = colors[i % colors.length];
+      document.body.append(d);
+      const ang = Math.random() * Math.PI * 2, dist = 50 + Math.random() * 70;
+      const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist - 30;
+      d.animate([
+        { transform: `translate(${cx}px,${cy}px) scale(1) rotate(0)`, opacity: 1 },
+        { transform: `translate(${cx + dx}px,${cy + dy}px) scale(1) rotate(${Math.random()*360}deg)`, opacity: 1, offset: .55 },
+        { transform: `translate(${cx + dx * 1.1}px,${cy + dy + 70}px) scale(.4) rotate(${Math.random()*540}deg)`, opacity: 0 },
+      ], { duration: 800 + Math.random() * 300, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => d.remove();
+    }
+  }
+
+  /* ---------- keyed card rendering with FLIP reorder ---------- */
+  const cards = new Map();
+  const HEART = '<svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.600-7.500 10.200-7.500 10.200z"/></svg>';
+
+  function makeCard(p){
+    const li = document.createElement("li"); li.className = "opt";
+    li.innerHTML = '<div class="rank"></div><div class="body"><div class="title"></div><div class="note"></div><div class="bar"><i></i></div><div class="meta"><div class="faces"></div><span class="by"></span></div></div>' +
+      '<label class="vote"><input type="checkbox">' + HEART + '<span class="n"></span><span class="t"></span></label>';
+    const c = { li, p, rank: li.querySelector(".rank"), title: li.querySelector(".title"), note: li.querySelector(".note"),
+      bar: li.querySelector(".bar i"), meta: li.querySelector(".meta"), faces: li.querySelector(".faces"), by: li.querySelector(".by"),
+      lab: li.querySelector("label"), cb: li.querySelector("input"), n: li.querySelector(".n"), t: li.querySelector(".t"), voters: "" };
+    c.cb.onchange = () => toggle(c.p, c.cb.checked, c);
+    return c;
+  }
+
+  function fill(c, p, i, max, nm){
+    c.p = p;
+    const n = p.voters.length, on = p.voters.includes(token);
+    c.li.classList.toggle("mine", on);
+    c.li.classList.toggle("lead", i === 0 && n > 0);
+    c.rank.textContent = i === 0 && n > 0 ? "1" : String(i + 1);
+    c.title.textContent = p.title;
+    c.note.textContent = p.note; c.note.hidden = !p.note;
+    c.bar.style.setProperty("--p", n / max);
+    c.by.textContent = "предложил(а): " + p.authorName;
+    c.lab.classList.toggle("on", on);
+    c.cb.checked = on; c.cb.disabled = !name;
+    c.cb.setAttribute("aria-label", "Голос за " + p.title);
+    c.t.textContent = on ? "ваш голос" : "голосовать";
+    setNum(c.n, n);
+    const key = p.voters.join(",");
+    if (key !== c.voters){
+      const prev = new Set(c.voters ? c.voters.split(",") : []);
+      c.faces.replaceChildren(...p.voters.map(u => { const a = avatar(nm[u] || "Коллега"); if (prev.has(u)) a.style.animation = "none"; return a; }));
+      c.voters = key;
+    }
+    let del = c.meta.querySelector(".ghost");
+    if (p.author === token && !del){
+      del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Удалить";
+      del.onclick = () => {
+        if (del.dataset.armed) removePlace(c);
+        else { del.dataset.armed = "1"; del.textContent = "Точно удалить?"; setTimeout(() => { delete del.dataset.armed; del.textContent = "Удалить"; }, 3000); }
+      };
+      c.meta.append(del);
+    } else if (p.author !== token && del) del.remove();
+  }
+
+  async function removePlace(c){
+    busy++;
+    if (!reduce) await c.li.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.94) translateX(30px)" }], { duration: 300, easing: "ease-in", fill: "forwards" }).finished;
+    try { await api("places/" + c.p.id + "/?token=" + token, { method: "DELETE" }); } catch(e){}
+    busy--; load();
+  }
+
+  async function toggle(p, on, c){
+    busy++;
+    p.voters = on ? [...new Set([...p.voters, token])] : p.voters.filter(u => u !== token);
+    if (!state.people.some(x => x.token === token)) state.people.push({ token, name, wish: "" });
+    if (on) confetti(c.lab);
+    sync();
+    try { await post("votes/", { placeId: p.id, on }); } catch(e){}
+    busy--; load();
+  }
+
+  function sync(){
     const nm = {}; state.people.forEach(p => nm[p.token] = p.name);
     state.places.forEach(p => nm[p.author] = p.authorName);
-    const sorted = [...state.places].sort((a, b) => b.voters.length - a.voters.length);
+    const sorted = [...state.places].sort((a, b) => b.voters.length - a.voters.length || a.id - b.id);
     const max = Math.max(1, ...sorted.map(p => p.voters.length));
 
-    $("cnt-people").textContent = "Ответили: " + state.people.length;
-    $("cnt-places").textContent = "Вариантов: " + state.places.length;
-    $("empty").hidden = state.places.length > 0;
+    bumpChip($("cnt-people"), state.people.length);
+    bumpChip($("cnt-places"), state.places.length);
+    $("empty").hidden = !loaded || state.places.length > 0;
+    if (loaded) document.querySelectorAll(".skel").forEach(s => s.remove());
 
-    const list = $("list"); list.replaceChildren();
+    const list = $("list");
+    const first = new Map(); cards.forEach((c, id) => first.set(id, c.li.getBoundingClientRect().top));
+    const live = new Set(sorted.map(p => p.id));
+    cards.forEach((c, id) => { if (!live.has(id)){ c.li.remove(); cards.delete(id); } });
+
+    let fresh = 0;
     sorted.forEach((p, i) => {
-      const n = p.voters.length, on = p.voters.includes(token);
-      const li = document.createElement("li");
-      li.className = "opt" + (on ? " mine-pick" : "") + (i === 0 && n > 0 ? " lead" : "");
-      const rank = document.createElement("div"); rank.className = "rank"; rank.textContent = String(i + 1).padStart(2, "0");
-      const body = document.createElement("div"); body.className = "body";
-      const t = document.createElement("div"); t.className = "title"; t.textContent = p.title; body.append(t);
-      if (p.note){ const no = document.createElement("div"); no.className = "note"; no.textContent = p.note; body.append(no); }
-      const bar = document.createElement("div"); bar.className = "bar"; const bi = document.createElement("i"); bi.style.width = (n / max * 100) + "%"; bar.append(bi); body.append(bar);
-      const meta = document.createElement("div"); meta.className = "meta";
-      const faces = document.createElement("div"); faces.className = "faces";
-      p.voters.forEach(u => faces.append(avatar(nm[u] || "Коллега")));
-      const by = document.createElement("span"); by.textContent = "предложил(а): " + p.authorName;
-      meta.append(faces, by);
-      if (p.author === token){
-        const del = document.createElement("button"); del.type = "button"; del.className = "ghost"; del.textContent = "Удалить";
-        del.onclick = async () => {
-          if (del.dataset.armed){ try { await api("places/" + p.id + "/?token=" + token, { method: "DELETE" }); } catch(e){} load(); }
-          else { del.dataset.armed = "1"; del.textContent = "Точно удалить?"; setTimeout(() => { delete del.dataset.armed; del.textContent = "Удалить"; }, 3000); }
-        };
-        meta.append(del);
+      let c = cards.get(p.id);
+      if (!c){
+        c = makeCard(p); cards.set(p.id, c);
+        if (loaded || !reduce){ c.li.classList.add("enter"); c.li.style.setProperty("--d", (fresh++ * 70) + "ms"); }
       }
-      body.append(meta);
-      const lab = document.createElement("label"); lab.className = "vote" + (on ? " on" : "");
-      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = on; cb.disabled = !name;
-      cb.setAttribute("aria-label", "Голос за " + p.title);
-      cb.onchange = async () => { try { await post("votes/", { placeId: p.id, on: cb.checked }); } catch(e){} load(); };
-      const nn = document.createElement("span"); nn.className = "n"; nn.textContent = n;
-      const tt = document.createElement("span"); tt.className = "t"; tt.textContent = on ? "мой голос" : "голосовать";
-      lab.append(cb, nn, tt);
-      li.append(rank, body, lab); list.append(li);
+      fill(c, p, i, max, nm);
+      list.append(c.li);
     });
 
-    const pe = $("people"); pe.replaceChildren();
-    if (!state.people.length){ const h = document.createElement("span"); h.className = "hint"; h.textContent = "Пока никого."; pe.append(h); }
-    state.people.forEach(p => {
-      const d = document.createElement("span"); d.className = "person";
-      const s = document.createElement("span"); s.textContent = p.name; d.append(avatar(p.name), s); pe.append(d);
+    if (!reduce) cards.forEach((c, id) => {
+      if (!first.has(id)) return;
+      const dy = first.get(id) - c.li.getBoundingClientRect().top;
+      if (Math.abs(dy) > 1) c.li.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 650, easing: "cubic-bezier(.16,1,.3,1)" });
     });
 
-    const w = $("wishes"); w.replaceChildren();
-    state.people.filter(p => p.wish).forEach(p => {
-      const d = document.createElement("div"); d.className = "wish";
-      const b = document.createElement("b"); b.textContent = p.name + ": ";
-      d.append(b, document.createTextNode(p.wish)); w.append(d);
-    });
+    const pe = $("people");
+    const sig = state.people.map(p => p.token + p.name).join("|");
+    if (pe.dataset.sig !== sig){
+      pe.dataset.sig = sig;
+      pe.replaceChildren();
+      if (!state.people.length){ const h = document.createElement("span"); h.className = "hint"; h.textContent = "Пока никого, будьте первым."; pe.append(h); }
+      state.people.forEach((p, i) => {
+        const d = document.createElement("span"); d.className = "person"; d.style.animationDelay = (i * 40) + "ms";
+        const s = document.createElement("span"); s.textContent = p.name;
+        const a = avatar(p.name); a.style.animation = "none"; d.append(a, s); pe.append(d);
+      });
+    }
+
+    const w = $("wishes"), ws = state.people.filter(p => p.wish).map(p => p.token + p.wish).join("|");
+    if (w.dataset.sig !== ws){
+      w.dataset.sig = ws; w.replaceChildren();
+      state.people.filter(p => p.wish).forEach((p, i) => {
+        const d = document.createElement("div"); d.className = "wish"; d.style.animationDelay = (i * 50) + "ms";
+        const b = document.createElement("b"); b.textContent = p.name + ": ";
+        d.append(b, document.createTextNode(p.wish)); w.append(d);
+      });
+    }
   }
 
   $("add").addEventListener("submit", async ev => {
@@ -241,7 +416,9 @@ label.vote.on .n,label.vote.on .t{color:var(--bg)}
   });
 
   $("f-name").value = name;
-  syncMe(); render(); load();
+  if (name) $("me").hidden = true;
+  ["f-title","f-note","f-btn","f-wish","w-btn"].forEach(id => $(id).disabled = !name);
+  (async () => { await load(); loaded = true; sync(); })();
   setInterval(() => { if (!document.hidden) load(); }, 5000);
 })();
 </script>
