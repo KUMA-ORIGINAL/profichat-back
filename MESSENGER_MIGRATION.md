@@ -35,7 +35,7 @@ A-записи на тот же сервер, что и `<DOMAIN>`: `files.<DOMA
 
 | Порт | Открыт наружу | Кто |
 |---|---|---|
-| 80/tcp, 443/tcp | да | nginx (443: https и TURN/TLS по SNI) |
+| 80/tcp, 443/tcp | да | nginx (443: https и TURN/TLS по SNI; 80 при наличии сертификата — только проверка certbot и 301 на https) |
 | 7881/tcp | да | LiveKit, WebRTC по TCP |
 | 7882/udp | да | LiveKit, медиа (один UDP-порт) |
 | 3478/udp | да | LiveKit TURN/UDP |

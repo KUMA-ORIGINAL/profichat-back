@@ -232,12 +232,28 @@ class SendWithAttachmentTests(AttachmentTestCase):
         self.assertEqual(response.json()["text"], "")
         self.assertEqual(len(response.json()["attachments"]), 1)
 
-    def test_attachments_keep_upload_order(self):
-        first = self.make_attachment(file_name="1.png")
-        second = self.make_attachment(file_name="2.png")
-        response = self.send(self.specialist, attachmentIds=[str(second.pk), str(first.pk)])
+    def test_attachments_keep_attachment_ids_order(self):
+        # резерв A, потом B (например, параллельные загрузки), отправка в порядке [B, A]
+        first = self.request_upload(self.specialist, fileName="a.png").json()["id"]
+        second = self.request_upload(
+            self.specialist, kind="video", mimeType="video/mp4", fileName="b.mp4"
+        ).json()["id"]
+
+        response = self.send(self.specialist, attachmentIds=[second, first])
+
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual([a["fileName"] for a in response.json()["attachments"]], ["1.png", "2.png"])
+        self.assertEqual([a["id"] for a in response.json()["attachments"]], [second, first])
+        self.assertEqual(
+            dict(Attachment.objects.filter(pk__in=[first, second]).values_list("id", "position")),
+            {uuid.UUID(second): 0, uuid.UUID(first): 1},
+        )
+        history = self.client.get(self.messages_url()).json()["results"][0]
+        self.assertEqual([a["id"] for a in history["attachments"]], [second, first])
+
+        from messenger.services.push import message_preview
+
+        message = Message.objects.get(pk=response.json()["id"])
+        self.assertEqual(message_preview(message), "Видео")  # первое по порядку отправки — видео B
 
     def test_missing_object_rejected(self):
         self.storage_head.return_value = None

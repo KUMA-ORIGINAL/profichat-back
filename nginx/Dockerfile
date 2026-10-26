@@ -1,7 +1,7 @@
 FROM nginx:1.26.0
 
 COPY nginx.conf /etc/nginx/templates/default.conf.template
-COPY app_locations.conf /etc/nginx/snippets/app_locations.conf
+COPY app_locations.conf http_redirect.conf /etc/nginx/snippets/
 # HTTPS-часть: шаблоны подключает nginx_entrypoint.sh, когда сертификат уже есть
 COPY tls_http.conf tls_stream.conf /etc/nginx/tls-templates/
 COPY ./nginx_entrypoint.sh /docker-entrypoint.d/.

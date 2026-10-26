@@ -38,6 +38,8 @@ class Attachment(BaseModel):
     width = models.PositiveIntegerField(null=True, blank=True, verbose_name="Ширина")
     height = models.PositiveIntegerField(null=True, blank=True, verbose_name="Высота")
     duration_ms = models.PositiveIntegerField(null=True, blank=True, verbose_name="Длительность, мс")
+    # порядок в сообщении = индекс в attachmentIds (у импортированных — индекс в Stream); null, пока не отправлено
+    position = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Порядок в сообщении")
     waveform = models.JSONField(null=True, blank=True, verbose_name="Waveform")
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING, verbose_name="Статус"

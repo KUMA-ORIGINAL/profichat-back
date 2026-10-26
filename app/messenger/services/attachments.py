@@ -89,7 +89,8 @@ def claim_for_message(chat, user, attachment_ids) -> list[Attachment]:
     if any(attachment.kind == Attachment.Kind.VOICE for attachment in attachments):
         access.ensure_can_send_voice(chat, user)
 
-    for attachment in attachments:
+    for position, attachment in enumerate(attachments):
+        attachment.position = position
         meta = storage.head(attachment.object_key)
         if meta is None:
             raise _invalid("Файл не загружен")
@@ -105,7 +106,7 @@ def attach_to_message(message, attachments) -> None:
     """Сохраняет проверенные `claim_for_message` вложения как принадлежащие сообщению."""
     for attachment in attachments:
         attachment.message = message
-        attachment.save(update_fields=["message", "size", "status", "updated_at"])
+        attachment.save(update_fields=["message", "size", "status", "position", "updated_at"])
 
 
 def cleanup_pending(older_than: timedelta = timedelta(hours=24)) -> int:

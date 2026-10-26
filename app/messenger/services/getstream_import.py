@@ -567,6 +567,7 @@ class _ChannelImporter:
             height=spec.height,
             duration_ms=spec.duration_ms,
             waveform=spec.waveform,
+            position=spec.index,
             status=Attachment.Status.READY,
         )
 

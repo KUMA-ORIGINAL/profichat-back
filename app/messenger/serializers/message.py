@@ -6,6 +6,12 @@ from messenger.serializers.attachment import AttachmentSerializer
 from messenger.serializers.call import CallSerializer
 
 
+def attachment_order_key(attachment) -> tuple:
+    """Порядок вложений в сообщении: position (порядок attachmentIds), затем created_at, pk."""
+    position = attachment.position if attachment.position is not None else 32767
+    return position, attachment.created_at, str(attachment.pk)
+
+
 class ReplyToSerializer(serializers.ModelSerializer):
     """Краткое представление сообщения, на которое отвечают."""
 
@@ -68,8 +74,8 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_attachments(self, obj):
         if obj.deleted_at:
             return []
-        # сортировка в Python, чтобы использовать prefetch_related("attachments") без N+1
-        attachments = sorted(obj.attachments.all(), key=lambda attachment: (attachment.created_at, attachment.pk))
+        # порядок отправки (attachmentIds); сортировка в Python — по prefetch_related("attachments") без N+1
+        attachments = sorted(obj.attachments.all(), key=attachment_order_key)
         return AttachmentSerializer(attachments, many=True).data
 
     @extend_schema_field(CallSerializer(allow_null=True))

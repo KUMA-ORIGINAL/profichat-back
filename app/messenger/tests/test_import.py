@@ -321,6 +321,24 @@ class ImportAttachmentsTestCase(ImportTestCase):
             self.assertTrue(call.kwargs.get("stream"))
             self.assertIn("timeout", call.kwargs)
 
+    def test_attachment_position_follows_stream_order(self):
+        messages = {m["id"]: m for m in self.fixture["query_response"]["messages"]}
+        document = dict(next(a for a in messages["msg-quote"]["attachments"] if a.get("type") == "file"))
+        messages["msg-photo"]["attachments"].insert(0, document)  # [файл, фото]
+
+        self.run_import()
+
+        photo = self.msg("msg-photo")
+        self.assertEqual(
+            list(photo.attachments.order_by("position").values_list("kind", "position")),
+            [(Attachment.Kind.FILE, 0), (Attachment.Kind.IMAGE, 1)],
+        )
+        self.auth(self.client_user)
+        with patch("messenger.clients.storage.presigned_get", return_value="https://files/x"):
+            results = self.client.get(f"/api/chats/{self.chat.channel_id}/messages/?limit=100").json()["results"]
+        api_photo = next(m for m in results if m["id"] == photo.pk)
+        self.assertEqual([a["kind"] for a in api_photo["attachments"]], ["file", "image"])
+
     def test_attachment_url_appears_in_api(self):
         self.run_import()
         self.auth(self.client_user)

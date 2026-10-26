@@ -17,15 +17,31 @@ WEBROOT=/var/www/certbot
 TLS_TEMPLATES=/etc/nginx/tls-templates
 HTTP_TLS_CONF=/etc/nginx/conf.d/tls_http.conf
 STREAM_TLS_CONF=/etc/nginx/stream-conf.d/tls_stream.conf
+MAIN_HTTP_DIR=/etc/nginx/main-http.d
 
-mkdir -p "$WEBROOT" /etc/nginx/stream-conf.d
-# при рестарте контейнера TLS-часть собирается заново
-rm -f "$HTTP_TLS_CONF" "$STREAM_TLS_CONF"
+mkdir -p "$WEBROOT" /etc/nginx/stream-conf.d "$MAIN_HTTP_DIR"
+
+# TLS-часть и поведение :80 основного домена — по наличию сертификата (собирается заново при
+# каждом старте). Есть сертификат: https-серверы, 443 со SNI, а :80 отдаёт только ACME и 301
+# на https. Нет: всё приложение по http :80 (первый запуск до certbot, dev).
+configure_tls() {
+    rm -f "$HTTP_TLS_CONF" "$STREAM_TLS_CONF" "$MAIN_HTTP_DIR"/*.conf
+    if [ -f "$LIVE_DIR/fullchain.pem" ] && [ -f "$LIVE_DIR/privkey.pem" ]; then
+        envsubst '${DOMAIN}' < "$TLS_TEMPLATES/tls_http.conf" > "$HTTP_TLS_CONF"
+        envsubst '${DOMAIN}' < "$TLS_TEMPLATES/tls_stream.conf" > "$STREAM_TLS_CONF"
+        cp /etc/nginx/snippets/http_redirect.conf "$MAIN_HTTP_DIR/main.conf"
+        return 0
+    fi
+    cp /etc/nginx/snippets/app_locations.conf "$MAIN_HTTP_DIR/main.conf"
+    return 1
+}
+
+configure_tls
 
 get_certs_lower=$(echo "$GET_CERTS" | tr '[:upper:]' '[:lower:]')
 
 if [ "$get_certs_lower" = "true" ]; then
-    # Временный nginx (пока только :80) отвечает на проверку certbot из $WEBROOT.
+    # Временный nginx отвечает на проверку certbot из $WEBROOT (на :80 она есть в обоих вариантах).
     nginx
     # --keep-until-expiring: если сертификат уже покрывает все имена и не истекает — ничего не делает.
     # Если в существующем сертификате нет поддоменов (первый деплой мессенджера) — перевыпускает
@@ -48,10 +64,9 @@ if [ "$get_certs_lower" = "true" ]; then
     fi
 fi
 
-if [ -f "$LIVE_DIR/fullchain.pem" ] && [ -f "$LIVE_DIR/privkey.pem" ]; then
-    echo "[tls] сертификат $LIVE_DIR найден, включаю HTTPS (443: SNI → https / TURN/TLS)"
-    envsubst '${DOMAIN}' < "$TLS_TEMPLATES/tls_http.conf" > "$HTTP_TLS_CONF"
-    envsubst '${DOMAIN}' < "$TLS_TEMPLATES/tls_stream.conf" > "$STREAM_TLS_CONF"
+# сертификат мог появиться только что — пересобрать
+if configure_tls; then
+    echo "[tls] сертификат $LIVE_DIR найден, включаю HTTPS (443: SNI → https / TURN/TLS), :80 → 301 на https"
 else
     echo "[tls] сертификата $LIVE_DIR нет, работаю только по http :80"
 fi

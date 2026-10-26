@@ -26,7 +26,7 @@ def message_preview(message) -> str:
     """Текст пуша: текст сообщения или подпись по типу первого вложения."""
     if message.text:
         return message.text
-    attachment = message.attachments.order_by("created_at").first()
+    attachment = message.attachments.order_by("position", "created_at", "pk").first()
     if attachment is not None:
         return ATTACHMENT_PREVIEWS.get(attachment.kind, ATTACHMENT_PREVIEWS[Attachment.Kind.FILE])
     return DEFAULT_PREVIEW
