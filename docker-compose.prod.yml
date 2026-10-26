@@ -19,6 +19,22 @@ services:
       redis:
         condition: service_healthy
 
+  # Фоновые задачи по расписанию. Пока одна: тихие часы специалистов —
+  # пуши чата вне графика и сводка в начале смены (account/services/quiet_hours.py).
+  scheduler:
+    build:
+      context: app
+      dockerfile: Dockerfile.prod
+    env_file:
+      - .env.prod
+    restart: always
+    command: python manage.py sync_quiet_hours --every 120
+    volumes:
+      - ./app:/app
+    depends_on:
+      # Миграции гонит entrypoint backend.
+      - backend
+
   database:
     image: postgres:16
     env_file: .env.prod
