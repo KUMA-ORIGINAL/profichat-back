@@ -23,6 +23,7 @@ from messenger import tasks
 from messenger.clients import apns, livekit
 from messenger.models import Call, ChatMember, Message, VoipDevice
 from messenger.tests.base import MessengerTestCase, activate_tariff
+from messenger.tests.test_attachments import app_queries
 
 User = get_user_model()
 
@@ -570,7 +571,7 @@ class CallMessageTests(CallTestCase):
         with CaptureQueriesContext(connection) as many:
             response = self.client.get(f"/api/chats/{self.chat.channel_id}/messages/")
         self.assertEqual(len(response.json()["results"]), 4)
-        self.assertEqual(len(one.captured_queries), len(many.captured_queries))
+        self.assertEqual(len(app_queries(one)), len(app_queries(many)))
 
         # обычное сообщение — call: null
         self.auth(self.client_user)
@@ -589,6 +590,183 @@ class CallMessageTests(CallTestCase):
             self.client.post(f"/api/chats/{self.chat.channel_id}/read/", {"lastReadMessageId": regular.pk}, format="json")
         self.assertEqual(ChatMember.objects.get(chat=self.chat, user=self.client_user).unread_count, 0)
 
+
+class StaleCallTests(CallTestCase):
+    """Зависшие звонки: потерянный таймаут/вебхук, рестарт LiveKit."""
+
+    def setUp(self):
+        super().setUp()
+        self.activate_tariff()
+        rooms_patcher = patch("messenger.clients.livekit.existing_rooms")
+        self.existing_rooms = rooms_patcher.start()
+        self.addCleanup(rooms_patcher.stop)
+
+    def accepted_call(self, answered_ago=timedelta(seconds=30)):
+        call = self.ring()
+        self.act(self.specialist, call, "accept")
+        Call.objects.filter(pk=call.pk).update(answered_at=timezone.now() - answered_ago)
+        call.refresh_from_db()
+        return call
+
+    def reconcile(self):
+        with patch("common.notifications.send_push", return_value={"ok": True}), \
+                self.captureOnCommitCallbacks(execute=True):
+            return tasks.reconcile_calls()
+
+    def test_reconcile_ends_accepted_when_room_missing(self):
+        call = self.accepted_call()
+        self.existing_rooms.return_value = set()
+        self.broadcast_mock.reset_mock()
+
+        stats = self.reconcile()
+
+        self.existing_rooms.assert_called_once_with([call.room_name])
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ENDED)
+        self.assertEqual(call.end_reason, "disconnected")
+        self.assertIn(call.duration_seconds, (30, 31))
+        self.assertEqual(stats["disconnected"], 1)
+        self.assertIn("call.ended", self.event_types(self.client_user))
+        self.assertIn("call.ended", self.event_types(self.specialist))
+
+    def test_reconcile_keeps_accepted_when_room_present(self):
+        call = self.accepted_call()
+        self.existing_rooms.return_value = {call.room_name}
+        self.reconcile()
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ACCEPTED)
+
+        # LiveKit недоступен — проверку комнат пропускаем, звонок не трогаем
+        self.existing_rooms.side_effect = livekit.LiveKitError("down")
+        self.reconcile()
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ACCEPTED)
+
+    def test_reconcile_hard_cap_ends_old_accepted(self):
+        call = self.accepted_call(answered_ago=timedelta(seconds=7201))
+        self.existing_rooms.return_value = {call.room_name}
+
+        stats = self.reconcile()
+
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.ENDED)
+        self.assertEqual(call.end_reason, "max_duration")
+        self.assertIn(call.duration_seconds, (7201, 7202))
+        self.assertEqual(stats["max_duration"], 1)
+
+    @override_settings(MESSENGER_CALL_MAX_DURATION_SECONDS=600)
+    def test_hard_cap_uses_setting(self):
+        call = self.accepted_call(answered_ago=timedelta(seconds=601))
+        self.existing_rooms.return_value = {call.room_name}
+        self.reconcile()
+        call.refresh_from_db()
+        self.assertEqual(call.end_reason, "max_duration")
+
+    def test_reconcile_expires_stale_ringing(self):
+        call = self.ring()
+        Call.objects.filter(pk=call.pk).update(created_at=timezone.now() - timedelta(minutes=5))
+        self.existing_rooms.return_value = set()
+
+        stats = self.reconcile()
+
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.MISSED)
+        self.assertEqual(call.end_reason, "timeout")
+        self.assertEqual(stats["missed"], 1)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.specialist, notification_type="missed_call").exists()
+        )
+        # свежий RINGING не трогается
+        fresh = self.ring()
+        self.reconcile()
+        fresh.refresh_from_db()
+        self.assertEqual(fresh.status, Call.Status.RINGING)
+
+    def test_busy_ignores_over_cap_accepted(self):
+        self.accepted_call(answered_ago=timedelta(hours=3))
+        response = self.start(self.client_user)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(response.json()["call"]["status"], "ringing")
+
+    def test_accept_stale_ringing_409_and_missed(self):
+        call = self.ring()
+        Call.objects.filter(pk=call.pk).update(created_at=timezone.now() - timedelta(seconds=61))
+        self.broadcast_mock.reset_mock()
+
+        with patch("common.notifications.send_push", return_value={"ok": True}):
+            response = self.act(self.specialist, call, "accept")
+
+        self.assertError(response, 409, "CALL_INVALID_STATE")
+        call.refresh_from_db()
+        self.assertEqual(call.status, Call.Status.MISSED)
+        self.assertEqual(call.end_reason, "timeout")
+        self.assertIsNone(call.answered_at)
+        self.assertIn("call.missed", self.event_types(self.client_user))
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.specialist, notification_type="missed_call").exists()
+        )
+
+        # в пределах таймаута + запаса принять можно
+        ok = self.ring()
+        Call.objects.filter(pk=ok.pk).update(created_at=timezone.now() - timedelta(seconds=50))
+        self.assertEqual(self.act(self.specialist, ok, "accept").status_code, 200)
+
+
+class ActiveCallTests(CallTestCase):
+    URL = "/api/calls/active/"
+
+    def get_active(self, user):
+        self.auth(user)
+        response = self.client.get(self.URL)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_active_call_endpoint(self):
+        self.activate_tariff()
+        stranger = User.objects.create_user(username="stranger", password="pass", role=ROLE_SPECIALIST)
+
+        empty = self.get_active(self.client_user)
+        self.assertIsNone(empty["call"])
+        self.assertIsNone(empty["token"])
+        self.assertEqual(empty["livekitUrl"], "wss://rtc.example.com")
+
+        call = self.ring()
+        caller_view = self.get_active(self.client_user)
+        self.assertEqual(caller_view["call"]["id"], str(call.pk))
+        self.assertEqual(caller_view["call"]["status"], "ringing")
+        self.assertEqual(caller_view["token"], "lk-token")
+        callee_view = self.get_active(self.specialist)
+        self.assertEqual(callee_view["call"]["id"], str(call.pk))
+        self.assertIsNone(callee_view["token"])  # до ответа — только через accept/
+        self.assertIsNone(self.get_active(stranger)["call"])  # чужой звонок не виден
+
+        self.act(self.specialist, call, "accept")
+        accepted = self.get_active(self.specialist)
+        self.assertEqual(accepted["call"]["status"], "accepted")
+        self.assertEqual(accepted["token"], "lk-token")
+        self.livekit_mocks["access_token"].assert_called_with(self.specialist, call.room_name, video=False)
+        self.assertIsNone(self.get_active(stranger)["call"])
+
+        # зависший (дольше максимальной длительности) не считается активным
+        Call.objects.filter(pk=call.pk).update(answered_at=timezone.now() - timedelta(hours=3))
+        self.assertIsNone(self.get_active(self.client_user)["call"])
+
+        # завершённый — тоже
+        Call.objects.filter(pk=call.pk).update(answered_at=timezone.now())
+        self.act(self.client_user, call, "end")
+        self.assertIsNone(self.get_active(self.client_user)["call"])
+
+        # зависший RINGING не отдаётся
+        stale = self.ring()
+        Call.objects.filter(pk=stale.pk).update(created_at=timezone.now() - timedelta(minutes=5))
+        self.assertIsNone(self.get_active(self.specialist)["call"])
+
+
+class LiveKitRoomsClientTests(SimpleTestCase):
+    def test_existing_rooms_empty_names_skips_request(self):
+        with patch("messenger.clients.livekit.asyncio.run") as run:
+            self.assertEqual(livekit.existing_rooms([]), set())
+        run.assert_not_called()
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True, **LIVEKIT_SETTINGS)
 class ConcurrentStartTests(TransactionTestCase):

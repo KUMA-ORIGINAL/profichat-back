@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 CALL_LOCK_NAMESPACE = 7301
 # RINGING старше таймаута + запас считается зависшим (например, задача таймаута потерялась)
 STALE_RINGING_GRACE = timedelta(seconds=15)
+RECONCILE_ROOMS_BATCH = 100
 WEBHOOK_END_EVENTS = frozenset({"participant_left", "room_finished"})
 MISSED_CALL_TITLE = "Пропущенный звонок"
 
@@ -102,22 +103,53 @@ def _lock_users(*user_ids) -> None:
             cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [CALL_LOCK_NAMESPACE, user_id])
 
 
-def _active_calls(user_ids):
-    return Call.objects.filter(status__in=Call.ACTIVE_STATUSES).filter(
-        Q(caller_id__in=user_ids) | Q(callee_id__in=user_ids)
+def _ringing_stale_before(now):
+    return now - _ring_timeout() - STALE_RINGING_GRACE
+
+
+def _accepted_stale_before(now):
+    return now - timedelta(seconds=settings.MESSENGER_CALL_MAX_DURATION_SECONDS)
+
+
+def _is_stale_ringing(call, now) -> bool:
+    return call.status == Call.Status.RINGING and call.created_at < _ringing_stale_before(now)
+
+
+def _live_calls(now):
+    """
+    Идущие звонки: RINGING не дольше таймаута (+ запас) и ACCEPTED не дольше максимальной длительности.
+    Более старые считаются зависшими (потерянный таймаут/вебхук) — их завершает `reconcile_calls`.
+    """
+    return Call.objects.filter(
+        Q(status=Call.Status.RINGING, created_at__gte=_ringing_stale_before(now))
+        | Q(status=Call.Status.ACCEPTED, answered_at__gte=_accepted_stale_before(now))
     )
+
+
+def _users_calls(qs, user_ids):
+    return qs.filter(Q(caller_id__in=user_ids) | Q(callee_id__in=user_ids))
 
 
 def _is_busy(user_ids, now) -> bool:
     """Есть ли у кого-то из пользователей идущий звонок; зависшие RINGING отправляются на таймаут."""
-    stale_before = now - _ring_timeout() - STALE_RINGING_GRACE
-    active = _active_calls(user_ids)
     stale_ids = list(
-        active.filter(status=Call.Status.RINGING, created_at__lt=stale_before).values_list("pk", flat=True)
+        _users_calls(Call.objects.filter(status=Call.Status.RINGING), user_ids)
+        .filter(created_at__lt=_ringing_stale_before(now))
+        .values_list("pk", flat=True)
     )
     for stale_id in stale_ids:
         transaction.on_commit(lambda call_id=str(stale_id): tasks.expire_call.delay(call_id), robust=True)
-    return active.exclude(pk__in=stale_ids).exists()
+    return _users_calls(_live_calls(now), user_ids).exists()
+
+
+def get_active_call(user) -> Call | None:
+    """Текущий идущий звонок пользователя (для восстановления клиента после перезапуска) или None."""
+    return (
+        _users_calls(_live_calls(timezone.now()), [user.pk])
+        .select_related("chat")
+        .order_by("-created_at")
+        .first()
+    )
 
 
 def _locked(call) -> Call:
@@ -210,28 +242,53 @@ def start_call(chat, caller, kind) -> tuple[Call, str | None]:
     return call, token
 
 
+def rejoin_token(call, user) -> str | None:
+    """Токен комнаты для возврата в звонок: принятый — обоим, до ответа — только звонящему."""
+    if call.status == Call.Status.ACCEPTED or (
+        call.status == Call.Status.RINGING and user.pk == call.caller_id
+    ):
+        try:
+            return livekit.access_token(user, call.room_name, video=call.kind == Call.Kind.VIDEO)
+        except livekit.LiveKitError:
+            logger.exception("[Call] LiveKit token failed for %s", call.room_name)
+            raise _unavailable()
+    return None
+
+
 # --- переходы ---
 
 def accept_call(call, user) -> str:
-    """Ответ вызываемого: RINGING → ACCEPTED. Возвращает токен LiveKit."""
+    """
+    Ответ вызываемого: RINGING → ACCEPTED. Возвращает токен LiveKit.
+
+    Зависший RINGING (таймаут потерялся) принять нельзя: он помечается MISSED и отдаётся 409.
+    """
     with transaction.atomic():
         call = _locked(call)
         if user.pk != call.callee_id:
             raise _not_allowed("Принять звонок может только вызываемый")
         if call.status != Call.Status.RINGING:
             raise _invalid_state()
-        access.ensure_can_call(call.chat, user)
-        try:
-            token = livekit.access_token(user, call.room_name, video=call.kind == Call.Kind.VIDEO)
-        except livekit.LiveKitError:
-            logger.exception("[Call] LiveKit token failed for %s", call.room_name)
-            raise _unavailable()
+        if _is_stale_ringing(call, timezone.now()):
+            _expire_locked(call)
+            expired = True
+        else:
+            expired = False
+            access.ensure_can_call(call.chat, user)
+            try:
+                token = livekit.access_token(user, call.room_name, video=call.kind == Call.Kind.VIDEO)
+            except livekit.LiveKitError:
+                logger.exception("[Call] LiveKit token failed for %s", call.room_name)
+                raise _unavailable()
 
-        call.status = Call.Status.ACCEPTED
-        call.answered_at = timezone.now()
-        call.save(update_fields=["status", "answered_at"])
-        message_service.publish_call_message_updated(call)
-        events.publish(_participants(call), "call.accepted", {"call": serialize_call(call)})
+            call.status = Call.Status.ACCEPTED
+            call.answered_at = timezone.now()
+            call.save(update_fields=["status", "answered_at"])
+            message_service.publish_call_message_updated(call)
+            events.publish(_participants(call), "call.accepted", {"call": serialize_call(call)})
+    if expired:
+        # пропуск уже закоммичен; ошибка — вне транзакции, чтобы его не откатить
+        raise _invalid_state()
     return token
 
 
@@ -288,9 +345,14 @@ def expire_call(call_id) -> bool:
         )
         if call is None or call.status != Call.Status.RINGING:
             return False
-        _finish(call, Call.Status.MISSED, "timeout")
-        transaction.on_commit(lambda: _notify_missed(call))
+        _expire_locked(call)
     return True
+
+
+def _expire_locked(call) -> None:
+    """RINGING → MISSED (под блокировкой строки) и пуш «Пропущенный звонок» после коммита."""
+    _finish(call, Call.Status.MISSED, "timeout")
+    transaction.on_commit(lambda: _notify_missed(call))
 
 
 def _notify_missed(call) -> None:
@@ -342,3 +404,53 @@ def handle_livekit_event(event: dict) -> None:
     except AppError:
         # параллельно завершён через API — ничего делать не нужно
         pass
+
+
+# --- сверка зависших звонков (Celery beat) ---
+
+def _end_by_system(call_id, reason) -> bool:
+    call = Call.objects.filter(pk=call_id).first()
+    if call is None:
+        return False
+    try:
+        end_call(call, None, reason=reason)
+    except AppError:
+        return False  # уже завершён параллельно
+    return True
+
+
+def reconcile_calls() -> dict:
+    """
+    Завершает зависшие звонки, которые больше никто не завершит:
+    - RINGING старше таймаута (+ запас) → MISSED (потерялась задача таймаута);
+    - ACCEPTED дольше MESSENGER_CALL_MAX_DURATION_SECONDS → ENDED (reason=max_duration);
+    - ACCEPTED, чьей комнаты уже нет в LiveKit → ENDED (reason=disconnected): рестарт LiveKit,
+      потерянный/отклонённый вебхук. Если LiveKit недоступен, эта проверка пропускается.
+    """
+    now = timezone.now()
+    stats = {"missed": 0, "max_duration": 0, "disconnected": 0}
+
+    stale_ringing = Call.objects.filter(
+        status=Call.Status.RINGING, created_at__lt=_ringing_stale_before(now)
+    ).values_list("pk", flat=True)
+    for call_id in list(stale_ringing):
+        stats["missed"] += int(expire_call(call_id))
+
+    over_cap = Call.objects.filter(
+        status=Call.Status.ACCEPTED, answered_at__lt=_accepted_stale_before(now)
+    ).values_list("pk", flat=True)
+    for call_id in list(over_cap):
+        stats["max_duration"] += int(_end_by_system(call_id, "max_duration"))
+
+    accepted = list(Call.objects.filter(status=Call.Status.ACCEPTED).values_list("pk", "room_name"))
+    for start in range(0, len(accepted), RECONCILE_ROOMS_BATCH):
+        batch = accepted[start:start + RECONCILE_ROOMS_BATCH]
+        try:
+            existing = livekit.existing_rooms([room_name for _, room_name in batch])
+        except livekit.LiveKitError:
+            logger.warning("[Call] reconcile: LiveKit list_rooms failed, room check skipped", exc_info=True)
+            break
+        for call_id, room_name in batch:
+            if room_name not in existing:
+                stats["disconnected"] += int(_end_by_system(call_id, "disconnected"))
+    return stats

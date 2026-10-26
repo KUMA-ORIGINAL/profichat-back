@@ -14,4 +14,8 @@ app.conf.beat_schedule = {
         "task": "messenger.tasks.cleanup_pending_attachments",
         "schedule": crontab(minute=0),  # ежечасно
     },
+    "reconcile-calls": {
+        "task": "messenger.tasks.reconcile_calls",
+        "schedule": 60.0,  # ежеминутно: зависшие RINGING/ACCEPTED звонки
+    },
 }

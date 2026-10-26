@@ -48,6 +48,34 @@ class ChatCallsView(APIView):
         return Response(_session(call, token), status=status.HTTP_201_CREATED)
 
 
+ActiveCallSerializer = inline_serializer(
+    name="ActiveCall",
+    fields={
+        "call": CallSerializer(allow_null=True),
+        "livekit_url": serializers.CharField(),
+        "token": serializers.CharField(allow_null=True),
+    },
+)
+
+
+@extend_schema(tags=["Messenger"])
+class ActiveCallView(APIView):
+    """
+    Текущий звонок пользователя (RINGING/ACCEPTED, не зависший) — для восстановления после
+    перезапуска приложения. Токен комнаты выдаётся для принятого звонка и звонящему до ответа;
+    вызываемому до ответа — null (сначала accept/).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary="Current active call", responses=ActiveCallSerializer)
+    def get(self, request):
+        call = calls.get_active_call(request.user)
+        if call is None:
+            return Response({"call": None, "livekit_url": settings.LIVEKIT_URL, "token": None})
+        return Response(_session(call, calls.rejoin_token(call, request.user)))
+
+
 @extend_schema(tags=["Messenger"])
 class CallDetailView(APIView):
     permission_classes = [IsAuthenticated]

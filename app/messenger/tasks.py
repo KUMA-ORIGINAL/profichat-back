@@ -53,6 +53,14 @@ def expire_call(call_id):
 
 
 @shared_task(ignore_result=True)
+def reconcile_calls():
+    """Ежеминутно: завершает зависшие RINGING/ACCEPTED звонки (потерянные таймауты и вебхуки)."""
+    from messenger.services import calls
+
+    return calls.reconcile_calls()
+
+
+@shared_task(ignore_result=True)
 def delete_call_room(room_name):
     """Закрывает комнату LiveKit завершённого звонка (пустая комната и так закроется по empty_timeout)."""
     from messenger.clients import livekit

@@ -27,6 +27,7 @@ urlpatterns = [
         name="messenger-system-messages",
     ),
     path("chats/<str:channel_id>/calls/", calls.ChatCallsView.as_view(), name="messenger-chat-calls"),
+    path("calls/active/", calls.ActiveCallView.as_view(), name="messenger-call-active"),
     path("calls/<uuid:pk>/", calls.CallDetailView.as_view(), name="messenger-call-detail"),
     path("calls/<uuid:pk>/accept/", calls.AcceptCallView.as_view(), name="messenger-call-accept"),
     path("calls/<uuid:pk>/decline/", calls.DeclineCallView.as_view(), name="messenger-call-decline"),

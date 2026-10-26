@@ -68,6 +68,29 @@ def delete_room(name: str) -> None:
     _run("delete_room", api.DeleteRoomRequest(room=name))
 
 
+async def _list_room_names(names: list[str]) -> set[str]:
+    key, secret = _credentials()
+    if not settings.LIVEKIT_API_URL:
+        raise LiveKitError("LIVEKIT_API_URL не задан")
+    async with api.LiveKitAPI(
+        settings.LIVEKIT_API_URL, key, secret, timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+    ) as lkapi:
+        response = await lkapi.room.list_rooms(api.ListRoomsRequest(names=names))
+    return {room.name for room in response.rooms}
+
+
+def existing_rooms(names: list[str]) -> set[str]:
+    """Какие из комнат `names` сейчас существуют в LiveKit."""
+    if not names:
+        return set()
+    try:
+        return asyncio.run(_list_room_names(list(names)))
+    except LiveKitError:
+        raise
+    except Exception as exc:
+        raise LiveKitError(f"LiveKit list_rooms не выполнен: {exc}") from exc
+
+
 def access_token(user, room: str, *, video: bool) -> str:
     """Токен участника комнаты: identity = id пользователя, публикация микрофона (+ камеры для видео)."""
     key, secret = _credentials()
