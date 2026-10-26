@@ -1,4 +1,4 @@
-from django.db.models import Prefetch, Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
@@ -12,8 +12,10 @@ from account.services.stream import (
     mute_user_for_user,
     unmute_user_for_user,
 )
-from account.models import InviteDelivery, ROLE_CLIENT, ROLE_SPECIALIST
+from account.models import ROLE_CLIENT, ROLE_SPECIALIST
 from common.errors import AppError, ErrorCode
+from messenger.models import ChatMember
+from messenger.services.access import ensure_member
 from ..models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from ..serializers import (
     BlockedChatSerializer,
@@ -26,6 +28,7 @@ from ..serializers import (
 )
 from ..services import (
     build_chat_list_item,
+    chat_list_queryset,
     create_or_get_chat,
     get_should_reply_map,
     sync_blocked_by_to_stream,
@@ -49,6 +52,17 @@ from ..services import (
         ],
     ),
     create=extend_schema(summary="Create chat"),
+    retrieve=extend_schema(
+        summary="Chat by channel_id",
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="channel_id чата",
+            )
+        ],
+    ),
 )
 class ChatViewSet(
     viewsets.GenericViewSet,
@@ -104,6 +118,13 @@ class ChatViewSet(
 
         serializer = ChatListSerializer(items, many=True)
         return Response(serializer.data)
+
+    def retrieve(self, request, pk=None):
+        """Один чат по channel_id (в URL detail-маршрута) в формате списка; только для участника."""
+        chat = ensure_member(request.user, pk)
+        chat = chat_list_queryset(Chat.objects.filter(pk=chat.pk), request.user).get()
+        item = build_chat_list_item(chat, request.user, get_should_reply_map([chat], request.user))
+        return Response(ChatListSerializer(item).data)
 
     def perform_create(self, serializer):
         client = serializer.validated_data["client"]
@@ -225,6 +246,7 @@ class ChatViewSet(
             raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         blocked, _ = BlockedChat.objects.get_or_create(user=request.user, chat=chat)
+        ChatMember.objects.filter(chat=chat, user=request.user).update(muted=True)
         sync_blocked_by_to_stream(chat)
         companion_user_id = self._resolve_companion_user_id(chat, request.user)
         mute_user_for_user(request.user.id, companion_user_id)
@@ -246,6 +268,7 @@ class ChatViewSet(
             raise AppError("Chat not found or unavailable", code=ErrorCode.CHAT_NOT_FOUND, status_code=404)
 
         deleted, _ = BlockedChat.objects.filter(user=request.user, chat=chat).delete()
+        ChatMember.objects.filter(chat=chat, user=request.user).update(muted=False)
         sync_blocked_by_to_stream(chat)
         companion_user_id = self._resolve_companion_user_id(chat, request.user)
         unmute_user_for_user(request.user.id, companion_user_id)
@@ -268,32 +291,19 @@ class ChatViewSet(
         else:
             base_qs = Chat.objects.none()
 
-        if access_status == "active":
-            return base_qs.filter(
-                client=user,
-                access_orders__payment_status="success",
-                access_orders__expires_at__gt=timezone.now(),
-            ).distinct()
-
-        if access_status == "inactive":
-            return base_qs.filter(client=user).exclude(
-                access_orders__payment_status="success",
-                access_orders__expires_at__gt=timezone.now(),
-            ).distinct()
-
-        now = timezone.now()
-        return base_qs.select_related("client", "specialist").prefetch_related(
-            Prefetch(
-                "invite_deliveries",
-                queryset=InviteDelivery.objects.order_by("-created_at"),
-                to_attr="prefetched_invite_deliveries",
-            ),
-            Prefetch(
-                "access_orders",
-                queryset=AccessOrder.objects.filter(
+        if access_status in ("active", "inactive"):
+            has_active_access = Exists(
+                AccessOrder.objects.filter(
+                    chat=OuterRef("pk"),
                     payment_status="success",
-                    expires_at__gt=now,
-                ).order_by("-created_at"),
-                to_attr="prefetched_active_access_orders",
-            ),
-        )
+                    expires_at__gt=timezone.now(),
+                )
+            )
+            base_qs = base_qs.filter(client=user)
+            base_qs = base_qs.filter(has_active_access) if access_status == "active" else base_qs.exclude(
+                has_active_access
+            )
+
+        if self.action == "list":
+            return chat_list_queryset(base_qs, user)
+        return base_qs

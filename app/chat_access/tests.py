@@ -32,24 +32,6 @@ class ChatBaseTestCase(APITestCase):
             channel_id="chat_client_1_specialist_1",
         )
 
-    def _mock_channels(self, sender_id=None, message_type="regular"):
-        if sender_id is None:
-            return {"channels": []}
-        return {
-            "channels": [
-                {
-                    "channel": {"id": self.chat.channel_id},
-                    "messages": [
-                        {
-                            "type": message_type,
-                            "user": {"id": str(sender_id)},
-                            "text": "message",
-                        }
-                    ],
-                }
-            ]
-        }
-
 
 class ChatListTests(ChatBaseTestCase):
     def setUp(self):
@@ -65,21 +47,17 @@ class ChatListTests(ChatBaseTestCase):
             channel_id="chat_client_1_specialist_2",
         )
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_requires_authentication(self, chat_client_mock):
-        chat_client_mock.query_channels.return_value = {"channels": []}
+    def test_requires_authentication(self):
         response = self.client.get(reverse("chat-list"))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_client_list_shows_only_own_chats(self, chat_client_mock):
+    def test_client_list_shows_only_own_chats(self):
         outsider = User.objects.create_user(username="client_2", password="pass", role=ROLE_CLIENT)
         Chat.objects.create(
             client=outsider,
             specialist=self.specialist_user,
             channel_id="chat_client_2_specialist_1",
         )
-        chat_client_mock.query_channels.return_value = {"channels": []}
 
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-list"))
@@ -88,11 +66,9 @@ class ChatListTests(ChatBaseTestCase):
         self.assertEqual(len(response.data), 2)
         self.assertEqual({item["user_role"] for item in response.data}, {"client"})
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_specialist_note_visible_only_for_specialist(self, chat_client_mock):
+    def test_specialist_note_visible_only_for_specialist(self):
         self.chat.specialist_note = "Private note"
         self.chat.save(update_fields=["specialist_note"])
-        chat_client_mock.query_channels.return_value = {"channels": []}
 
         self.client.force_authenticate(user=self.client_user)
         client_response = self.client.get(reverse("chat-list"))
@@ -102,8 +78,7 @@ class ChatListTests(ChatBaseTestCase):
         specialist_response = self.client.get(reverse("chat-list"))
         self.assertEqual(specialist_response.data[0]["specialist_note"], "Private note")
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_latest_invite_delivery_visible_only_for_specialist(self, chat_client_mock):
+    def test_latest_invite_delivery_visible_only_for_specialist(self):
         InviteDelivery.objects.create(
             specialist=self.specialist_user,
             client=self.client_user,
@@ -111,7 +86,6 @@ class ChatListTests(ChatBaseTestCase):
             channel=InviteDelivery.CHANNEL_PUSH,
             status=InviteDelivery.STATUS_SENT,
         )
-        chat_client_mock.query_channels.return_value = {"channels": []}
 
         self.client.force_authenticate(user=self.client_user)
         client_response = self.client.get(reverse("chat-list"))
@@ -125,8 +99,7 @@ class ChatListTests(ChatBaseTestCase):
             InviteDelivery.STATUS_SENT,
         )
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_access_status_filters_for_client(self, chat_client_mock):
+    def test_access_status_filters_for_client(self):
         tariff = Tariff.objects.create(
             name="T1",
             price=100,
@@ -152,7 +125,6 @@ class ChatListTests(ChatBaseTestCase):
             activated_at=now - timedelta(days=2),
             expires_at=now - timedelta(days=1),
         )
-        chat_client_mock.query_channels.return_value = {"channels": []}
 
         self.client.force_authenticate(user=self.client_user)
         active_response = self.client.get(reverse("chat-list"), {"access_status": "active"})
@@ -165,10 +137,15 @@ class ChatListTests(ChatBaseTestCase):
 
 
 class ChatShouldReplyTests(ChatBaseTestCase):
+    """should_reply считается по последнему сообщению в БД (без GetStream)."""
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_should_reply_true_when_last_message_from_companion(self, chat_client_mock):
-        chat_client_mock.query_channels.return_value = self._mock_channels(sender_id=self.specialist_user.id)
+    def _send(self, sender, text="message"):
+        from messenger.services.messages import send_message
+
+        return send_message(self.chat, sender, text=text)
+
+    def test_should_reply_true_when_last_message_from_companion(self):
+        self._send(self.specialist_user)
 
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-list"))
@@ -177,9 +154,9 @@ class ChatShouldReplyTests(ChatBaseTestCase):
         self.assertEqual(len(response.data), 1)
         self.assertTrue(response.data[0]["should_reply"])
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_should_reply_false_when_last_message_from_current_user(self, chat_client_mock):
-        chat_client_mock.query_channels.return_value = self._mock_channels(sender_id=self.client_user.id)
+    def test_should_reply_false_when_last_message_from_current_user(self):
+        self._send(self.specialist_user)
+        self._send(self.client_user)
 
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-list"))
@@ -188,12 +165,11 @@ class ChatShouldReplyTests(ChatBaseTestCase):
         self.assertEqual(len(response.data), 1)
         self.assertFalse(response.data[0]["should_reply"])
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_should_reply_false_for_system_message(self, chat_client_mock):
-        chat_client_mock.query_channels.return_value = self._mock_channels(
-            sender_id=self.specialist_user.id,
-            message_type="system",
-        )
+    def test_should_reply_false_for_system_message(self):
+        from messenger.services.messages import create_system_message
+
+        self._send(self.specialist_user)
+        create_system_message(self.chat, "tariffActivated", "Тариф активирован.")
 
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-list"))
@@ -201,10 +177,7 @@ class ChatShouldReplyTests(ChatBaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data[0]["should_reply"])
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_should_reply_false_when_stream_fails(self, chat_client_mock):
-        chat_client_mock.query_channels.side_effect = RuntimeError("stream down")
-
+    def test_should_reply_false_without_messages(self):
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(reverse("chat-list"))
 
@@ -444,9 +417,7 @@ class BlacklistChatTests(ChatBaseTestCase):
 
 
 class ChatSoftDeleteTests(ChatBaseTestCase):
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_client_cannot_soft_delete_chat(self, chat_client_mock):
-        chat_client_mock.query_channels.return_value = {"channels": []}
+    def test_client_cannot_soft_delete_chat(self):
 
         self.client.force_authenticate(user=self.client_user)
         delete_response = self.client.post(
@@ -456,9 +427,7 @@ class ChatSoftDeleteTests(ChatBaseTestCase):
         )
         self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
 
-    @patch("chat_access.services.chat_list.chat_client")
-    def test_specialist_soft_delete_hides_chat_only_for_specialist(self, chat_client_mock):
-        chat_client_mock.query_channels.return_value = {"channels": []}
+    def test_specialist_soft_delete_hides_chat_only_for_specialist(self):
 
         self.client.force_authenticate(user=self.specialist_user)
         delete_response = self.client.post(
@@ -477,10 +446,8 @@ class ChatSoftDeleteTests(ChatBaseTestCase):
         self.assertEqual(client_list_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(client_list_response.data), 1)
 
-    @patch("chat_access.services.chat_list.chat_client")
     @patch("chat_access.services.chat_commands.create_stream_channel")
-    def test_create_chat_restores_soft_deleted_chat(self, create_stream_channel_mock, chat_client_mock):
-        chat_client_mock.query_channels.return_value = {"channels": []}
+    def test_create_chat_restores_soft_deleted_chat(self, create_stream_channel_mock):
 
         self.client.force_authenticate(user=self.specialist_user)
         self.client.post(

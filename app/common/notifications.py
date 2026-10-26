@@ -72,8 +72,12 @@ def _read_batch_response(response):
     return False, _error_code(exc), str(exc)
 
 
-def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta=False):
-    """Простая отправка push-уведомления для Android и iOS"""
+def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta=False, thread_id=None):
+    """Простая отправка push-уведомления для Android и iOS.
+
+    thread_id группирует уведомления: Android `tag` (новое заменяет предыдущее с тем же тегом),
+    APNs `thread-id`.
+    """
     devices = list(GCMDevice.objects.filter(user=user, active=True))
     device_count = len(devices)
 
@@ -113,6 +117,7 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta
                     priority="high",
                     notification=messaging.AndroidNotification(
                         sound="default",
+                        tag=thread_id,
                     ),
                 ),
                 apns=messaging.APNSConfig(
@@ -127,6 +132,7 @@ def send_push(user, title, message, extra=None, log_prefix="[Push]", return_meta
                             ),
                             badge=1,
                             sound="default",
+                            thread_id=thread_id,
                         )
                     ),
                 ),

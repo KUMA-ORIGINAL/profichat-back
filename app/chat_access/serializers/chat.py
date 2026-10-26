@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
+from messenger.serializers import MessageSerializer
 from ..models import Chat, AccessOrder, BlockedChat, FavoriteChat
 
 User = get_user_model()
@@ -20,6 +21,14 @@ class UserShortSerializer(serializers.ModelSerializer):
         fields = ('id', 'first_name', 'last_name', 'photo')
 
 
+class ChatTariffSerializer(serializers.Serializer):
+    """Последний оплаченный доступ чата (раньше — extraData канала в Stream)."""
+
+    name = serializers.CharField()
+    activated_at = serializers.DateTimeField(allow_null=True)
+    expires_at = serializers.DateTimeField(allow_null=True)
+
+
 class ChatListSerializer(serializers.ModelSerializer):
     companion = UserShortSerializer()
     user_role = serializers.CharField()
@@ -27,6 +36,13 @@ class ChatListSerializer(serializers.ModelSerializer):
     specialist_note = serializers.CharField(allow_null=True)
     latest_invite_delivery = serializers.DictField(allow_null=True)
     should_reply = serializers.BooleanField()
+    last_message = MessageSerializer(allow_null=True)
+    last_message_at = serializers.DateTimeField(allow_null=True)
+    unread_count = serializers.IntegerField()
+    is_favorite = serializers.BooleanField()
+    is_blocked = serializers.BooleanField()
+    client_can_send_voice = serializers.BooleanField()
+    tariff = ChatTariffSerializer(allow_null=True)
 
     class Meta:
         model = Chat
@@ -40,6 +56,13 @@ class ChatListSerializer(serializers.ModelSerializer):
             'specialist_note',
             'latest_invite_delivery',
             'should_reply',
+            'last_message',
+            'last_message_at',
+            'unread_count',
+            'is_favorite',
+            'is_blocked',
+            'client_can_send_voice',
+            'tariff',
         )
 
 

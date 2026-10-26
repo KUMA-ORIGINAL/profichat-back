@@ -37,5 +37,8 @@ def publish(user_ids: Iterable[int], event_type: str, data: dict) -> None:
                 tasks.publish_event.apply_async(args=[channels, envelope], countdown=RETRY_COUNTDOWN)
             except Exception:
                 logger.exception("Failed to schedule publish_event retry for %s", event_type)
+        except Exception:
+            # не-Centrifugo ошибка (например, не-JSON данные) — повтор не поможет; запрос уже закоммичен
+            logger.exception("Failed to publish %s", event_type)
 
     transaction.on_commit(_send)
