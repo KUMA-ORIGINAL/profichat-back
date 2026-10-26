@@ -1,11 +1,14 @@
+import importlib
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
+from push_notifications.models import GCMDevice
 from rest_framework.test import APITestCase
 
 from account.models import (
@@ -14,6 +17,7 @@ from account.models import (
     ApplicationEducation,
     NonWorkingDate,
     Notification,
+    PushDeviceStatus,
     ProfessionCategory,
     ProfessionRequest,
     UserEducation,
@@ -749,3 +753,181 @@ class NotifyUserServiceTests(APITestCase):
             {"k": "v", "source": "profichat", "type": Notification.TYPE_SYSTEM},
         )
         self.assertIsNotNone(notification.pushed_at)
+
+
+APNS_TOKEN = "a1b2c3d4" * 8
+FCM_TOKEN = "dw34677Az09nhcHaj6BA05:APA91bG2HtL49IPyTDZF0Ixkbq"
+
+
+class PushStatusApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="push_user", password="pass")
+        self.client.force_authenticate(user=self.user)
+        self.now = timezone.now()
+
+    def _device(self, token, active=True, success_at=None, failure_at=None, error_code=""):
+        device = GCMDevice.objects.create(user=self.user, registration_id=token, active=active)
+        if success_at or failure_at:
+            PushDeviceStatus.objects.create(
+                device=device,
+                last_success_at=success_at,
+                last_failure_at=failure_at,
+                last_error_code=error_code,
+            )
+        return device
+
+    def _status(self):
+        response = self.client.get(reverse("push-status"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data
+
+    def test_dead_device_failure_does_not_hide_working_device(self):
+        self._device("working", success_at=self.now - timedelta(hours=1))
+        self._device("dead", active=False, failure_at=self.now, error_code="INVALID_ARGUMENT")
+
+        data = self._status()
+
+        self.assertEqual(data["reason"], "ok")
+        self.assertTrue(data["push_enabled"])
+        # Код старой ошибки остаётся справочным полем.
+        self.assertEqual(data["last_error_code"], "INVALID_ARGUMENT")
+
+    def test_fresh_devices_after_old_failure_are_not_an_error(self):
+        # Как у специалиста 65: давняя ошибка на погашенном токене и свежие
+        # токены, на которые ещё ничего не отправляли.
+        self._device("old", active=False, failure_at=self.now - timedelta(days=40),
+                     error_code="INVALID_ARGUMENT")
+        self._device("fresh-1")
+        self._device("fresh-2")
+
+        data = self._status()
+
+        self.assertEqual(data["reason"], "unknown")
+        self.assertEqual(data["active_devices"], 2)
+        self.assertEqual(data["total_devices"], 3)
+
+    def test_failure_on_one_active_device_does_not_hide_success_on_another(self):
+        self._device("phone", success_at=self.now - timedelta(hours=1))
+        self._device("tablet", failure_at=self.now, error_code="UNAVAILABLE")
+
+        self.assertEqual(self._status()["reason"], "ok")
+
+    def test_provider_error_when_every_active_device_failed(self):
+        self._device("phone", success_at=self.now - timedelta(days=1),
+                     failure_at=self.now, error_code="UNAVAILABLE")
+
+        data = self._status()
+
+        self.assertEqual(data["reason"], "provider_error")
+        self.assertEqual(data["action"], "retry_later")
+
+    def test_token_invalid_when_no_active_devices(self):
+        self._device("dead", active=False, failure_at=self.now, error_code="UNREGISTERED")
+
+        self.assertEqual(self._status()["reason"], "token_invalid")
+
+    def test_no_devices(self):
+        self.assertEqual(self._status()["reason"], "no_devices")
+
+
+class PushDeviceRegistrationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="push_owner", password="pass")
+        self.other_user = User.objects.create_user(username="push_prev", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    def test_register_fcm_ignores_apns_token(self):
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": APNS_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(GCMDevice.objects.filter(registration_id=APNS_TOKEN).exists())
+
+    def test_register_fcm_moves_token_to_current_user(self):
+        GCMDevice.objects.create(user=self.other_user, registration_id=FCM_TOKEN, active=False)
+
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        device = GCMDevice.objects.get(registration_id=FCM_TOKEN)
+        self.assertEqual(device.user, self.user)
+        self.assertTrue(device.active)
+
+    def test_device_gcm_ignores_apns_token(self):
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": APNS_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(GCMDevice.objects.filter(registration_id=APNS_TOKEN).exists())
+
+    def test_device_gcm_moves_token_to_current_user(self):
+        GCMDevice.objects.create(user=self.other_user, registration_id=FCM_TOKEN)
+
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+        self.assertEqual(GCMDevice.objects.get(registration_id=FCM_TOKEN).user, self.user)
+
+    def test_migration_deactivates_saved_apns_tokens(self):
+        apns_device = GCMDevice.objects.create(user=self.user, registration_id=APNS_TOKEN)
+        fcm_device = GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        migration = importlib.import_module("account.migrations.0057_deactivate_apns_tokens")
+
+        migration.deactivate_apns_tokens(django_apps, None)
+
+        apns_device.refresh_from_db()
+        fcm_device.refresh_from_db()
+        self.assertFalse(apns_device.active)
+        self.assertTrue(fcm_device.active)
+
+
+class PushDeviceDuplicatesTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="dup_owner", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    def _duplicates(self):
+        GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+
+    def test_register_fcm_survives_duplicate_rows(self):
+        # На проде здесь был 500: update_or_create → MultipleObjectsReturned.
+        self._duplicates()
+
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+
+    def test_device_gcm_drops_duplicate_rows(self):
+        self._duplicates()
+
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+
+    def test_migration_keeps_newest_row_per_token(self):
+        self._duplicates()
+        newest = GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        single = GCMDevice.objects.create(user=self.user, registration_id="other-token")
+        migration = importlib.import_module("account.migrations.0058_drop_duplicate_devices")
+
+        migration.drop_duplicate_devices(django_apps, None)
+
+        self.assertEqual(
+            list(GCMDevice.objects.filter(registration_id=FCM_TOKEN).values_list("id", flat=True)),
+            [newest.id],
+        )
+        self.assertTrue(GCMDevice.objects.filter(id=single.id).exists())
