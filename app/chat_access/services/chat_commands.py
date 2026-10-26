@@ -6,6 +6,7 @@ from account.services.stream import (
 )
 from chat_access.models import Chat
 from common.errors import AppError, ErrorCode
+from messenger.services import ensure_members
 
 
 def create_or_get_chat(client, specialist):
@@ -15,6 +16,7 @@ def create_or_get_chat(client, specialist):
         specialist=specialist,
         defaults={"channel_id": channel_id},
     )
+    ensure_members(chat)
     if created:
         try:
             create_stream_channel(chat, first_message=specialist.invite_greeting)

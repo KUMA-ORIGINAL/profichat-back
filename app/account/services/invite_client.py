@@ -11,6 +11,7 @@ from .notify import send_notification
 from .stream import create_stream_channel
 from chat_access.models import Chat, Tariff, AccessOrder
 from common.notifications import send_chat_invite_push
+from messenger.services import ensure_members
 from common.telegram_notifier import notify_new_client_registration
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,7 @@ def invite_client(phone_number: str, tariff_id: int, specialist: User, note: str
                 "specialist_note": note or "",
             },
         )
+        ensure_members(chat)
 
         # Обновляем заметку, если чат уже существует
         if not chat_created and note is not None and chat.specialist_note != note:
