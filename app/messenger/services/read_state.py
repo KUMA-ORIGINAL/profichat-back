@@ -17,6 +17,17 @@ def _messages_after(chat, message):
     )
 
 
+def unread_count(chat, user_id, last_read=None) -> int:
+    """
+    Непрочитанные для участника `user_id`: обычные сообщения собеседника после `last_read`
+    (None — с начала чата). Системные и звонковые сообщения не считаются.
+    Общее правило для «прочитано» и импорта истории из GetStream.
+    """
+    companion_id = chat.specialist_id if chat.client_id == user_id else chat.client_id
+    qs = _messages_after(chat, last_read) if last_read is not None else Message.objects.filter(chat=chat)
+    return qs.filter(sender_id=companion_id, type=Message.Type.REGULAR).count()
+
+
 def mark_read(chat, user, message_id: int) -> ChatMember:
     """
     Отметка «прочитано до сообщения message_id».
@@ -40,9 +51,7 @@ def mark_read(chat, user, message_id: int) -> ChatMember:
                 return member
 
         member.last_read_message_id = message.id
-        member.unread_count = (
-            _messages_after(chat, message).filter(sender_id=companion_id, type=Message.Type.REGULAR).count()
-        )
+        member.unread_count = unread_count(chat, user.pk, message)
         member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
         events.publish(
             [companion_id, user.pk],

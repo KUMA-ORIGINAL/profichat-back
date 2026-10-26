@@ -1,7 +1,7 @@
 import copy
 import io
 import json
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,8 +12,9 @@ from django.utils.dateparse import parse_datetime
 from stream_chat.base.exceptions import StreamAPIException
 
 from account.models import ROLE_CLIENT
+from chat_access.models import Chat
 from chat_access.services.chat_commands import create_or_get_chat
-from messenger.models import Attachment, ChatMember, Message
+from messenger.models import Attachment, Call, ChatMember, Message
 from messenger.services import getstream_import
 from messenger.tests.base import MessengerTestCase
 
@@ -280,6 +281,68 @@ class ImportMappingTestCase(ImportTestCase):
         self.assertEqual(stats.messages_linked, 2)
         self.assertEqual(stats.messages_created, 10)
 
+    def test_identical_regular_messages_within_window_are_not_merged(self):
+        # «Да» есть только в Stream (старое приложение), и ещё одно «Да» — в новом приложении
+        # через 30 с: это два разных сообщения, а не двойная запись
+        stream_messages = self.fixture["query_response"]["messages"]
+        for stream_id, user_id in (("msg-da-client", self.client_user.pk), ("msg-da-specialist", self.specialist.pk)):
+            stream_messages.append({
+                "id": stream_id,
+                "type": "regular",
+                "user": {"id": str(user_id)},
+                "text": "Да",
+                "created_at": "2025-03-01T09:12:00.000000Z",
+                "attachments": [],
+            })
+        native = [
+            Message.objects.create(
+                chat=self.chat, sender=sender, text="Да",
+                created_at=datetime(2025, 3, 1, 9, 12, 30, tzinfo=dt_timezone.utc),
+            )
+            for sender in (self.client_user, self.specialist)
+        ]
+
+        stats = self.run_import()
+
+        self.assertEqual(stats.messages_linked, 0)
+        for message in native:
+            message.refresh_from_db()
+            self.assertIsNone(message.stream_id)
+        self.assertEqual(Message.objects.filter(chat=self.chat, text="Да").count(), 4)
+        self.assertTrue(Message.objects.filter(stream_id="msg-da-client").exists())
+        self.assertTrue(Message.objects.filter(stream_id="msg-da-specialist").exists())
+
+    def test_padded_greeting_in_stream_is_linked(self):
+        # в Stream приветствие уходит как есть, в нашу БД — после strip()
+        greeting_raw = next(m for m in self.fixture["query_response"]["messages"] if m["id"] == "msg-greeting")
+        greeting_raw["text"] = "  Здравствуйте! Чем могу помочь?\n"
+        greeting = Message.objects.create(
+            chat=self.chat,
+            sender=self.specialist,
+            text="Здравствуйте! Чем могу помочь?",
+            created_at=datetime(2025, 3, 1, 9, 0, 0, 50000, tzinfo=dt_timezone.utc),
+        )
+
+        stats = self.run_import()
+
+        greeting.refresh_from_db()
+        self.assertEqual(greeting.stream_id, "msg-greeting")
+        self.assertEqual(greeting.text, "Здравствуйте! Чем могу помочь?")
+        self.assertEqual(stats.messages_linked, 1)
+        self.assertEqual(Message.objects.filter(chat=self.chat).count(), 12)
+
+    def test_last_message_never_moves_backwards(self):
+        # параллельно пришло более новое сообщение: last_message_at уже впереди всего импортируемого
+        newer = Message.objects.create(chat=self.chat, sender=self.specialist, text="новое", created_at=timezone.now())
+        ahead = timezone.now() + timedelta(hours=1)
+        Chat.objects.filter(pk=self.chat.pk).update(last_message=newer, last_message_at=ahead)
+
+        self.run_import()
+
+        self.chat.refresh_from_db()
+        self.assertEqual(self.chat.last_message_id, newer.pk)
+        self.assertEqual(self.chat.last_message_at, ahead)
+
 
 class ImportAttachmentsTestCase(ImportTestCase):
     def test_import_downloads_attachments_to_storage(self):
@@ -360,6 +423,16 @@ class ImportAttachmentsTestCase(ImportTestCase):
         voice_message = self.msg("msg-voice")
         self.assertFalse(voice_message.attachments.exists())
         self.assertEqual(stats.attachments, 2)
+        # след в сообщении: исходное вложение Stream с пометкой о сбое скачивания
+        failed = voice_message.extra_data["stream_attachments"]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(failed[0]["type"], "voiceRecording")
+        self.assertIn("/voice.aac", failed[0]["asset_url"])
+        self.assertEqual(failed[0]["import_failed_index"], 0)
+
+        # повторный сбой не дублирует запись
+        self.run_import()
+        self.assertEqual(len(self.msg("msg-voice").extra_data["stream_attachments"]), 1)
 
         FILES["voice.aac"] = missing
         second = self.run_import()
@@ -367,6 +440,8 @@ class ImportAttachmentsTestCase(ImportTestCase):
         self.assertEqual(second.errors, [])
         self.assertEqual(second.attachments, 1)
         self.assertEqual(voice_message.attachments.get().kind, Attachment.Kind.VOICE)
+        voice_message.refresh_from_db()
+        self.assertNotIn("stream_attachments", voice_message.extra_data)
 
     def test_dry_run_writes_nothing(self):
         stats = self.run_import(dry_run=True)
@@ -412,6 +487,20 @@ class ImportReadStateTestCase(ImportTestCase):
         client_member = ChatMember.objects.get(chat=self.chat, user=self.client_user)
         self.assertIsNone(client_member.last_read_message_id)
         # greeting, msg-quote, msg-edited от специалиста
+        self.assertEqual(client_member.unread_count, 3)
+
+    def test_unread_counts_only_regular_messages_like_mark_read(self):
+        self.fixture["query_response"]["read"] = []
+        call = Call.objects.create(
+            chat=self.chat, caller=self.specialist, callee=self.client_user, room_name="call_x",
+            status=Call.Status.MISSED,
+        )
+        Message.objects.create(chat=self.chat, sender=self.specialist, type=Message.Type.CALL, call=call)
+
+        self.run_import()
+
+        client_member = ChatMember.objects.get(chat=self.chat, user=self.client_user)
+        # greeting, msg-quote, msg-edited; звонковое сообщение непрочитанным не считается
         self.assertEqual(client_member.unread_count, 3)
 
     def test_read_state_never_moves_backwards(self):

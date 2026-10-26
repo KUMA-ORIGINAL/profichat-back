@@ -36,6 +36,7 @@ from common import stream_client
 from messenger.clients import storage
 from messenger.models import Attachment, ChatMember, Message
 from messenger.services.members import ensure_members
+from messenger.services.read_state import unread_count
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -123,12 +124,6 @@ def _format_ts(value: datetime) -> str:
 
 def _position(message) -> tuple:
     return message.created_at, message.id
-
-
-def _messages_after(chat, message):
-    return Message.objects.filter(chat=chat).filter(
-        Q(created_at__gt=message.created_at) | Q(created_at=message.created_at, id__gt=message.id)
-    )
 
 
 def _with_backoff(func, *args, **kwargs):
@@ -256,6 +251,8 @@ class _AttachmentSpec:
     height: int | None = None
     duration_ms: int | None = None
     waveform: list | None = None
+    # исходное вложение Stream: при сбое скачивания сохраняется в extra_data сообщения
+    raw: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -433,25 +430,54 @@ class _ChannelImporter:
             height=_positive_int(attachment.get("original_height")),
             duration_ms=duration_ms,
             waveform=_waveform(attachment.get("waveform_data")),
+            raw=attachment,
         )
 
     def _find_double_written(self, mapped) -> Message | None:
-        """Сообщение, записанное в нашу БД параллельно со Stream (приветствие, системные) без stream_id."""
-        sender_q = Q(sender__isnull=True) if mapped.sender_id is None else Q(sender_id=mapped.sender_id)
-        return (
-            Message.objects.filter(
-                sender_q,
-                chat=self.chat,
-                stream_id__isnull=True,
-                type=mapped.type,
-                custom_type=mapped.custom_type,
-                text=mapped.text,
-                created_at__gte=mapped.created_at - DOUBLE_WRITE_WINDOW,
-                created_at__lte=mapped.created_at + DOUBLE_WRITE_WINDOW,
+        """
+        Сообщение, записанное в нашу БД параллельно со Stream без stream_id. Двойная запись бывает
+        только у системных сообщений и у приветствия, поэтому только они и связываются: два
+        одинаковых обычных сообщения (например, «Да» из старого и из нового приложения) — разные.
+
+        Текст сравнивается и как есть, и после strip(): в нашу БД приветствие пишется обрезанным,
+        а в Stream — как ввёл специалист.
+        """
+        texts = {mapped.text, mapped.text.strip()}
+        window = Q(
+            created_at__gte=mapped.created_at - DOUBLE_WRITE_WINDOW,
+            created_at__lte=mapped.created_at + DOUBLE_WRITE_WINDOW,
+        )
+        if mapped.type == Message.Type.SYSTEM:
+            return (
+                Message.objects.filter(
+                    window,
+                    chat=self.chat,
+                    sender__isnull=True,
+                    stream_id__isnull=True,
+                    type=Message.Type.SYSTEM,
+                    custom_type=mapped.custom_type,
+                    text__in=texts,
+                )
+                .order_by("created_at", "id")
+                .first()
             )
+        if mapped.type != Message.Type.REGULAR or mapped.sender_id != self.chat.specialist_id:
+            return None
+        # приветствие — первое обычное сообщение чата, от специалиста
+        first = (
+            Message.objects.filter(chat=self.chat, type=Message.Type.REGULAR)
             .order_by("created_at", "id")
             .first()
         )
+        if (
+            first is not None
+            and first.stream_id is None
+            and first.sender_id == self.chat.specialist_id
+            and first.text in texts
+            and abs(first.created_at - mapped.created_at) <= DOUBLE_WRITE_WINDOW
+        ):
+            return first
+        return None
 
     def _import_message(self, raw, existing) -> None:
         mapped = self._map(raw)
@@ -520,6 +546,8 @@ class _ChannelImporter:
         for spec in mapped.attachments:
             attachment_id = self._attachment_id(mapped, spec)
             if Attachment.objects.filter(pk=attachment_id).exists():
+                if message is not None:
+                    self._mark_failed_attachment(message, spec, failed=False)
                 continue
             if self.dry_run:
                 self.stats.attachments += 1
@@ -533,8 +561,32 @@ class _ChannelImporter:
                 self.stats.errors.append(
                     f"{self.chat.channel_id}: attachment {mapped.stream_id}#{spec.index}: {exc}"
                 )
+                self._mark_failed_attachment(message, spec, failed=True)
             else:
                 self.stats.attachments += 1
+                self._mark_failed_attachment(message, spec, failed=False)
+
+    @staticmethod
+    def _mark_failed_attachment(message, spec, *, failed: bool) -> None:
+        """
+        След несостоявшегося скачивания: исходное вложение Stream (+ `import_failed_index`) в
+        `extra_data["stream_attachments"]`, чтобы файл не пропал бесследно. Убирается, когда
+        повторный запуск импорта скачал вложение.
+        """
+        entries = list(message.extra_data.get("stream_attachments") or [])
+        kept = [
+            entry for entry in entries
+            if not (isinstance(entry, dict) and entry.get("import_failed_index") == spec.index)
+        ]
+        if failed:
+            kept.append({**spec.raw, "import_failed_index": spec.index})
+        if kept == entries:
+            return
+        if kept:
+            message.extra_data["stream_attachments"] = kept
+        else:
+            message.extra_data.pop("stream_attachments", None)
+        message.save(update_fields=["extra_data"])
 
     def _store_attachment(self, message, mapped, spec, attachment_id) -> None:
         object_key = f"chats/{self.chat.pk}/{attachment_id}/{storage.safe_file_name(spec.file_name)}"
@@ -611,7 +663,7 @@ class _ChannelImporter:
     def _apply_read_state(self, read_entries) -> None:
         """
         `channel.read` -> last_read_message_id (только вперёд) и пересчёт unread_count
-        (сообщения собеседника после прочитанного — как в `read_state.mark_read`).
+        по тому же правилу, что и `read_state.mark_read` (`read_state.unread_count`).
         """
         reads = {}
         for entry in read_entries:
@@ -630,24 +682,21 @@ class _ChannelImporter:
                 if target is not None and (current is None or _position(target) > _position(current)):
                     current = target
 
-                companion_id = (
-                    self.chat.specialist_id if member.user_id == self.chat.client_id else self.chat.client_id
-                )
-                unread_qs = (
-                    _messages_after(self.chat, current) if current else Message.objects.filter(chat=self.chat)
-                )
-                unread_count = unread_qs.filter(sender_id=companion_id).count()
+                unread = unread_count(self.chat, member.user_id, current)
                 last_read_id = current.pk if current else member.last_read_message_id
-                if (member.last_read_message_id, member.unread_count) != (last_read_id, unread_count):
+                if (member.last_read_message_id, member.unread_count) != (last_read_id, unread):
                     member.last_read_message_id = last_read_id
-                    member.unread_count = unread_count
+                    member.unread_count = unread
                     member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
 
     def _update_last_message(self) -> None:
         last = Message.objects.filter(chat=self.chat).order_by("-created_at", "-id").first()
         if last is None:
             return
-        Chat.objects.filter(pk=self.chat.pk).update(last_message=last, last_message_at=last.created_at)
+        # как в messages._apply_new_message: параллельно пришедшее более новое сообщение не перетираем
+        Chat.objects.filter(pk=self.chat.pk).filter(
+            Q(last_message_at__isnull=True) | Q(last_message_at__lte=last.created_at)
+        ).update(last_message=last, last_message_at=last.created_at)
 
 
 # --- публичный API ---
