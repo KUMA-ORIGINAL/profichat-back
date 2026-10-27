@@ -107,7 +107,7 @@ services:
 
   redis:
     <<: *staging-common
-    # тот же тег, что у прода (docker-compose.prod.yml)
+    # тег закреплён только у staging (свои пустые данные); прод-Redis не трогаем (MESSENGER_MIGRATION.md, 0.7)
     image: redis:8.2
     restart: unless-stopped
     # только для staging-LiveKit (сеть хоста); прод-Redis — 127.0.0.1:6379

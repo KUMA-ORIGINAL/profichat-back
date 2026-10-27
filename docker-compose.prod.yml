@@ -41,9 +41,7 @@ services:
           memory: 1G
 
   redis:
-    # тег закреплён (раньше — плавающий latest); staging использует тот же. Перед деплоем сверить
-    # с работающей версией: Redis не читает RDB более новой версии (MESSENGER_MIGRATION.md, 0.7)
-    image: redis:8.2
+    image: redis
     restart: always
     ports:
       - '127.0.0.1:6379:6379'

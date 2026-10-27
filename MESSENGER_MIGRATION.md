@@ -144,14 +144,17 @@ MinIO и mc клонируются с GitHub по тегу `RELEASE.*` и соб
   непривилегированному процессу недоступен на запись. Если такой том уже есть:
   `docker compose -f docker-compose.prod.yml run --rm --no-deps --user root --entrypoint chown minio -R 10001:10001 /data`.
 
-### 0.7. Версия Redis закреплена
+### 0.7. Версия Redis
 
-Раньше `docker-compose.prod.yml` брал плавающий `redis` (latest на момент последнего pull),
-теперь — `redis:8.2` (staging — тот же тег). Redis читает RDB старых версий, но **не новее
-своей**. Перед деплоем B1 сверьте работающую версию:
-`docker compose -f docker-compose.prod.yml exec redis redis-server --version`. Если она новее
-8.2 — поднимите тег в обоих файлах (`docker-compose.prod.yml`, `docker-compose.staging.yml`)
-до неё, иначе Redis не прочитает свой `dump.rdb`.
+Прод-Redis этот переход **не трогает**: в `docker-compose.prod.yml` по-прежнему `image: redis`
+без тега, как и раньше — `up -d` использует уже скачанный на сервере образ. Закреплён
+только staging (`redis:8.2` в `docker-compose.staging.yml`): у него свои пустые данные.
+
+Закрепить тег прода можно позже, отдельным изменением: посмотреть работающую версию
+`docker compose -f docker-compose.prod.yml exec redis redis-server --version`
+(`v=7.2.4` → тег `redis:7.2.4`) и указать **ровно её**. Тег новее — одностороннее обновление
+формата данных, тег старее — Redis не прочитает свой `dump.rdb` (RDB более новой версии он
+не читает).
 
 ---
 
@@ -619,7 +622,19 @@ docker compose ls                                                   # остал
 
 # 2. в каталоге ПРОДА — выключить staging в nginx и удалить его сертификат (до удаления DNS,
 #    иначе фоновый certbot renew будет пытаться продлить staging и писать ошибки)
-set_staging_domain ''                     # функция из A2 (замена строки, без echo >>)
+cd <каталог прода>
+# функция из A2 — в новой SSH-сессии её нет, поэтому определяем заново (замена строки, без echo >>)
+set_staging_domain() {
+  if grep -q '^STAGING_DOMAIN=' .env.prod; then
+    sed -i "s|^STAGING_DOMAIN=.*|STAGING_DOMAIN=$1|" .env.prod
+  else
+    printf '\nSTAGING_DOMAIN=%s\n' "$1" >> .env.prod
+  fi
+  grep -c '^STAGING_DOMAIN=' .env.prod; grep '^STAGING_DOMAIN=' .env.prod   # ровно одна строка
+}
+# дальше — только если функция определена и STAGING_DOMAIN действительно очищен
+command -v set_staging_domain >/dev/null || { echo "set_staging_domain не определена — стоп"; exit 1; }
+set_staging_domain '' && grep -qx 'STAGING_DOMAIN=' .env.prod || { echo "STAGING_DOMAIN не очищен — стоп"; exit 1; }
 docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
 docker compose -f docker-compose.prod.yml logs nginx | grep "\[staging\]"   # STAGING_DOMAIN не задан
 docker compose -f docker-compose.prod.yml exec nginx certbot delete --cert-name staging.<DOMAIN> --non-interactive
