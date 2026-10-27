@@ -13,7 +13,8 @@
 #   имён backend/centrifugo/minio, иначе DNS Docker отдал бы прод-nginx и staging-контейнер.
 # - Наружу не публикуется ни один порт, кроме портов LiveKit в сети хоста (17881/tcp,
 #   17882/udp, 13478/udp) и staging-redis на 127.0.0.1:16379 (для LiveKit).
-# - У каждого сервиса лимиты CPU/памяти (deploy.resources.limits), чтобы staging и импорт не
+# - У каждого сервиса лимиты CPU/памяти (deploy.resources.limits), низкий приоритет CPU,
+#   высокий oom_score_adj и ограниченные логи (x-staging-common), чтобы staging и импорт не
 #   отняли ресурсы у прода. Подбор — MESSENGER_MIGRATION.md, A3; `docker stats` показывает
 #   фактическое потребление и лимит.
 #
@@ -21,7 +22,20 @@
 # каталоге со своей веткой, не в каталоге прода.
 name: profichat-staging
 
+# Общее для ВСЕХ staging-сервисов: при нехватке памяти ядро первым убивает staging
+# (oom_score_adj 800), при борьбе за CPU прод получает вчетверо больший вес (cpu_shares 256
+# против 1024 по умолчанию), логи ограничены (json-file, 3 × 10 МБ на контейнер).
+x-staging-common: &staging-common
+  oom_score_adj: 800
+  cpu_shares: 256
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
 x-backend-common: &backend-common
+  <<: *staging-common
   build:
     context: app
     dockerfile: Dockerfile.prod
@@ -58,6 +72,7 @@ services:
   # /static/ и /media/ staging: прод-nginx не может смонтировать тома другого проекта, поэтому
   # их раздаёт отдельный nginx со стандартным конфигом (root /usr/share/nginx/html).
   staging-static:
+    <<: *staging-common
     image: nginx:1.26.0
     restart: unless-stopped
     volumes:
@@ -72,6 +87,7 @@ services:
           memory: 64M
 
   database:
+    <<: *staging-common
     image: postgres:16
     env_file: .env.staging
     restart: unless-stopped
@@ -90,7 +106,9 @@ services:
           memory: 1G
 
   redis:
-    image: redis
+    <<: *staging-common
+    # тот же тег, что у прода (docker-compose.prod.yml)
+    image: redis:8.2
     restart: unless-stopped
     # только для staging-LiveKit (сеть хоста); прод-Redis — 127.0.0.1:6379
     ports:
@@ -110,6 +128,7 @@ services:
           memory: 512M
 
   staging-centrifugo:
+    <<: *staging-common
     image: centrifugo/centrifugo:v6.10.2
     restart: unless-stopped
     env_file:
@@ -140,9 +159,12 @@ services:
           memory: 256M
 
   staging-minio:
-    # тот же локально собранный образ, что и в docker-compose.prod.yml (minio/Dockerfile)
+    <<: *staging-common
+    # Собирается из того же minio/Dockerfile, что и у прода, но под СВОИМ тегом: `up --build`
+    # staging не перезаписывает образ profichat/minio:…, которым пользуется прод.
+    # При обновлении релиза MinIO менять тег здесь и у minio-init (как в docker-compose.prod.yml).
     build: minio
-    image: profichat/minio:RELEASE.2025-10-15T17-29-55Z
+    image: profichat-staging/minio:RELEASE.2025-10-15T17-29-55Z
     restart: unless-stopped
     env_file:
       - .env.staging
@@ -169,8 +191,9 @@ services:
           memory: 512M
 
   minio-init:
+    <<: *staging-common
     build: minio
-    image: profichat/minio:RELEASE.2025-10-15T17-29-55Z
+    image: profichat-staging/minio:RELEASE.2025-10-15T17-29-55Z
     env_file:
       - .env.staging
     restart: "no"
@@ -191,6 +214,7 @@ services:
           memory: 128M
 
   livekit:
+    <<: *staging-common
     image: livekit/livekit-server:v1.13.11
     restart: unless-stopped
     env_file:

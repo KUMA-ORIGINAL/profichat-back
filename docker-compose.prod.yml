@@ -41,7 +41,9 @@ services:
           memory: 1G
 
   redis:
-    image: redis
+    # тег закреплён (раньше — плавающий latest); staging использует тот же. Перед деплоем сверить
+    # с работающей версией: Redis не читает RDB более новой версии (MESSENGER_MIGRATION.md, 0.7)
+    image: redis:8.2
     restart: always
     ports:
       - '127.0.0.1:6379:6379'
@@ -205,7 +207,10 @@ services:
 networks:
   # Сеть прод-nginx ↔ staging (docker-compose.staging.yml подключается к ней как к external).
   # Создаётся и принадлежит проду: прод-деплой не зависит от того, создана ли она вручную.
-  # Кроме nginx, прод-сервисы в неё не входят. PROFICHAT_EDGE_NETWORK — только для тестов.
+  # В неё входит ТОЛЬКО nginx — не подключайте сюда другие прод-сервисы: compose регистрирует
+  # имя сервиса как DNS-имя в каждой сети, и общие имена (backend, centrifugo, minio, redis…)
+  # из прода и staging смешались бы. Staging подключает сюда только сервисы staging-*.
+  # PROFICHAT_EDGE_NETWORK — только для тестов.
   edge:
     name: ${PROFICHAT_EDGE_NETWORK:-profichat-edge}
 
