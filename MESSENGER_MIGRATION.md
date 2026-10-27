@@ -576,13 +576,17 @@ print(CID, 'stream messages:', len(ids), 'top-level attachments:', atts)
 >
 > ```bash
 > docker compose -f docker-compose.staging.yml exec staging-backend python manage.py shell -c "
-> from messenger.models import Message
-> print(Message.objects.filter(stream_id__isnull=False).delete())
+> from messenger.models import ChatMember, Message
+> imported = Message.objects.filter(stream_id__isnull=False)
+> ChatMember.objects.filter(chat_id__in=imported.values('chat_id')).update(
+>     last_read_message_id=None, read_changed_at=None)
+> print(imported.delete())
 > "
 > ```
 >
-> Сообщения, написанные на staging уже в новом приложении (`stream_id` пуст), не трогаются;
-> позиции «прочитано» и последнее сообщение чата импорт пересчитает. На проде такого шага нет:
+> Сообщения, написанные на staging уже в новом приложении (`stream_id` пуст), не трогаются.
+> Позиции «прочитано» в затронутых чатах сбрасываются (иначе они указывали бы на удалённые id),
+> и импорт заново выставит их из Stream вместе с последним сообщением чата. На проде такого шага нет:
 > там импорт впервые запускается кодом с G3.
 
 ```bash
