@@ -563,6 +563,49 @@ class ImportPinnedStateTestCase(ImportTestCase):
         self.assertIsNone(self.member(self.client_user).pinned_at)
 
 
+class ImportKeepsNewAppStateTestCase(ImportTestCase):
+    """Повторный импорт (окно после переключения) не перетирает то, что пользователь сделал в новом приложении."""
+
+    def member(self, user):
+        return ChatMember.objects.get(chat=self.chat, user=user)
+
+    def api_post(self, user, url, payload):
+        self.auth(user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def test_unpinned_in_new_app_stays_unpinned_after_reimport(self):
+        for member in self.fixture["query_response"]["members"]:
+            if member["user_id"] == str(self.client_user.pk):
+                member["pinned_at"] = "2025-03-02T10:00:00.000000Z"
+        self.run_import()
+        self.assertIsNotNone(self.member(self.client_user).pinned_at)
+
+        self.api_post(self.client_user, "/api/chats/pins/remove/", {"channelId": self.chat.channel_id})
+        self.run_import()
+
+        self.assertIsNone(self.member(self.client_user).pinned_at)
+
+    def test_marked_unread_in_new_app_stays_after_reimport(self):
+        self.run_import()
+        quote = self.msg("msg-quote")
+        self.assertEqual(self.member(self.client_user).last_read_message_id, quote.pk)
+
+        body = self.api_post(
+            self.client_user, f"/api/chats/{self.chat.channel_id}/unread/", {"messageId": quote.pk}
+        )
+        self.run_import()
+
+        member = self.member(self.client_user)
+        self.assertEqual(member.last_read_message_id, body["lastReadMessageId"])
+        self.assertNotEqual(member.last_read_message_id, quote.pk)
+        self.assertEqual(member.unread_count, body["unreadCount"])
+        # у собеседника позиция по-прежнему из Stream
+        self.assertEqual(self.member(self.specialist).last_read_message_id, self.msg("msg-same-ts-b").pk)
+
+
 class ImportIdempotencyTestCase(ImportTestCase):
     def test_import_is_idempotent(self):
         first = self.run_import()

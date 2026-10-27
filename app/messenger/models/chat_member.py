@@ -26,6 +26,13 @@ class ChatMember(BaseModel):
     unread_count = models.PositiveIntegerField(default=0, verbose_name="Непрочитанных")
     muted = models.BooleanField(default=False, verbose_name="Без уведомлений")
     pinned_at = models.DateTimeField(null=True, blank=True, verbose_name="Закреплён")
+    # Действия пользователя в новом приложении: повторный импорт из GetStream их не перетирает
+    pin_changed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Закрепление изменено в приложении"
+    )
+    read_changed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="«Прочитано» изменено в приложении"
+    )
 
     class Meta:
         verbose_name = "Участник чата"

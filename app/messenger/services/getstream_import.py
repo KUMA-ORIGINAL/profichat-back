@@ -667,6 +667,9 @@ class _ChannelImporter:
         """
         `channel.read` -> last_read_message_id (только вперёд) и пересчёт unread_count
         по тому же правилу, что и `read_state.mark_read` (`read_state.unread_count`).
+
+        Если пользователь уже менял позицию в новом приложении (`read_changed_at`: read/unread),
+        позиция из Stream не применяется — только пересчитывается unread_count.
         """
         reads = {}
         for entry in read_entries:
@@ -680,7 +683,7 @@ class _ChannelImporter:
                 current = None
                 if member.last_read_message_id is not None:
                     current = Message.objects.filter(chat=self.chat, pk=member.last_read_message_id).first()
-                entry = reads.get(member.user_id)
+                entry = reads.get(member.user_id) if member.read_changed_at is None else None
                 target = self._read_target(entry) if entry else None
                 if target is not None and (current is None or _position(target) > _position(current)):
                     current = target
@@ -694,8 +697,9 @@ class _ChannelImporter:
 
     def _apply_pinned_state(self, member_entries) -> None:
         """
-        `channel.members[].pinned_at` -> ChatMember.pinned_at, только если у нас чат ещё не закреплён
-        (закрепление/открепление в новом приложении не перетираем). Идемпотентно.
+        `channel.members[].pinned_at` -> ChatMember.pinned_at, только если у нас чат не закреплён и
+        пользователь ни разу не закреплял/откреплял его в новом приложении (`pin_changed_at` пуст):
+        повторный импорт не возвращает закрепление, снятое в новом приложении. Идемпотентно.
         """
         for entry in member_entries:
             user_id = str(entry.get("user_id") or (entry.get("user") or {}).get("id") or "")
@@ -706,9 +710,9 @@ class _ChannelImporter:
                 continue
             if not user_id.isdigit() or pinned_at is None:
                 continue
-            ChatMember.objects.filter(chat=self.chat, user_id=int(user_id), pinned_at__isnull=True).update(
-                pinned_at=pinned_at
-            )
+            ChatMember.objects.filter(
+                chat=self.chat, user_id=int(user_id), pinned_at__isnull=True, pin_changed_at__isnull=True
+            ).update(pinned_at=pinned_at)
 
     def _update_last_message(self) -> None:
         last = Message.objects.filter(chat=self.chat).order_by("-created_at", "-id").first()

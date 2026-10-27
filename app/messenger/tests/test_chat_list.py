@@ -264,6 +264,15 @@ class ChatPinTests(MessengerTestCase):
         response = self.client.post("/api/chats/pins/add/", {}, format="json")
         self.assertEqual(response.status_code, 400)
 
+    def test_pin_and_unpin_stamp_pin_changed_at(self):
+        member = lambda: ChatMember.objects.get(chat=self.chat_old, user=self.client_user)  # noqa: E731
+        self.assertIsNone(member().pin_changed_at)
+        self.post(self.client_user, "add", self.chat_old.channel_id)
+        pinned_stamp = member().pin_changed_at
+        self.assertIsNotNone(pinned_stamp)
+        self.post(self.client_user, "remove", self.chat_old.channel_id)
+        self.assertGreater(member().pin_changed_at, pinned_stamp)
+
     def test_specialist_can_pin(self):
         response = self.post(self.specialist, "add", self.chat.channel_id)
         self.assertEqual(response.status_code, 200, response.content)

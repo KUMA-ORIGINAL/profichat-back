@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from common.errors import AppError, ErrorCode
 from messenger.models import ChatMember, Message
@@ -52,7 +53,8 @@ def mark_read(chat, user, message_id: int) -> ChatMember:
 
         member.last_read_message_id = message.id
         member.unread_count = unread_count(chat, user.pk, message)
-        member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
+        member.read_changed_at = timezone.now()  # повторный импорт из GetStream позицию больше не трогает
+        member.save(update_fields=["last_read_message_id", "unread_count", "read_changed_at", "updated_at"])
         events.publish(
             [companion_id, user.pk],
             "chat.read",
@@ -71,12 +73,24 @@ def _message_before(chat, message):
     )
 
 
+def _moves_back(chat, member, new_position) -> bool:
+    """Строго ли раньше текущей позиции «прочитано» новая (`None` — начало чата)."""
+    if member.last_read_message_id is None:
+        return False  # ничего не прочитано — назад некуда
+    current = Message.objects.filter(chat=chat, pk=member.last_read_message_id).first()
+    if current is None:
+        return True  # позиция указывает на исчезнувшее сообщение — разрешаем переставить
+    return new_position is None or _position(new_position) < _position(current)
+
+
 def mark_unread(chat, user, message_id: int) -> ChatMember:
     """
     «Пометить непрочитанным начиная с сообщения message_id» — явное исключение из правила «только вперёд».
 
     last_read_message_id = последнее сообщение строго до message_id (None, если его нет),
     unread_count пересчитывается по общему правилу `unread_count`. Удалённое сообщение — 404.
+    Только назад: если новая позиция не раньше текущей (в т.ч. ничего не прочитано), ничего не меняется,
+    возвращается текущее состояние без события.
     Событие `chat.unread` уходит только своим устройствам; собеседник не уведомляется
     (его `companionLastReadMessageId` в REST покажет новое значение).
     """
@@ -87,9 +101,12 @@ def mark_unread(chat, user, message_id: int) -> ChatMember:
     with transaction.atomic():
         member = ChatMember.objects.select_for_update().get(chat=chat, user_id=user.pk)
         previous = _message_before(chat, message)
+        if not _moves_back(chat, member, previous):
+            return member
         member.last_read_message_id = previous.id if previous else None
         member.unread_count = unread_count(chat, user.pk, previous)
-        member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
+        member.read_changed_at = timezone.now()  # повторный импорт из GetStream позицию больше не трогает
+        member.save(update_fields=["last_read_message_id", "unread_count", "read_changed_at", "updated_at"])
         events.publish(
             [user.pk],
             "chat.unread",

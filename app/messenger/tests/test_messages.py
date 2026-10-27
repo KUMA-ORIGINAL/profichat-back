@@ -532,6 +532,75 @@ class MarkUnreadTests(MessageApiTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["code"], "CHAT_NOT_FOUND")
 
+    def test_mark_unread_after_current_position_is_noop(self):
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(
+            last_read_message_id=self.m2.id, unread_count=2
+        )
+        # m4: «до него» — m3, это дальше текущей позиции m2 → ничего не меняем
+        for target in (self.m4, self.m3):
+            self.broadcast_mock.reset_mock()
+            response = self.mark_unread(self.client_user, target.id)
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(
+                response.json(),
+                {"channelId": self.chat.channel_id, "lastReadMessageId": self.m2.id, "unreadCount": 2},
+            )
+            self.assertEqual(self.events_of_type("chat.unread"), [])
+        member = self.member(self.client_user)
+        self.assertEqual(member.last_read_message_id, self.m2.id)
+        self.assertIsNone(member.read_changed_at)
+
+    def test_mark_unread_when_nothing_read_is_noop(self):
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(
+            last_read_message_id=None, unread_count=3
+        )
+        response = self.mark_unread(self.client_user, self.m3.id)
+        self.assertEqual(response.json()["lastReadMessageId"], None)
+        self.assertEqual(response.json()["unreadCount"], 3)
+        self.assertEqual(self.events_of_type("chat.unread"), [])
+
+    def test_mark_unread_equal_created_at_id_decides(self):
+        same = self.m4.created_at + timedelta(seconds=1)
+        first = self.make_message(sender=self.specialist, text="a", created_at=same)
+        second = self.make_message(sender=self.specialist, text="b", created_at=same)
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(last_read_message_id=second.id)
+
+        response = self.mark_unread(self.client_user, second.id)
+        self.assertEqual(response.json()["lastReadMessageId"], first.id)
+        self.assertEqual(response.json()["unreadCount"], 1)
+
+        response = self.mark_unread(self.client_user, first.id)
+        self.assertEqual(response.json()["lastReadMessageId"], self.m4.id)
+        self.assertEqual(response.json()["unreadCount"], 2)
+
+    def test_mark_unread_on_own_message_gives_zero_unread(self):
+        own_1 = self.make_message(sender=self.client_user, text="own1", created_at=self.m4.created_at + timedelta(seconds=1))
+        own_2 = self.make_message(sender=self.client_user, text="own2", created_at=self.m4.created_at + timedelta(seconds=2))
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(last_read_message_id=own_2.id)
+
+        response = self.mark_unread(self.client_user, own_1.id)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["lastReadMessageId"], self.m4.id)
+        self.assertEqual(response.json()["unreadCount"], 0)
+        self.assertEqual(len(self.events_of_type("chat.unread")), 1)
+
+    def test_read_and_unread_stamp_read_changed_at(self):
+        self.assertIsNone(self.member(self.client_user).read_changed_at)
+        self.mark_unread(self.client_user, self.m3.id)
+        unread_stamp = self.member(self.client_user).read_changed_at
+        self.assertIsNotNone(unread_stamp)
+
+        self.auth(self.client_user)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(f"/api/chats/{self.chat.channel_id}/read/", {"lastReadMessageId": self.m4.id}, format="json")
+        self.assertGreater(self.member(self.client_user).read_changed_at, unread_stamp)
+
+        # отправка своего сообщения позицию «прочитано» не трогает
+        self.assertIsNone(self.member(self.specialist).read_changed_at)
+        message_service.send_message(self.chat, self.specialist, text="hi")
+        self.assertIsNone(self.member(self.specialist).read_changed_at)
+
     def test_companion_sees_new_position_in_rest(self):
         self.mark_unread(self.client_user, self.m3.id)
         self.auth(self.specialist)
