@@ -107,6 +107,19 @@ class SystemMessageServiceTestCase(MessengerTestCase):
             ["tariffProvided", "tariffExpired", "tariffActivated", "tariffExpired"],
         )
 
+    def test_tariff_type_keeps_600s_cooldown(self):
+        send = system_messages.send_system_message_once
+        self.assertIsNotNone(send(self.chat, "tariffExpired"))
+        self.assertIsNotNone(send(self.chat, "tariffActivated"))
+        # последний тарифный — activated, но expired был меньше 600 с назад
+        self.assertIsNone(send(self.chat, "tariffExpired"))
+        self.assertEqual(Message.objects.filter(chat=self.chat, custom_type="tariffExpired").count(), 1)
+
+        Message.objects.filter(chat=self.chat, custom_type="tariffExpired").update(
+            created_at=timezone.now() - timedelta(seconds=601)
+        )
+        self.assertIsNotNone(send(self.chat, "tariffExpired"))
+
     def test_tariff_dedup_ignores_chat_blocked_and_regular_messages(self):
         send = system_messages.send_system_message_once
         self.assertIsNotNone(send(self.chat, "tariffExpired"))
@@ -124,6 +137,7 @@ class SystemMessageServiceTestCase(MessengerTestCase):
         self._age_all_messages()
         expired = send(self.chat, "tariffExpired")
         Message.objects.filter(pk=expired.pk).update(deleted_at=timezone.now())
+        self._age_all_messages()  # вне окна 600 с
 
         # удалённое сообщение не считается: последнее живое — tariffActivated
         self.assertIsNotNone(send(self.chat, "tariffExpired"))

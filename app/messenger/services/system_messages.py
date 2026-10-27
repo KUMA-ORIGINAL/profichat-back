@@ -21,9 +21,10 @@ def send_system_message_once(chat, custom_type: str, text: str | None = None) ->
     Системное сообщение в чат (sender=None) с дедупликацией.
 
     Тип из `ALLOWED_TYPES`, текст по умолчанию из `DEFAULT_TEXTS`. Дедуп:
-    - тарифные типы (`TARIFF_TYPES`): пропуск, если последнее неудалённое тарифное системное сообщение
-      этого чата того же типа — без ограничения по времени (expired → expired пропускается всегда);
-    - остальные (`chatBlocked`): повтор того же типа в течение `COOLDOWN_SECONDS` пропускается.
+    - любой тип: повтор того же типа в этом чате в течение `COOLDOWN_SECONDS` пропускается
+      (ограничение частоты, в том числе для чередования expired → activated → expired);
+    - тарифные типы (`TARIFF_TYPES`) ещё и пропускаются, если последнее неудалённое тарифное
+      системное сообщение чата того же типа — без ограничения по времени.
     Возвращает созданное сообщение или None (неверный тип/дубль).
     """
     if custom_type not in ALLOWED_TYPES:
@@ -33,7 +34,14 @@ def send_system_message_once(chat, custom_type: str, text: str | None = None) ->
     with transaction.atomic():
         # блокировка строки чата: два одновременных запроса не создадут два сообщения
         chat = Chat.objects.select_for_update().select_related("client", "specialist").get(pk=chat.pk)
-        if custom_type in TARIFF_TYPES:
+        cutoff = timezone.now() - timedelta(seconds=COOLDOWN_SECONDS)
+        duplicate = Message.objects.filter(
+            chat=chat,
+            type=Message.Type.SYSTEM,
+            custom_type=custom_type,
+            created_at__gte=cutoff,
+        ).exists()
+        if not duplicate and custom_type in TARIFF_TYPES:
             latest_tariff_type = (
                 Message.objects.filter(
                     chat=chat,
@@ -46,14 +54,6 @@ def send_system_message_once(chat, custom_type: str, text: str | None = None) ->
                 .first()
             )
             duplicate = latest_tariff_type == custom_type
-        else:
-            cutoff = timezone.now() - timedelta(seconds=COOLDOWN_SECONDS)
-            duplicate = Message.objects.filter(
-                chat=chat,
-                type=Message.Type.SYSTEM,
-                custom_type=custom_type,
-                created_at__gte=cutoff,
-            ).exists()
         if duplicate:
             logger.info("Duplicate system message skipped custom_type=%s chat=%s", custom_type, chat.pk)
             return None
