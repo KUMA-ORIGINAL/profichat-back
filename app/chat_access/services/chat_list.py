@@ -1,7 +1,7 @@
 import logging
 
 from django.conf import settings
-from django.db.models import F, Prefetch
+from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.utils import timezone
 
 from account.models import InviteDelivery
@@ -172,11 +172,22 @@ def get_should_reply_map(chats, user):
     return {chat.channel_id: _db_should_reply(chat, user) for chat in chats}
 
 
-def get_member(chat, user):
-    prefetched = getattr(chat, "prefetched_my_members", None)
+def _member_of(chat, user_id):
+    prefetched = getattr(chat, "prefetched_members", None)
     if prefetched is not None:
-        return prefetched[0] if prefetched else None
-    return chat.member_for(user)
+        return next((member for member in prefetched if member.user_id == user_id), None)
+    return chat.members.filter(user_id=user_id).first()
+
+
+def get_member(chat, user):
+    """ChatMember текущего пользователя (из prefetch списка, иначе запросом)."""
+    return _member_of(chat, user.pk)
+
+
+def get_companion_member(chat, user):
+    """ChatMember собеседника: его позиция «прочитано» для галочек."""
+    companion_id = chat.specialist_id if chat.client_id == user.pk else chat.client_id
+    return _member_of(chat, companion_id)
 
 
 def _is_marked(chat, user, prefetch_attr, related_name):
@@ -209,18 +220,22 @@ def get_tariff(chat):
 
 def chat_list_ordering():
     """
-    Порядок списка чатов: по последнему сообщению (наша БД) или, в MESSENGER_LEGACY_MODE, как до
-    мессенджера — по дате создания чата (last_message_at в нашей БД не знает о сообщениях из Stream).
+    Порядок списка чатов: сначала закреплённые текущим пользователем (новое закрепление выше; аннотация
+    `my_pinned_at` из `chat_list_queryset`), затем по последнему сообщению (наша БД) или,
+    в MESSENGER_LEGACY_MODE, как до мессенджера — по дате создания чата (last_message_at в нашей БД
+    не знает о сообщениях из Stream). `-id` — стабильный порядок при равных значениях.
     """
+    pinned = F("my_pinned_at").desc(nulls_last=True)
     if settings.MESSENGER_LEGACY_MODE:
-        return ("-created_at",)
-    return (F("last_message_at").desc(nulls_last=True), "-created_at")
+        return (pinned, "-created_at", "-id")
+    return (pinned, F("last_message_at").desc(nulls_last=True), "-created_at", "-id")
 
 
 def chat_list_queryset(base_qs, user):
     """Подгрузка всего, что нужно `build_chat_list_item`, без запросов на каждый чат."""
     now = timezone.now()
-    return base_qs.select_related(
+    my_pinned_at = ChatMember.objects.filter(chat=OuterRef("pk"), user=user).values("pinned_at")[:1]
+    return base_qs.annotate(my_pinned_at=Subquery(my_pinned_at)).select_related(
         "client", "specialist", "last_message", "last_message__reply_to", "last_message__call"
     ).prefetch_related(
         "last_message__attachments",
@@ -244,11 +259,8 @@ def chat_list_queryset(base_qs, user):
             .order_by("-expires_at", "-created_at"),
             to_attr="prefetched_paid_access_orders",
         ),
-        Prefetch(
-            "members",
-            queryset=ChatMember.objects.filter(user=user),
-            to_attr="prefetched_my_members",
-        ),
+        # оба участника: свой unreadCount/lastReadMessageId/pinnedAt и позиция «прочитано» собеседника
+        Prefetch("members", queryset=ChatMember.objects.all(), to_attr="prefetched_members"),
         Prefetch(
             "favorites",
             queryset=FavoriteChat.objects.filter(user=user),
@@ -277,6 +289,7 @@ def build_chat_list_item(chat, user, should_reply_map=None):
         }
 
     member = get_member(chat, user)
+    companion_member = get_companion_member(chat, user)
     last_message = chat.last_message
     if last_message is not None:
         last_message.chat = chat  # channel_id без лишнего запроса
@@ -298,6 +311,9 @@ def build_chat_list_item(chat, user, should_reply_map=None):
         "last_message": last_message,
         "last_message_at": chat.last_message_at,
         "unread_count": member.unread_count if member else 0,
+        "last_read_message_id": member.last_read_message_id if member else None,
+        "companion_last_read_message_id": companion_member.last_read_message_id if companion_member else None,
+        "pinned_at": member.pinned_at if member else None,
         "is_favorite": _is_marked(chat, user, "prefetched_my_favorites", "favorites"),
         "is_blocked": _is_marked(chat, user, "prefetched_my_blocks", "blocked_entries"),
         "client_can_send_voice": chat.client_can_send_voice,

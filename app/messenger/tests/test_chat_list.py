@@ -10,6 +10,7 @@ from django.utils import timezone
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
 from chat_access.models import BlockedChat, FavoriteChat
 from chat_access.services.chat_commands import create_or_get_chat
+from messenger.models import ChatMember
 from messenger.services import messages as message_service
 from messenger.tests.base import MessengerTestCase
 
@@ -108,6 +109,24 @@ class ChatListTests(MessengerTestCase):
         self.assertFalse(item["isFavorite"])
         self.assertFalse(item["isBlocked"])
 
+    def test_chat_list_read_positions_of_viewer_and_companion(self):
+        first = self.send(self.specialist, "first")
+        reply = self.send(self.client_user, "reply")
+        [item] = self.get_list(self.client_user)
+        self.assertIsNone(item["lastReadMessageId"])
+        self.assertIsNone(item["companionLastReadMessageId"])
+        self.assertIsNone(item["pinnedAt"])
+
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(last_read_message_id=first.id)
+        ChatMember.objects.filter(chat=self.chat, user=self.specialist).update(last_read_message_id=reply.id)
+
+        [item] = self.get_list(self.client_user)
+        self.assertEqual(item["lastReadMessageId"], first.id)
+        self.assertEqual(item["companionLastReadMessageId"], reply.id)
+        [item] = self.get_list(self.specialist)
+        self.assertEqual(item["lastReadMessageId"], reply.id)
+        self.assertEqual(item["companionLastReadMessageId"], first.id)
+
     def _app_queries(self):
         """Запросы приложения к БД (без служебных запросов silk при DEBUG)."""
         with CaptureQueriesContext(connection) as ctx:
@@ -125,8 +144,130 @@ class ChatListTests(MessengerTestCase):
             specialist = User.objects.create_user(username=f"sp_n{i}", password="p", role=ROLE_SPECIALIST)
             chat = create_or_get_chat(self.client_user, specialist)
             self.send(specialist, "msg", chat=chat)
+        ChatMember.objects.filter(user=self.client_user).update(pinned_at=timezone.now())
         self.assertEqual(len(self._app_queries()), baseline)
         self.assertLessEqual(baseline, 8)  # +1 запрос: вложения последнего сообщения
+
+
+class ChatPinTests(MessengerTestCase):
+    def setUp(self):
+        super().setUp()
+        patcher = patch("messenger.services.push.send_push")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.sp_old = User.objects.create_user(username="sp_pin_old", password="p", role=ROLE_SPECIALIST)
+        self.sp_mid = User.objects.create_user(username="sp_pin_mid", password="p", role=ROLE_SPECIALIST)
+        self.chat_old = create_or_get_chat(self.client_user, self.sp_old)
+        self.chat_mid = create_or_get_chat(self.client_user, self.sp_mid)
+        # порядок по последнему сообщению: self.chat, chat_mid, chat_old
+        message_service.send_message(self.chat_old, self.sp_old, text="old")
+        message_service.send_message(self.chat_mid, self.sp_mid, text="mid")
+        message_service.send_message(self.chat, self.specialist, text="new")
+
+    def post(self, user, action, channel_id):
+        self.auth(user)
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(f"/api/chats/pins/{action}/", {"channelId": channel_id}, format="json")
+
+    def ids(self, user, **params):
+        self.auth(user)
+        response = self.client.get("/api/chats/", params)
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        items = body["results"] if isinstance(body, dict) else body
+        return [item["channelId"] for item in items], items
+
+    def chat_updated_events(self):
+        return [
+            call.args for call in self.broadcast_mock.call_args_list
+            if call.args[1]["type"] == "chat.updated"
+        ]
+
+    def test_pin_sets_pinned_at_and_notifies_own_devices(self):
+        self.broadcast_mock.reset_mock()
+        response = self.post(self.client_user, "add", self.chat_old.channel_id)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(body["channelId"], self.chat_old.channel_id)
+        self.assertIsNotNone(body["pinnedAt"])
+        member = ChatMember.objects.get(chat=self.chat_old, user=self.client_user)
+        self.assertIsNotNone(member.pinned_at)
+        # у собеседника закрепление своё
+        self.assertIsNone(ChatMember.objects.get(chat=self.chat_old, user=self.sp_old).pinned_at)
+
+        [(channels, envelope)] = self.chat_updated_events()
+        self.assertEqual(channels, [f"personal:{self.client_user.id}"])
+        self.assertEqual(envelope["data"]["channelId"], self.chat_old.channel_id)
+        self.assertEqual(envelope["data"]["pinnedAt"], body["pinnedAt"])
+
+    def test_pin_is_idempotent_and_keeps_original_time(self):
+        first = self.post(self.client_user, "add", self.chat_old.channel_id).json()["pinnedAt"]
+        second = self.post(self.client_user, "add", self.chat_old.channel_id).json()["pinnedAt"]
+        self.assertEqual(first, second)
+
+    def test_unpin(self):
+        self.post(self.client_user, "add", self.chat_old.channel_id)
+        self.broadcast_mock.reset_mock()
+        response = self.post(self.client_user, "remove", self.chat_old.channel_id)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json(), {"status": "success", "deleted": True})
+        self.assertIsNone(ChatMember.objects.get(chat=self.chat_old, user=self.client_user).pinned_at)
+        [(channels, envelope)] = self.chat_updated_events()
+        self.assertEqual(channels, [f"personal:{self.client_user.id}"])
+        self.assertIsNone(envelope["data"]["pinnedAt"])
+
+        response = self.post(self.client_user, "remove", self.chat_old.channel_id)
+        self.assertEqual(response.json(), {"status": "success", "deleted": False})
+
+    def test_pinned_chats_first_newest_pin_first(self):
+        self.post(self.client_user, "add", self.chat_old.channel_id)
+        ChatMember.objects.filter(chat=self.chat_old, user=self.client_user).update(
+            pinned_at=timezone.now() - timedelta(hours=1)
+        )
+        self.post(self.client_user, "add", self.chat_mid.channel_id)
+
+        ids, items = self.ids(self.client_user)
+        self.assertEqual(ids, [self.chat_mid.channel_id, self.chat_old.channel_id, self.chat.channel_id])
+        self.assertIsNotNone(items[0]["pinnedAt"])
+        self.assertIsNone(items[2]["pinnedAt"])
+
+        # закрепление клиента не влияет на список специалиста
+        [item] = self.ids(self.sp_old)[1]
+        self.assertIsNone(item["pinnedAt"])
+
+    def test_pinned_order_with_access_status_filter(self):
+        self.post(self.client_user, "add", self.chat_old.channel_id)
+        ids, _ = self.ids(self.client_user, access_status="inactive")
+        self.assertEqual(ids[0], self.chat_old.channel_id)
+
+    @override_settings(MESSENGER_LEGACY_MODE=True)
+    def test_pinned_first_in_legacy_mode(self):
+        with patch("chat_access.services.chat_list.chat_client") as stream_mock:
+            stream_mock.query_channels.return_value = {"channels": []}
+            stream_mock.channel.return_value.query.return_value = {"messages": []}
+            self.post(self.client_user, "add", self.chat_old.channel_id)
+            ids, items = self.ids(self.client_user)
+        # legacy: незакреплённые по -created_at (chat_mid, self.chat)
+        self.assertEqual(ids, [self.chat_old.channel_id, self.chat_mid.channel_id, self.chat.channel_id])
+        self.assertIsNotNone(items[0]["pinnedAt"])
+
+    def test_pin_requires_membership(self):
+        stranger = User.objects.create_user(username="stranger_pin", password="p", role=ROLE_CLIENT)
+        for action in ("add", "remove"):
+            response = self.post(stranger, action, self.chat.channel_id)
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json()["code"], "CHAT_NOT_FOUND")
+
+    def test_pin_requires_channel_id(self):
+        self.auth(self.client_user)
+        response = self.client.post("/api/chats/pins/add/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_specialist_can_pin(self):
+        response = self.post(self.specialist, "add", self.chat.channel_id)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNotNone(ChatMember.objects.get(chat=self.chat, user=self.specialist).pinned_at)
 
 
 def stream_channels(chat, sender_id, message_type="regular"):

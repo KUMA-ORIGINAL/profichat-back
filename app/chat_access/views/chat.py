@@ -16,6 +16,8 @@ from account.models import ROLE_CLIENT, ROLE_SPECIALIST
 from common.errors import AppError, ErrorCode
 from messenger.models import ChatMember
 from messenger.services.access import ensure_member
+from messenger.services.events import format_datetime
+from messenger.services.members import pin_chat, unpin_chat
 from ..models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from ..serializers import (
     BlockedChatSerializer,
@@ -24,6 +26,7 @@ from ..serializers import (
     ChatUpdateSerializer,
     FavoriteChatRequestSerializer,
     FavoriteChatSerializer,
+    PinChatRequestSerializer,
     SoftDeleteChatRequestSerializer,
 )
 from ..services import (
@@ -217,6 +220,32 @@ class ChatViewSet(
         deleted, _ = FavoriteChat.objects.filter(user=request.user, chat=chat).delete()
         sync_favorite_by_to_stream(chat)
         return Response({"status": "success", "deleted": bool(deleted)})
+
+    @extend_schema(
+        request=PinChatRequestSerializer,
+        summary="Pin chat (own list)",
+        responses={200: OpenApiResponse(description="{channelId, pinnedAt}")},
+    )
+    @action(detail=False, methods=["post"], url_path="pins/add")
+    def add_pin(self, request):
+        serializer = PinChatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        chat = ensure_member(request.user, serializer.validated_data["channel_id"])
+        member = pin_chat(chat, request.user)
+        return Response({"channel_id": chat.channel_id, "pinned_at": format_datetime(member.pinned_at)})
+
+    @extend_schema(
+        request=PinChatRequestSerializer,
+        summary="Unpin chat (own list)",
+        responses={200: OpenApiResponse(description="Pin removed")},
+    )
+    @action(detail=False, methods=["post"], url_path="pins/remove")
+    def remove_pin(self, request):
+        serializer = PinChatRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        chat = ensure_member(request.user, serializer.validated_data["channel_id"])
+        deleted = unpin_chat(chat, request.user)
+        return Response({"status": "success", "deleted": deleted})
 
     @extend_schema(summary="Get blacklisted chat channel ids")
     @action(detail=False, methods=["get"], url_path="blacklist")

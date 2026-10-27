@@ -3,6 +3,7 @@ from collections.abc import Iterable
 
 from django.db import transaction
 from djangorestframework_camel_case.util import camelize
+from rest_framework import serializers
 
 from messenger import tasks
 from messenger.clients import centrifugo
@@ -44,11 +45,16 @@ def publish(user_ids: Iterable[int], event_type: str, data: dict) -> None:
     transaction.on_commit(_send)
 
 
+def format_datetime(value):
+    """Дата как в REST-ответах (DRF DateTimeField: ISO, часовой пояс проекта) или None."""
+    return serializers.DateTimeField().to_representation(value) if value is not None else None
+
+
 def chat_updated_payload(chat, user) -> dict:
     """
     Данные `chat.updated` для одного участника — те же значения, что в списке чатов.
 
-    `specialist_note` отдаётся только специалисту; `is_favorite`/`is_blocked` — свои у каждого.
+    `specialist_note` отдаётся только специалисту; `is_favorite`/`is_blocked`/`pinned_at` — свои у каждого.
     """
     from chat_access.serializers.chat import ChatTariffSerializer
     from chat_access.services.chat_list import build_chat_list_item
@@ -60,10 +66,16 @@ def chat_updated_payload(chat, user) -> dict:
         "tariff": dict(ChatTariffSerializer(item["tariff"]).data) if item["tariff"] else None,
         "is_favorite": item["is_favorite"],
         "is_blocked": item["is_blocked"],
+        "pinned_at": format_datetime(item["pinned_at"]),
     }
     if chat.specialist_id == user.pk:
         data["specialist_note"] = item["specialist_note"]
     return data
+
+
+def publish_chat_updated_to(chat, user) -> None:
+    """`chat.updated` только своим устройствам пользователя (после коммита)."""
+    publish([user.pk], "chat.updated", chat_updated_payload(chat, user))
 
 
 def publish_chat_updated(chat) -> None:

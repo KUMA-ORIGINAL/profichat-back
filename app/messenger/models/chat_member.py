@@ -25,6 +25,7 @@ class ChatMember(BaseModel):
     )
     unread_count = models.PositiveIntegerField(default=0, verbose_name="Непрочитанных")
     muted = models.BooleanField(default=False, verbose_name="Без уведомлений")
+    pinned_at = models.DateTimeField(null=True, blank=True, verbose_name="Закреплён")
 
     class Meta:
         verbose_name = "Участник чата"

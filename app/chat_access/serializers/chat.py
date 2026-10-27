@@ -39,6 +39,9 @@ class ChatListSerializer(serializers.ModelSerializer):
     last_message = MessageSerializer(allow_null=True)
     last_message_at = serializers.DateTimeField(allow_null=True)
     unread_count = serializers.IntegerField()
+    last_read_message_id = serializers.IntegerField(allow_null=True)
+    companion_last_read_message_id = serializers.IntegerField(allow_null=True)
+    pinned_at = serializers.DateTimeField(allow_null=True)
     is_favorite = serializers.BooleanField()
     is_blocked = serializers.BooleanField()
     client_can_send_voice = serializers.BooleanField()
@@ -59,6 +62,9 @@ class ChatListSerializer(serializers.ModelSerializer):
             'last_message',
             'last_message_at',
             'unread_count',
+            'last_read_message_id',
+            'companion_last_read_message_id',
+            'pinned_at',
             'is_favorite',
             'is_blocked',
             'client_can_send_voice',
@@ -90,6 +96,10 @@ class ChatUpdateSerializer(serializers.ModelSerializer):
 
 
 class FavoriteChatRequestSerializer(serializers.Serializer):
+    channel_id = serializers.CharField(max_length=255)
+
+
+class PinChatRequestSerializer(serializers.Serializer):
     channel_id = serializers.CharField(max_length=255)
 
 
