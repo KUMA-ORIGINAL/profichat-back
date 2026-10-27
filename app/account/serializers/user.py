@@ -74,6 +74,30 @@ class UserMeSerializer(serializers.ModelSerializer):
         return last_application.status if last_application else None
 
 
+class ChatUserPublicSerializer(serializers.ModelSerializer):
+    """
+    Профиль пользователя для собеседников (`chat.user_updated` в Centrifugo).
+
+    Без баланса, даты рождения, пола и статуса заявки. Телефон — отдельным сериализатором
+    `ChatUserPublicWithPhoneSerializer` и только для специалистов (телефон их клиента).
+    """
+
+    profession = ProfessionCategoryMeSerializer(read_only=True)
+    organization = OrganizationShortSerializer(read_only=True)
+    education = UserEducationSerializer(source='educations', many=True, read_only=True)
+    work_experience = UserWorkplaceSerializer(source='workplaces', many=True, read_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'first_name', 'last_name', 'middle_name', 'photo', 'role', 'description',
+                  'can_audio_call', 'can_video_call', 'education', 'work_experience', 'profession', 'organization')
+
+
+class ChatUserPublicWithPhoneSerializer(ChatUserPublicSerializer):
+    class Meta(ChatUserPublicSerializer.Meta):
+        fields = ChatUserPublicSerializer.Meta.fields + ('phone_number',)
+
+
 class UserMeUpdateSerializer(serializers.ModelSerializer):
     organization = serializers.PrimaryKeyRelatedField(
         queryset=Organization.objects.filter(is_active=True),

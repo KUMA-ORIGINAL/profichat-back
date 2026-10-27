@@ -391,3 +391,43 @@ class UserUpdatedEventTestCase(EventsMixin, MessengerTestCase):
         self.assertIn("nonWorkingDates", data)
         # Django Channels по-прежнему получает user_update
         self.assertEqual(layer_mock.return_value.group_send.call_count, 2)
+
+    PRIVATE_KEYS = {"balance", "birthdate", "gender", "applicationStatus", "showInSearch", "inviteGreeting"}
+
+    @patch("account.services.user.get_channel_layer")
+    def test_client_profile_to_specialists_has_phone_but_no_private_fields(self, layer_mock):
+        layer_mock.return_value.group_send = AsyncMock()
+        User.objects.filter(pk=self.client_user.pk).update(
+            phone_number="+996700111222", middle_name="Иванович", balance=500
+        )
+        self.client_user.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            broadcast_user_update(self.client_user, changes=["first_name"])
+
+        [(channels, envelope)] = self.events_of_type("chat.user_updated")
+        self.assertEqual(channels, [events.personal_channel(self.specialist.pk)])
+        user = envelope["data"]["user"]
+        self.assertEqual(user["phoneNumber"], "+996700111222")
+        self.assertEqual(user["middleName"], "Иванович")
+        self.assertEqual(user["role"], ROLE_CLIENT)
+        self.assertFalse(self.PRIVATE_KEYS & set(user), user)
+        # старый канал Django Channels — без изменений (полный профиль, как на main)
+        legacy = layer_mock.return_value.group_send.call_args.args[1]
+        self.assertIn("balance", legacy["user"])
+
+    @patch("account.services.user.get_channel_layer")
+    def test_specialist_profile_to_clients_has_no_phone(self, layer_mock):
+        layer_mock.return_value.group_send = AsyncMock()
+        User.objects.filter(pk=self.specialist.pk).update(phone_number="+996700333444", balance=900)
+        self.specialist.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            broadcast_user_update(self.specialist, changes=["description"])
+
+        [(channels, envelope)] = self.events_of_type("chat.user_updated")
+        self.assertEqual(channels, [events.personal_channel(self.client_user.pk)])
+        user = envelope["data"]["user"]
+        self.assertNotIn("phoneNumber", user)
+        self.assertFalse(self.PRIVATE_KEYS & set(user), user)
+        for key in ("id", "firstName", "lastName", "middleName", "photo", "role", "description", "profession",
+                    "organization", "education", "workExperience", "canAudioCall", "canVideoCall"):
+            self.assertIn(key, user)

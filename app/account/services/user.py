@@ -5,7 +5,13 @@ from channels.layers import get_channel_layer
 from django.contrib.auth import get_user_model
 
 from account.models import NonWorkingDate, WorkSchedule
-from account.serializers import NonWorkingDateSerializer, UserMeSerializer, WorkScheduleSerializer
+from account.serializers import (
+    ChatUserPublicSerializer,
+    ChatUserPublicWithPhoneSerializer,
+    NonWorkingDateSerializer,
+    UserMeSerializer,
+    WorkScheduleSerializer,
+)
 from chat_access.models import Chat
 from messenger.services import events as messenger_events
 
@@ -41,11 +47,19 @@ def broadcast_user_update(user, changes=None):
     chats = list(Chat.objects.filter(client=user) | Chat.objects.filter(specialist=user))
     layer = get_channel_layer()
 
-    # Свой мессенджер: `chat.user_updated` в личные каналы собеседников (Centrifugo, после коммита)
-    companion_ids = sorted(
-        {chat.specialist_id if chat.client_id == user.pk else chat.client_id for chat in chats}
-    )
-    messenger_events.publish(companion_ids, "chat.user_updated", payload)
+    # Свой мессенджер: `chat.user_updated` в личные каналы собеседников (Centrifugo, после коммита).
+    # Только публичный профиль; телефон — лишь специалистам (их клиента), как `companion.phoneNumber`.
+    # Старый канал Django Channels ниже не меняется: его читает старое приложение (поведение main).
+    specialist_ids = sorted({chat.specialist_id for chat in chats if chat.client_id == user.pk})
+    client_ids = sorted({chat.client_id for chat in chats if chat.specialist_id == user.pk})
+    for recipient_ids, serializer_class in (
+        (specialist_ids, ChatUserPublicWithPhoneSerializer),
+        (client_ids, ChatUserPublicSerializer),
+    ):
+        if recipient_ids:
+            messenger_events.publish(
+                recipient_ids, "chat.user_updated", {**payload, "user": serializer_class(user).data}
+            )
 
     for chat in chats:
         async_to_sync(layer.group_send)(
