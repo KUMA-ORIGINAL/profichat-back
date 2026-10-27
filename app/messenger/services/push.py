@@ -22,6 +22,19 @@ def sender_display_name(user) -> str:
     return full_name or user.username or DEFAULT_PREVIEW
 
 
+def user_photo_url(user) -> str | None:
+    """
+    Абсолютный URL фото пользователя для событий и пушей, где нет request
+    (`https://<DOMAIN>/media/...`, как companion.photo в REST); None, если фото нет.
+    """
+    if not user.photo:
+        return None
+    url = user.photo.url
+    if url.startswith(("http://", "https://")):
+        return url
+    return f"https://{settings.DOMAIN}{url}"
+
+
 def message_preview(message) -> str:
     """Текст пуша: текст сообщения или подпись по типу первого вложения."""
     if message.text:
@@ -80,6 +93,7 @@ def incoming_call_payload(call) -> dict:
         "kind": call.kind,
         "callerId": call.caller_id,
         "callerName": sender_display_name(call.caller),
+        "callerPhoto": user_photo_url(call.caller),
     }
 
 

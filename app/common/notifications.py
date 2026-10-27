@@ -194,7 +194,8 @@ def send_data_push(user, data, ttl_seconds, log_prefix="[Push][Data]"):
         logger.info("%s No active devices for user_id=%s", log_prefix, _safe_user_ref(user))
         return False
 
-    payload = {k: str(v) for k, v in (data or {}).items()}
+    # FCM data — только строки; None не шлём (иначе придёт строка "None")
+    payload = {k: str(v) for k, v in (data or {}).items() if v is not None}
     success_count = 0
     for device in devices:
         try:

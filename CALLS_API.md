@@ -171,7 +171,7 @@ accepted ──end/ (любой участник)──────────�
 
 | `type` | Кому | `data` |
 |---|---|---|
-| `call.incoming` | вызываемому | `{call, caller: {id, name}}` |
+| `call.incoming` | вызываемому | `{call, caller: {id, name, photo}}` |
 | `call.accepted` | обоим | `{call}` |
 | `call.declined` | обоим | `{call}` |
 | `call.cancelled` | обоим | `{call}` |
@@ -184,10 +184,12 @@ accepted ──end/ (любой участник)──────────�
   "type": "call.incoming",
   "data": {
     "call": {"id": "5b1f…", "channelId": "chat_12_34", "callerId": 12, "calleeId": 34, "kind": "video", "status": "ringing", "...": "..."},
-    "caller": {"id": 12, "name": "Иван Иванов"}
+    "caller": {"id": 12, "name": "Иван Иванов", "photo": "https://<DOMAIN>/media/user/photos/2026/10/27/me.jpg"}
   }
 }
 ```
+
+`caller.photo` — абсолютный URL фото звонящего (как `companion.photo` в списке чатов) или `null`.
 
 Для `busy` событий `call.*` нет: звонящий узнаёт из ответа на старт, обоим приходит
 карточка `message.new` со статусом `busy`.
@@ -205,10 +207,12 @@ APNs `apns-push-type: voip`, topic `<bundleId>.voip`, priority 10, живёт 45
 `payload.dictionaryPayload` (без `aps`):
 
 ```json
-{"type": "incoming_call", "callId": "5b1f…", "channelId": "chat_12_34", "kind": "video", "callerId": 12, "callerName": "Иван Иванов"}
+{"type": "incoming_call", "callId": "5b1f…", "channelId": "chat_12_34", "kind": "video", "callerId": 12, "callerName": "Иван Иванов", "callerPhoto": "https://<DOMAIN>/media/user/photos/…/me.jpg"}
 ```
 
-`callerId` здесь число.
+`callerId` здесь число. `callerPhoto` — абсолютный URL фото звонящего или `null` (нет фото).
+CallKit на iOS аватар из URL не показывает; используйте его на своём экране звонка
+(`extra` → Flutter) — например, сохраните в `data.extra`.
 
 **iOS требует на каждый VoIP-пуш сразу показать CallKit**, иначе система перестанет
 доставлять VoIP-пуши приложению. Поэтому показывайте CallKit всегда, а уже потом
@@ -231,7 +235,8 @@ func pushRegistry(_ registry: PKPushRegistry,
     let data = flutter_callkit_incoming.Data(id: callId, nameCaller: name, handle: name,
                                              type: (p["kind"] as? String) == "video" ? 1 : 0)
     data.duration = 45000
-    data.extra = ["callId": callId, "channelId": p["channelId"] ?? "", "kind": p["kind"] ?? "audio"]
+    data.extra = ["callId": callId, "channelId": p["channelId"] ?? "", "kind": p["kind"] ?? "audio",
+                  "callerPhoto": p["callerPhoto"] as? String ?? ""]
     SwiftFlutterCallkitIncomingPlugin.sharedInstance?.showCallkitIncoming(data, fromPushKit: true)
     completion()
 }
@@ -270,7 +275,8 @@ POST /api/messenger/voip-devices/
 ### 5.3. Android — FCM data-only
 
 Те же ключи, все значения строки (`"callerId": "12"`), без блока `notification`,
-`android.priority = high`, TTL 45 с. Уходит на все FCM-устройства вызываемого.
+`android.priority = high`, TTL 45 с. Ключ `callerPhoto` **отсутствует**, если фото нет
+(FCM data не умеет `null`) — читайте как `d['callerPhoto']` с проверкой на `null`. Уходит на все FCM-устройства вызываемого.
 
 ```dart
 @pragma('vm:entry-point')
@@ -280,6 +286,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await FlutterCallkitIncoming.showCallkitIncoming(CallKitParams(
     id: d['callId'],
     nameCaller: d['callerName'],
+    avatar: d['callerPhoto'],   // Android: аватар на экране входящего
     appName: 'ProfiChat',
     type: d['kind'] == 'video' ? 1 : 0,
     duration: 45000,

@@ -24,7 +24,7 @@ from messenger.clients import livekit
 from messenger.models import Call
 from messenger.serializers import CallSerializer
 from messenger.services import access, events, messages as message_service
-from messenger.services.push import sender_display_name
+from messenger.services.push import sender_display_name, user_photo_url
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -186,7 +186,7 @@ def _finish(call, status, reason) -> Call:
 def _incoming_payload(call, caller) -> dict:
     return {
         "call": serialize_call(call),
-        "caller": {"id": caller.pk, "name": sender_display_name(caller)},
+        "caller": {"id": caller.pk, "name": sender_display_name(caller), "photo": user_photo_url(caller)},
     }
 
 

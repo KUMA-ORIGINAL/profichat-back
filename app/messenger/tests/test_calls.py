@@ -97,6 +97,10 @@ class DataPushTests(MessengerTestCase):
         self.assertIsNone(message.notification)
         self.assertEqual(message.data, {"type": "incoming_call", "callId": "abc", "n": "1"})
         self.assertEqual(message.android.priority, "high")
+        # None не превращается в строку "None": ключ просто не отправляется
+        with patch.object(GCMDevice, "send_message", return_value=MagicMock(success_count=1)) as send_message:
+            send_data_push(self.specialist, {"type": "incoming_call", "callerPhoto": None}, ttl_seconds=45)
+        self.assertEqual(send_message.call_args.args[0].data, {"type": "incoming_call"})
         self.assertEqual(message.android.ttl, timedelta(seconds=45))
         self.assertIsNone(message.android.notification)
 
@@ -208,6 +212,26 @@ class StartCallTests(CallTestCase):
         incoming = next(data for _, t, data in self.events() if t == "call.incoming")
         self.assertEqual(incoming["call"]["id"], str(call.pk))
         self.assertEqual(incoming["caller"]["id"], self.client_user.pk)
+        self.assertIsNone(incoming["caller"]["photo"])
+
+    @override_settings(DOMAIN="api.example.com")
+    def test_call_incoming_and_push_carry_caller_photo(self):
+        # update() без save(): User.save синхронизирует профиль в GetStream
+        User.objects.filter(pk=self.client_user.pk).update(photo="user/photos/2026/10/27/me.jpg")
+        self.client_user.refresh_from_db()
+        self.activate_tariff()
+        call = self.ring()
+        photo_url = "https://api.example.com/media/user/photos/2026/10/27/me.jpg"
+
+        incoming = next(data for _, t, data in self.events() if t == "call.incoming")
+        self.assertEqual(incoming["caller"]["photo"], photo_url)
+
+        VoipDevice.objects.create(user=self.specialist, token="voip-1", bundle_id="kg.profichat")
+        with patch("messenger.clients.apns.send_voip", return_value=True) as send_voip, \
+                patch("messenger.services.push.send_data_push", return_value=True) as send_data:
+            tasks.send_call_push(str(call.pk))
+        self.assertEqual(send_voip.call_args.args[1]["callerPhoto"], photo_url)
+        self.assertEqual(send_data.call_args.args[1]["callerPhoto"], photo_url)
 
     def test_client_without_tariff_cannot_call_or_accept(self):
         self.assertError(self.start(self.client_user), 403, "TARIFF_REQUIRED")
@@ -609,6 +633,7 @@ class VoipDeviceTests(CallTestCase):
             "kind": "video",
             "callerId": self.client_user.pk,
             "callerName": "client_1",
+            "callerPhoto": None,
         }
         for key, value in expected.items():
             self.assertEqual(payload[key], value, key)
