@@ -1,25 +1,14 @@
 from rest_framework import serializers
-from django.contrib.auth import get_user_model
 
 from common.media import AbsoluteImageField
 from messenger.serializers import MessageSerializer
 from ..models import Chat, AccessOrder, BlockedChat, FavoriteChat
-
-User = get_user_model()
 
 
 class AccessOrderShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = AccessOrder
         fields = ('id', 'activated_at', 'expires_at', 'tariff_type', 'payment_status')
-
-
-class UserShortSerializer(serializers.ModelSerializer):
-    """Краткий сериализатор пользователя (для отображения в чате)"""
-
-    class Meta:
-        model = User
-        fields = ('id', 'first_name', 'last_name', 'photo')
 
 
 class ChatCompanionSerializer(serializers.Serializer):

@@ -58,11 +58,6 @@ def is_blocked_by(chat, user_id) -> bool:
     return any(block.user_id == user_id for block in _blocks(chat))
 
 
-def _presence_hidden(chat, user) -> bool:
-    """Клиент, которого специалист внёс в ЧС, не видит его «в сети» и последнюю активность."""
-    return chat.client_id == user.id and is_blocked_by(chat, chat.specialist_id)
-
-
 def _last_active_at(companion):
     try:
         return companion.messenger_presence.last_active_at
@@ -77,12 +72,12 @@ def build_companion(chat, user, include_presence=False):
 
     `include_presence=False` (chat.updated, invite_client) — без `last_active_at` и без запросов.
     `is_online` здесь всегда False: его проставляет `apply_companion_presence` для отданных чатов.
+    Чёрный список на presence не влияет (ЧС — только «не беспокоить», клиент не должен его вычислить).
     """
     companion = get_companion(chat, user)
     if companion is None:
         return None
     show_phone = chat.specialist_id == user.id and companion.phone_number
-    presence_visible = include_presence and not _presence_hidden(chat, user)
     return {
         "id": companion.id,
         "first_name": companion.first_name,
@@ -90,9 +85,8 @@ def build_companion(chat, user, include_presence=False):
         "middle_name": companion.middle_name,
         "photo": companion.photo,
         "phone_number": str(companion.phone_number) if show_phone else None,
-        "last_active_at": _last_active_at(companion) if presence_visible else None,
+        "last_active_at": _last_active_at(companion) if include_presence else None,
         "is_online": False,
-        "_presence_visible": presence_visible,  # служебное: сериализатор его не отдаёт
     }
 
 
@@ -103,10 +97,7 @@ def apply_companion_presence(items, user):
     """
     from messenger.services import presence
 
-    companions = [
-        item["companion"] for item in items[:PRESENCE_LIST_LIMIT]
-        if item["companion"] and item["companion"].get("_presence_visible")
-    ]
+    companions = [item["companion"] for item in items[:PRESENCE_LIST_LIMIT] if item["companion"]]
     online = presence.online_user_ids(companion["id"] for companion in companions)
     for companion in companions:
         companion["is_online"] = companion["id"] in online

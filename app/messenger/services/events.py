@@ -59,7 +59,8 @@ def chat_updated_payload(chat, user) -> dict:
     from chat_access.serializers.chat import ChatTariffSerializer
     from chat_access.services.chat_list import build_chat_list_item
 
-    item = build_chat_list_item(chat, user)
+    # shouldReply в chat.updated не входит: пустая карта — без запроса к GetStream в legacy-режиме
+    item = build_chat_list_item(chat, user, should_reply_map={})
     data = {
         "channel_id": item["channel_id"],
         "client_can_send_voice": item["client_can_send_voice"],

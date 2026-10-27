@@ -264,26 +264,27 @@ class ChatListPresenceTests(MessengerTestCase):
         # lastActiveAt — для всех (из той же выборки, без Centrifugo)
         self.assertIsNotNone(items[self.chat2.channel_id]["companion"]["lastActiveAt"])
 
-    def test_blocked_client_does_not_see_specialist_presence(self):
+    def test_blacklist_does_not_change_presence(self):
+        # ЧС — только «не беспокоить»: клиент не должен по статусу понять, что он в ЧС
         BlockedChat.objects.create(user=self.specialist, chat=self.chat)
-        UserPresence.objects.create(user=self.specialist, last_active_at=timezone.now())
-        UserPresence.objects.create(user=self.client_user, last_active_at=timezone.now())
+        seen = timezone.now() - timedelta(minutes=3)
+        UserPresence.objects.create(user=self.specialist, last_active_at=seen)
+        UserPresence.objects.create(user=self.client_user, last_active_at=seen)
         self.presence_mock.return_value = {
             f"personal:{self.specialist.pk}": 1, f"personal:{self.sp2.pk}": 1, f"personal:{self.client_user.pk}": 1,
         }
         items = self.get_list(self.client_user)
-        hidden = items[self.chat.channel_id]["companion"]
-        self.assertFalse(hidden["isOnline"])
-        self.assertIsNone(hidden["lastActiveAt"])
-        self.assertNotIn(f"personal:{self.specialist.pk}", self.presence_mock.call_args.args[0])
-        self.assertTrue(items[self.chat2.channel_id]["companion"]["isOnline"])
+        companion = items[self.chat.channel_id]["companion"]
+        self.assertTrue(companion["isOnline"])
+        self.assertEqual(companion["lastActiveAt"], events.format_datetime(seen))
+        self.assertIn(f"personal:{self.specialist.pk}", self.presence_mock.call_args.args[0])
+        self.assertFalse(items[self.chat.channel_id]["isBlocked"])
         # retrieve — так же
         self.auth(self.client_user)
         companion = self.client.get(f"/api/chats/{self.chat.channel_id}/").json()["companion"]
-        self.assertFalse(companion["isOnline"])
-        self.assertIsNone(companion["lastActiveAt"])
-        # специалист, внёсший чат в ЧС, статус клиента видит
-        self.presence_mock.reset_mock()
+        self.assertTrue(companion["isOnline"])
+        self.assertEqual(companion["lastActiveAt"], events.format_datetime(seen))
+        # специалист статус клиента видит как обычно
         [item] = self.get_list(self.specialist).values()
         self.assertTrue(item["companion"]["isOnline"])
         self.assertIsNotNone(item["companion"]["lastActiveAt"])

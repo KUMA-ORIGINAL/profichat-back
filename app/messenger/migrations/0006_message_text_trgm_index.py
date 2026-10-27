@@ -1,6 +1,6 @@
 import django.contrib.postgres.indexes
 import django.db.models.functions.text
-from django.contrib.postgres.operations import AddIndexConcurrently, BtreeGinExtension, TrigramExtension
+from django.contrib.postgres.operations import AddIndexConcurrently
 from django.db import migrations, models
 
 INDEX_NAME = "msg_chat_text_upper_trgm_idx"
@@ -24,8 +24,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        TrigramExtension(),
-        BtreeGinExtension(),
+        # IF NOT EXISTS и без обратного DROP: расширения могут уже стоять в базе или понадобиться
+        # другим индексам — откат этой миграции их не удаляет
+        migrations.RunSQL(
+            sql="CREATE EXTENSION IF NOT EXISTS pg_trgm",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+        migrations.RunSQL(
+            sql="CREATE EXTENSION IF NOT EXISTS btree_gin",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.RunSQL(
             sql=f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}",
             reverse_sql=migrations.RunSQL.noop,

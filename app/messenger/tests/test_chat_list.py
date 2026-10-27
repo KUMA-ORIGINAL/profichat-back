@@ -338,6 +338,15 @@ class LegacyModeChatListTests(MessengerTestCase):
 
         self.assertFalse(item["shouldReply"])
 
+    def test_chat_updated_payload_does_not_query_stream(self):
+        # shouldReply в chat.updated не входит — запрос к GetStream не нужен
+        from messenger.services import events
+
+        data = events.chat_updated_payload(self.chat, self.client_user)
+        self.assertNotIn("should_reply", data)
+        self.stream_mock.channel.assert_not_called()
+        self.stream_mock.query_channels.assert_not_called()
+
     def test_retrieve_uses_stream(self):
         self.stream_mock.query_channels.return_value = stream_channels(self.chat, self.specialist.pk)
         self.auth(self.client_user)
