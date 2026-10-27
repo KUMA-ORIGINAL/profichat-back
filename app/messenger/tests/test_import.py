@@ -27,6 +27,7 @@ FILES = {
     "photo.jpg": b"JPEGDATA1234",
     "report.pdf": b"%PDF-1.4\n",
     "voice.aac": b"VOICE",
+    "note.m4a": b"VOICENOTE",
 }
 
 
@@ -604,6 +605,133 @@ class ImportKeepsNewAppStateTestCase(ImportTestCase):
         self.assertEqual(member.unread_count, body["unreadCount"])
         # у собеседника позиция по-прежнему из Stream
         self.assertEqual(self.member(self.specialist).last_read_message_id, self.msg("msg-same-ts-b").pk)
+
+
+class ImportCompletenessTestCase(ImportTestCase):
+    """voicenote старых сборок, системные сообщения по isSystem / user.id=="system", счётчики потерь."""
+
+    def add_message(self, stream_id, minute, **fields):
+        raw = {
+            "id": stream_id,
+            "text": "",
+            "type": "regular",
+            "user": {"id": str(self.client_user.pk), "role": "user"},
+            "attachments": [],
+            "latest_reactions": [],
+            "reaction_counts": {},
+            "reply_count": 0,
+            "created_at": f"2025-03-01T10:{minute:02d}:00.000000Z",
+            "updated_at": f"2025-03-01T10:{minute:02d}:00.000000Z",
+            "pinned": False,
+        }
+        raw.update(fields)
+        self.fixture["query_response"]["messages"].append(raw)
+        return raw
+
+    def test_voicenote_imported_as_voice(self):
+        self.add_message("msg-voicenote", 1, attachments=[{
+            "type": "voicenote",
+            "asset_url": "https://us-east.stream-io-cdn.com/1/attachments/note.m4a?Signature=Z",
+            "file_size": 9,
+            "duration": 2.25,
+            "waveform_data": [0.2, 0.4],
+        }])
+        self.add_message("msg-voicenote-nested", 2, attachments=[{
+            "type": "voicenote",
+            "asset_url": "https://us-east.stream-io-cdn.com/1/attachments/note.m4a",
+            "extraData": {"duration": 1, "waveform": [30, 60]},
+        }])
+
+        stats = self.run_import()
+
+        self.assertEqual(stats.errors, [])
+        self.assertEqual(stats.unknown_attachments, 1)  # только giphy из фикстуры
+        voice = self.msg("msg-voicenote").attachments.get()
+        self.assertEqual(voice.kind, Attachment.Kind.VOICE)
+        self.assertEqual(voice.file_name, "note.m4a")
+        self.assertEqual(voice.mime_type, "audio/mp4")
+        self.assertEqual(voice.duration_ms, 2250)
+        self.assertEqual(voice.waveform, [20, 40])
+        self.assertEqual(voice.size, len(FILES["note.m4a"]))
+        self.assertNotIn("stream_attachments", self.msg("msg-voicenote").extra_data)
+
+        nested = self.msg("msg-voicenote-nested").attachments.get()
+        self.assertEqual(nested.kind, Attachment.Kind.VOICE)
+        self.assertEqual(nested.duration_ms, 1000)
+        self.assertEqual(nested.waveform, [30, 60])
+
+    def test_system_detected_by_is_system_flag_and_system_user(self):
+        # старое приложение: обычное сообщение от участника с extraData.isSystem (Flutter кладёт extraData в корень)
+        self.add_message("msg-sys-flag", 1, text="Срок действия тарифа истёк.", isSystem=True, customType="tariffExpired")
+        # extraData, записанное бэкендом как поле `extraData`
+        self.add_message(
+            "msg-sys-extra", 2, text="Доступ по тарифу предоставлен.",
+            user={"id": str(self.specialist.pk)},
+            extraData={"isSystem": True, "customType": "tariffProvided", "client_name": "Иван"},
+        )
+        # отправитель system без type=system
+        self.add_message("msg-sys-user", 3, text="Чат заблокирован.", user={"id": "system"}, custom_type="chatBlocked")
+        # isSystem=false — обычное сообщение
+        self.add_message("msg-not-sys", 4, text="Обычное", isSystem=False)
+
+        stats = self.run_import()
+
+        self.assertEqual(stats.errors, [])
+        for stream_id, custom_type in (
+            ("msg-sys-flag", "tariffExpired"),
+            ("msg-sys-extra", "tariffProvided"),
+            ("msg-sys-user", "chatBlocked"),
+        ):
+            message = self.msg(stream_id)
+            self.assertEqual(message.type, Message.Type.SYSTEM, stream_id)
+            self.assertIsNone(message.sender_id, stream_id)
+            self.assertEqual(message.custom_type, custom_type, stream_id)
+            self.assertEqual(message.extra_data["customType"], custom_type, stream_id)
+            self.assertNotIn("stream_user_id", message.extra_data, stream_id)
+        self.assertEqual(self.msg("msg-sys-extra").extra_data["clientName"], "Иван")
+
+        regular = self.msg("msg-not-sys")
+        self.assertEqual(regular.type, Message.Type.REGULAR)
+        self.assertEqual(regular.sender_id, self.client_user.pk)
+        self.assertEqual(stats.unknown_users, 1)  # только 999999 из фикстуры
+
+    def _add_lossy_messages(self):
+        self.add_message("msg-reacted", 1, text="👍", reaction_counts={"like": 2}, latest_reactions=[{"type": "like"}])
+        self.add_message("msg-reacted-groups", 2, text="ок", reaction_groups={"love": {"count": 1}})
+        self.add_message("msg-pinned", 3, text="Важно", pinned=True, pinned_at="2025-03-01T10:03:30.000000Z")
+        self.add_message("msg-poll", 4, text="", attachments=[{"type": "poll"}, {"type": "image"}])
+
+    def test_loss_counters(self):
+        self._add_lossy_messages()
+
+        stats = self.run_import()
+
+        self.assertEqual(stats.messages_with_reactions, 2)
+        self.assertEqual(stats.pinned_messages, 1)
+        self.assertEqual(stats.thread_replies_flattened, 1)  # msg-thread-reply из фикстуры
+        self.assertEqual(stats.stream_only_attachments, {"giphy": 1, "poll": 1, "image": 1})
+        self.assertEqual(stats.unknown_attachments, 3)
+        self.assertIn("pinned_messages=1", stats.summary())
+        self.assertIn("stream_only_attachments=giphy:1,image:1,poll:1", stats.summary())
+
+        merged = getstream_import.ImportStats()
+        merged.merge(stats)
+        merged.merge(stats)
+        self.assertEqual(merged.stream_only_attachments, {"giphy": 2, "poll": 2, "image": 2})
+        self.assertEqual(merged.messages_with_reactions, 4)
+
+    def test_loss_counters_in_dry_run_command_output(self):
+        self._add_lossy_messages()
+        out = io.StringIO()
+        call_command("import_getstream", "--channel", self.chat.channel_id, "--dry-run", stdout=out)
+
+        output = out.getvalue()
+        self.assertIn("dry-run", output)
+        self.assertIn("messages_with_reactions=2", output)
+        self.assertIn("pinned_messages=1", output)
+        self.assertIn("thread_replies_flattened=1", output)
+        self.assertIn("stream_only_attachments=giphy:1,image:1,poll:1", output)
+        self.assertFalse(Message.objects.exists())
 
 
 class ImportIdempotencyTestCase(ImportTestCase):

@@ -62,7 +62,11 @@ UPLOADABLE_KINDS = {
     "file": Attachment.Kind.FILE,
     "audio": Attachment.Kind.FILE,
     "voiceRecording": Attachment.Kind.VOICE,
+    # голосовые старых сборок приложения (Attachment(type: "voicenote"))
+    "voicenote": Attachment.Kind.VOICE,
 }
+# вложенные словари произвольных полей Stream (Flutter обычно кладёт extraData в корень объекта)
+EXTRA_KEYS = ("extraData", "extra_data", "extra")
 
 
 @dataclass
@@ -82,20 +86,37 @@ class ImportStats:
     unknown_attachments: int = 0
     # превью ссылок — пропущены, текст сообщения сохранён
     link_previews: int = 0
+    # что теряется при переносе (видно и в --dry-run):
+    # сообщения с реакциями (реакции не переносятся)
+    messages_with_reactions: int = 0
+    # закреплённые сообщения (закрепление сообщений не переносится, сами сообщения — да)
+    pinned_messages: int = 0
+    # ответы в тредах, перенесённые в общую ленту как ответ (reply_to) на родителя
+    thread_replies_flattened: int = 0
+    # вложения, оставшиеся только в extra_data["stream_attachments"], по типу Stream
+    stream_only_attachments: dict[str, int] = field(default_factory=dict)
 
     def merge(self, other: "ImportStats") -> None:
         for item in fields(self):
             value = getattr(other, item.name)
             if isinstance(value, list):
                 getattr(self, item.name).extend(value)
+            elif isinstance(value, dict):
+                target = getattr(self, item.name)
+                for key, count in value.items():
+                    target[key] = target.get(key, 0) + count
             else:
                 setattr(self, item.name, getattr(self, item.name) + value)
 
     def summary(self) -> str:
-        parts = [
-            f"{item.name}={len(getattr(self, item.name)) if item.name == 'errors' else getattr(self, item.name)}"
-            for item in fields(self)
-        ]
+        parts = []
+        for item in fields(self):
+            value = getattr(self, item.name)
+            if isinstance(value, list):
+                value = len(value)
+            elif isinstance(value, dict):
+                value = ",".join(f"{key}:{value[key]}" for key in sorted(value)) or "-"
+            parts.append(f"{item.name}={value}")
         return " ".join(parts)
 
 
@@ -199,6 +220,30 @@ def _iter_pages(fetch, cursor: str):
                 f"Более {MAX_PAGE_SIZE} сообщений с одинаковым created_at={cursor}: пагинация невозможна"
             )
         limit = MAX_PAGE_SIZE
+
+
+def _extras(obj) -> list[dict]:
+    """Сам объект Stream и его вложенные словари extraData/extra_data/extra."""
+    return [obj] + [obj[key] for key in EXTRA_KEYS if isinstance(obj.get(key), dict)]
+
+
+def _extra_value(obj, *names):
+    for source in _extras(obj):
+        for name in names:
+            if source.get(name) is not None:
+                return source[name]
+    return None
+
+
+def _is_system(raw, stream_type, stream_user_id) -> bool:
+    """Системное: type=system, отправитель `system` или флаг isSystem (старое приложение писало его в extraData)."""
+    if stream_type == "system" or stream_user_id == "system":
+        return True
+    return any(source.get("isSystem") is True for source in _extras(raw))
+
+
+def _has_reactions(raw) -> bool:
+    return any(raw.get(key) for key in ("reaction_counts", "reaction_groups", "latest_reactions"))
 
 
 def _custom_type(raw) -> str:
@@ -357,21 +402,20 @@ class _ChannelImporter:
             return None
 
         stream_user_id = str((raw.get("user") or {}).get("id") or raw.get("user_id") or "")
-        sender_id = self._resolve_user(stream_user_id)
+        is_system = _is_system(raw, stream_type, stream_user_id)
+        sender_id = None if is_system else self._resolve_user(stream_user_id)
         extra_data = {}
-        if sender_id is None and stream_user_id not in SYSTEM_USER_IDS:
+        if sender_id is None and not is_system and stream_user_id not in SYSTEM_USER_IDS:
             extra_data["stream_user_id"] = stream_user_id
 
         custom_type = ""
-        if stream_type == "system":
-            message_type = Message.Type.SYSTEM
-            sender_id = None  # sender=None — признак системного сообщения
+        if is_system:
+            message_type = Message.Type.SYSTEM  # sender=None — признак системного сообщения
             custom_type = _custom_type(raw)
-            stream_extra = raw.get("extraData") or {}
             if custom_type:
                 extra_data["customType"] = custom_type
-            client_name = stream_extra.get("client_name") or stream_extra.get("clientName")
-            specialist_name = stream_extra.get("specialist_name") or stream_extra.get("specialistName")
+            client_name = _extra_value(raw, "client_name", "clientName")
+            specialist_name = _extra_value(raw, "specialist_name", "specialistName")
             if client_name is not None:
                 extra_data["clientName"] = client_name
             if specialist_name is not None:
@@ -392,6 +436,9 @@ class _ChannelImporter:
                 attachments.append(spec)
             elif not attachment.get("og_scrape_url"):
                 extra_data.setdefault("stream_attachments", []).append(attachment)
+                attachment_type = str(attachment.get("type") or "unknown")
+                lost = self.stats.stream_only_attachments
+                lost[attachment_type] = lost.get(attachment_type, 0) + 1
 
         return _MappedMessage(
             stream_id=raw["id"],
@@ -418,7 +465,7 @@ class _ChannelImporter:
             self.stats.unknown_attachments += 1
             return None
         file_name = _file_name(attachment, url)
-        duration = attachment.get("duration")
+        duration = _extra_value(attachment, "duration")
         try:
             duration_ms = round(float(duration) * 1000) if duration is not None else None
         except (TypeError, ValueError):
@@ -432,7 +479,7 @@ class _ChannelImporter:
             width=_positive_int(attachment.get("original_width")),
             height=_positive_int(attachment.get("original_height")),
             duration_ms=duration_ms,
-            waveform=_waveform(attachment.get("waveform_data")),
+            waveform=_waveform(_extra_value(attachment, "waveform_data", "waveform")),
             raw=attachment,
         )
 
@@ -487,6 +534,12 @@ class _ChannelImporter:
         if mapped is None:
             self.stats.messages_skipped += 1
             return
+        if _has_reactions(raw):
+            self.stats.messages_with_reactions += 1
+        if raw.get("pinned"):
+            self.stats.pinned_messages += 1
+        if raw.get("parent_id"):
+            self.stats.thread_replies_flattened += 1
 
         linked = False
         if existing is None:
