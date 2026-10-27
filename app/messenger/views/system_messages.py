@@ -25,7 +25,7 @@ SystemMessageResponseSerializer = inline_serializer(
 
 @extend_schema(tags=["Messenger"])
 class ChatSystemMessageView(APIView):
-    """Системное сообщение в чат (тариф выдан/истёк/активирован, чат заблокирован) с дедупом 600 с."""
+    """Системное сообщение в чат (тариф выдан/истёк/активирован, чат заблокирован) с дедупом (см. services.system_messages)."""
 
     permission_classes = [IsAuthenticated]
 

@@ -679,8 +679,16 @@ await dio.put(
 {"success": true, "clientName": "Иван Иванов", "specialistName": "Анна Петрова"}
 ```
 
-`success: false` — сообщение такого же типа уже было в этом чате за последние 10 минут
-(дубль не создаётся). Созданное сообщение (`type: "system"`, `senderId: null`) приходит
+`success: false` — дубль, сообщение не создаётся:
+
+- тарифные типы (`tariffProvided`, `tariffExpired`, `tariffActivated`): последнее тарифное системное
+  сообщение этого чата уже того же типа — **без ограничения по времени**. Так `tariffExpired` не
+  повторяется при каждом открытии просроченного чата; цепочка provided → expired → activated → expired
+  пишется целиком, а expired → expired — нет. Хранить `lastTariffStatusMessage` в данных канала, как
+  делало старое приложение, больше не нужно — сервер решает сам, вызывать можно при каждом открытии;
+- `chatBlocked`: сообщение того же типа уже было в этом чате за последние 10 минут.
+
+Созданное сообщение (`type: "system"`, `senderId: null`) приходит
 обоим как `message.new`; пушей и `unreadCount` не даёт.
 
 Ошибки: неизвестный `customType` → `400 VALIDATION_ERROR`; не участник → `404 CHAT_NOT_FOUND`.

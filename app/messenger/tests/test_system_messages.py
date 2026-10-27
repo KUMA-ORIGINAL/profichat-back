@@ -67,21 +67,69 @@ class SystemMessageServiceTestCase(MessengerTestCase):
         message = system_messages.send_system_message_once(self.chat, "chatBlocked", "Свой текст")
         self.assertEqual(message.text, "Свой текст")
 
-    def test_system_message_dedup_within_600s(self):
-        first = system_messages.send_system_message_once(self.chat, "tariffExpired")
-        second = system_messages.send_system_message_once(self.chat, "tariffExpired")
+    def test_chat_blocked_dedup_within_600s(self):
+        first = system_messages.send_system_message_once(self.chat, "chatBlocked")
+        second = system_messages.send_system_message_once(self.chat, "chatBlocked")
 
         self.assertIsNotNone(first)
         self.assertIsNone(second)
-        self.assertEqual(Message.objects.filter(chat=self.chat, custom_type="tariffExpired").count(), 1)
+        self.assertEqual(Message.objects.filter(chat=self.chat, custom_type="chatBlocked").count(), 1)
 
         # другой тип не дедуплицируется
         self.assertIsNotNone(system_messages.send_system_message_once(self.chat, "tariffActivated"))
 
         # через 600 с — снова можно
         Message.objects.filter(pk=first.pk).update(created_at=timezone.now() - timedelta(seconds=601))
+        self.assertIsNotNone(system_messages.send_system_message_once(self.chat, "chatBlocked"))
+        self.assertEqual(Message.objects.filter(chat=self.chat, custom_type="chatBlocked").count(), 2)
+
+    def _age_all_messages(self, seconds=3600):
+        Message.objects.filter(chat=self.chat).update(created_at=timezone.now() - timedelta(seconds=seconds))
+
+    def test_tariff_types_dedup_by_latest_tariff_message(self):
+        send = system_messages.send_system_message_once
+        self.assertIsNotNone(send(self.chat, "tariffProvided"))
+        self._age_all_messages(7200)
+        self.assertIsNotNone(send(self.chat, "tariffExpired"))
+        self._age_all_messages()
+        # повтор того же статуса — даже через час — пропускается
+        self.assertIsNone(send(self.chat, "tariffExpired"))
+        self.assertIsNotNone(send(self.chat, "tariffActivated"))
+        self._age_all_messages()
+        self.assertIsNotNone(send(self.chat, "tariffExpired"))
+
+        self.assertEqual(
+            list(
+                Message.objects.filter(chat=self.chat, type=Message.Type.SYSTEM)
+                .order_by("created_at", "id")
+                .values_list("custom_type", flat=True)
+            ),
+            ["tariffProvided", "tariffExpired", "tariffActivated", "tariffExpired"],
+        )
+
+    def test_tariff_dedup_ignores_chat_blocked_and_regular_messages(self):
+        send = system_messages.send_system_message_once
+        self.assertIsNotNone(send(self.chat, "tariffExpired"))
+        self.assertIsNotNone(send(self.chat, "chatBlocked"))
+        Message.objects.create(chat=self.chat, sender=self.specialist, text="привет")
+        self._age_all_messages()
+
+        # последнее тарифное сообщение — всё ещё tariffExpired
+        self.assertIsNone(send(self.chat, "tariffExpired"))
+        self.assertIsNotNone(send(self.chat, "tariffActivated"))
+
+    def test_tariff_dedup_ignores_deleted_tariff_message(self):
+        send = system_messages.send_system_message_once
+        self.assertIsNotNone(send(self.chat, "tariffActivated"))
+        self._age_all_messages()
+        expired = send(self.chat, "tariffExpired")
+        Message.objects.filter(pk=expired.pk).update(deleted_at=timezone.now())
+
+        # удалённое сообщение не считается: последнее живое — tariffActivated
+        self.assertIsNotNone(send(self.chat, "tariffExpired"))
+
+    def test_tariff_first_message_of_type_is_posted(self):
         self.assertIsNotNone(system_messages.send_system_message_once(self.chat, "tariffExpired"))
-        self.assertEqual(Message.objects.filter(chat=self.chat, custom_type="tariffExpired").count(), 2)
 
     def test_dedup_is_per_chat(self):
         other_client = User.objects.create_user(username="client_2", password="pass", role=ROLE_CLIENT)
