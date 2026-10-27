@@ -20,6 +20,7 @@ urlpatterns = [
         attachments.ChatAttachmentUploadView.as_view(),
         name="messenger-attachment-upload",
     ),
+    path("messages/search/", messages.MessageSearchView.as_view(), name="messenger-message-search"),
     path("chats/<str:channel_id>/read/", messages.ChatReadView.as_view(), name="messenger-chat-read"),
     path("chats/<str:channel_id>/unread/", messages.ChatUnreadView.as_view(), name="messenger-chat-unread"),
     path(

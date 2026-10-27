@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
+SEARCH_DEFAULT_LIMIT = 20
+SEARCH_MAX_LIMIT = 50
+SEARCH_MIN_QUERY_LENGTH = 2
 
 
 # --- события ---
@@ -336,3 +339,43 @@ def list_messages_around(chat, message_id: int, *, limit: int = DEFAULT_LIMIT) -
         "before_cursor": encode_cursor(items[-1]),
         "after_cursor": encode_cursor(items[0]),
     }
+
+
+# --- поиск ---
+
+def visible_chat_ids(user):
+    """id чатов пользователя, не скрытых им (как в списке чатов) — подзапрос, не список."""
+    return Chat.objects.filter(
+        Q(client=user, deleted_by_client_at__isnull=True)
+        | Q(specialist=user, deleted_by_specialist_at__isnull=True)
+    ).values("pk")
+
+
+def search_messages(
+    user, query: str, *, before: str | None = None, limit: int = SEARCH_DEFAULT_LIMIT
+) -> tuple[list[Message], bool, str | None]:
+    """
+    Поиск подстроки (без учёта регистра) в обычных неудалённых сообщениях видимых чатов пользователя.
+
+    От новых к старым по (created_at, id), курсор `before` — как в истории. `query` уже очищен и
+    проверен вьюхой. Фильтр `text__icontains` совпадает с выражением индекса msg_text_upper_trgm_idx.
+    """
+    limit = max(1, min(int(limit), SEARCH_MAX_LIMIT))
+    qs = (
+        Message.objects.filter(
+            chat_id__in=visible_chat_ids(user),
+            type=Message.Type.REGULAR,
+            deleted_at__isnull=True,
+            text__icontains=query,
+        )
+        .select_related("chat", "reply_to", "call")
+        .prefetch_related("attachments", "reply_to__attachments")
+    )
+    if before:
+        created_at, message_id = decode_cursor(before)
+        qs = qs.filter(_older_q(created_at, message_id))
+    items = list(qs.order_by("-created_at", "-id")[: limit + 1])
+    has_more = len(items) > limit
+    items = items[:limit]
+    next_cursor = encode_cursor(items[-1]) if items else None
+    return items, has_more, next_cursor

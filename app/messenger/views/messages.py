@@ -71,16 +71,16 @@ ReadResponseSerializer = inline_serializer(
 )
 
 
-def _parse_limit(raw) -> int:
+def _parse_limit(raw, default=message_service.DEFAULT_LIMIT, maximum=message_service.MAX_LIMIT) -> int:
     if raw in (None, ""):
-        return message_service.DEFAULT_LIMIT
+        return default
     try:
         limit = int(raw)
     except (TypeError, ValueError):
         limit = 0
     if limit < 1:
         raise AppError("Некорректный limit", code=ErrorCode.PARAM_INVALID, status_code=400)
-    return min(limit, message_service.MAX_LIMIT)
+    return min(limit, maximum)
 
 
 @extend_schema(tags=["Messenger"])
@@ -233,5 +233,45 @@ class ChatUnreadView(APIView):
                 "channel_id": chat.channel_id,
                 "last_read_message_id": member.last_read_message_id,
                 "unread_count": member.unread_count,
+            }
+        )
+
+
+@extend_schema(tags=["Messenger"])
+class MessageSearchView(APIView):
+    """Поиск по тексту сообщений во всех своих (не скрытых) чатах."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Search messages",
+        parameters=[
+            OpenApiParameter("q", OpenApiTypes.STR, OpenApiParameter.QUERY, required=True),
+            OpenApiParameter("before", OpenApiTypes.STR, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter("limit", OpenApiTypes.INT, OpenApiParameter.QUERY, required=False),
+        ],
+        responses=HistoryResponseSerializer,
+    )
+    def get(self, request):
+        query = (request.query_params.get("q") or "").strip()
+        if len(query) < message_service.SEARCH_MIN_QUERY_LENGTH:
+            raise AppError(
+                f"Запрос должен быть не короче {message_service.SEARCH_MIN_QUERY_LENGTH} символов",
+                code=ErrorCode.VALIDATION_ERROR,
+                status_code=400,
+            )
+        limit = _parse_limit(
+            request.query_params.get("limit"),
+            default=message_service.SEARCH_DEFAULT_LIMIT,
+            maximum=message_service.SEARCH_MAX_LIMIT,
+        )
+        items, has_more, next_cursor = message_service.search_messages(
+            request.user, query, before=request.query_params.get("before") or None, limit=limit
+        )
+        return Response(
+            {
+                "results": MessageSerializer(items, many=True).data,
+                "has_more": has_more,
+                "next_cursor": next_cursor,
             }
         )

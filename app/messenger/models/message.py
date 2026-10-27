@@ -1,6 +1,8 @@
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
 from django.db.models import Q
+from django.db.models.functions import Upper
 from django.utils import timezone
 
 
@@ -53,6 +55,12 @@ class Message(models.Model):
         verbose_name_plural = "Сообщения"
         indexes = [
             models.Index(fields=["chat", "-created_at", "-id"], name="msg_chat_created_id_idx"),
+            # поиск по тексту: Django строит icontains как UPPER(text) LIKE UPPER('%q%') — индекс по тому же выражению
+            GinIndex(
+                OpClass(Upper("text"), name="gin_trgm_ops"),
+                name="msg_text_upper_trgm_idx",
+                condition=Q(type="regular", deleted_at__isnull=True),
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
