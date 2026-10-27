@@ -695,6 +695,28 @@ class ImportCompletenessTestCase(ImportTestCase):
         self.assertEqual(regular.sender_id, self.client_user.pk)
         self.assertEqual(stats.unknown_users, 1)  # только 999999 из фикстуры
 
+    def test_imported_custom_type_validated(self):
+        self.add_message("msg-sys-bad", 1, text="x", isSystem=True, customType="x" * 100)
+        self.add_message("msg-sys-int", 2, text="y", isSystem=True, customType=5)
+        self.add_message("msg-sys-unknown", 3, text="z", isSystem=True, customType="somethingElse")
+        self.add_message("msg-sys-none", 4, text="Системное", isSystem=True)
+        self.add_message("msg-sys-extra-key", 5, text="Чат заблокирован.", extra={"isSystem": True, "customType": "chatBlocked"})
+
+        stats = self.run_import()
+
+        self.assertEqual(stats.errors, [])
+        for stream_id, raw_value in (("msg-sys-bad", "x" * 100), ("msg-sys-int", 5), ("msg-sys-unknown", "somethingElse")):
+            message = self.msg(stream_id)
+            self.assertEqual(message.type, Message.Type.SYSTEM, stream_id)
+            self.assertEqual(message.custom_type, "", stream_id)
+            self.assertNotIn("customType", message.extra_data, stream_id)
+            self.assertEqual(message.extra_data["stream_custom_type"], raw_value, stream_id)
+        none = self.msg("msg-sys-none")
+        self.assertEqual((none.type, none.custom_type), (Message.Type.SYSTEM, ""))
+        self.assertNotIn("stream_custom_type", none.extra_data)
+        extra = self.msg("msg-sys-extra-key")
+        self.assertEqual((extra.type, extra.custom_type), (Message.Type.SYSTEM, "chatBlocked"))
+
     def _add_lossy_messages(self):
         self.add_message("msg-reacted", 1, text="👍", reaction_counts={"like": 2}, latest_reactions=[{"type": "like"}])
         self.add_message("msg-reacted-groups", 2, text="ок", reaction_groups={"love": {"count": 1}})

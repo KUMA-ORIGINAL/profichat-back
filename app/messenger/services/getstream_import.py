@@ -31,6 +31,7 @@ from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from stream_chat.base.exceptions import StreamAPIException
 
+from account.services.stream import ALLOWED_TYPES
 from chat_access.models import Chat
 from common import stream_client
 from messenger.clients import storage
@@ -246,15 +247,16 @@ def _has_reactions(raw) -> bool:
     return any(raw.get(key) for key in ("reaction_counts", "reaction_groups", "latest_reactions"))
 
 
-def _custom_type(raw) -> str:
-    extra = raw.get("extraData") or raw.get("extra_data") or {}
-    return (
-        raw.get("custom_type")
-        or raw.get("customType")
-        or extra.get("customType")
-        or extra.get("custom_type")
-        or ""
-    )
+def _custom_type(raw) -> tuple[str, object]:
+    """
+    (`custom_type` для сохранения, исходное значение). У сообщений с флагом isSystem значение
+    пришло из extraData клиента, поэтому сохраняется только известный тип из `ALLOWED_TYPES`;
+    иначе "" (исходное значение — в extra_data["stream_custom_type"]).
+    """
+    value = _extra_value(raw, "custom_type", "customType")
+    if isinstance(value, str) and value in ALLOWED_TYPES:
+        return value, value
+    return "", value
 
 
 def _waveform(values):
@@ -411,9 +413,11 @@ class _ChannelImporter:
         custom_type = ""
         if is_system:
             message_type = Message.Type.SYSTEM  # sender=None — признак системного сообщения
-            custom_type = _custom_type(raw)
+            custom_type, raw_custom_type = _custom_type(raw)
             if custom_type:
                 extra_data["customType"] = custom_type
+            elif raw_custom_type not in (None, ""):
+                extra_data["stream_custom_type"] = raw_custom_type
             client_name = _extra_value(raw, "client_name", "clientName")
             specialist_name = _extra_value(raw, "specialist_name", "specialistName")
             if client_name is not None:
