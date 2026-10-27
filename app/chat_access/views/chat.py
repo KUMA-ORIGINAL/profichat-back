@@ -12,7 +12,7 @@ from account.services.stream import (
     mute_user_for_user,
     unmute_user_for_user,
 )
-from account.models import ROLE_CLIENT, ROLE_SPECIALIST
+from account.models import ROLE_SPECIALIST
 from common.errors import AppError, ErrorCode
 from messenger.models import ChatMember
 from messenger.services.access import ensure_member
@@ -32,6 +32,7 @@ from ..serializers import (
 from ..services import (
     build_chat_list_item,
     apply_companion_presence,
+    visible_chats,
     chat_list_queryset,
     create_or_get_chat,
     get_should_reply_map,
@@ -313,18 +314,7 @@ class ChatViewSet(
         user = self.request.user
         access_status = self.request.query_params.get("access_status")
 
-        if user.role == ROLE_SPECIALIST:
-            base_qs = Chat.objects.filter(
-                specialist=user,
-                deleted_by_specialist_at__isnull=True,
-            )
-        elif user.role == ROLE_CLIENT:
-            base_qs = Chat.objects.filter(
-                client=user,
-                deleted_by_client_at__isnull=True,
-            )
-        else:
-            base_qs = Chat.objects.none()
+        base_qs = visible_chats(user)
 
         if access_status in ("active", "inactive"):
             has_active_access = Exists(

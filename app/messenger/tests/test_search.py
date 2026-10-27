@@ -2,7 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.db import connection, transaction
+from django.db import connection
 from django.utils import timezone
 
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
@@ -112,7 +112,7 @@ class MessageSearchTests(MessengerTestCase):
         self.assertTrue(body["hasMore"])
 
     def test_query_validation(self):
-        for params in ({}, {"q": ""}, {"q": " a "}):
+        for params in ({}, {"q": ""}, {"q": " a "}, {"q": "я" * 101}):
             response = self.search(**params)
             self.assertEqual(response.status_code, 400, params)
             self.assertEqual(response.json()["code"], "VALIDATION_ERROR", params)
@@ -121,15 +121,46 @@ class MessageSearchTests(MessengerTestCase):
             self.assertEqual(response.status_code, 400, params)
             self.assertEqual(response.json()["code"], "PARAM_INVALID", params)
 
+    def test_query_of_100_chars_is_allowed(self):
+        self.assertEqual(self.search(q="я" * 100).status_code, 200)
+
+    def test_follows_chat_list_role_rule(self):
+        # специалист, который где-то сам клиент: этот чат не в его списке — и в поиске его нет
+        other = User.objects.create_user(username="sp_other_search", password="p", role=ROLE_SPECIALIST)
+        chat_as_client = create_or_get_chat(self.specialist, other)
+        self.make("анализ как клиент", chat=chat_as_client, sender=other)
+        own = self.make("анализ свой")
+        ids = [m["id"] for m in self.search(self.specialist, q="анализ").json()["results"]]
+        self.assertEqual(ids, [own.id])
+
     def test_requires_auth(self):
         self.client.force_authenticate(user=None)
         self.assertEqual(self.client.get(SEARCH_URL, {"q": "ab"}).status_code, 401)
 
-    def test_text_search_can_use_trigram_index(self):
-        qs = Message.objects.filter(type=Message.Type.REGULAR, deleted_at__isnull=True, text__icontains="анализ")
+    def search_plan(self, query):
+        """EXPLAIN реального запроса поиска (scope по чатам, ORDER BY, LIMIT) на «живых» объёмах."""
+        from messenger.services import messages as message_service
+
+        qs = message_service.search_queryset(self.client_user, query)[:21]
         sql, params = qs.query.sql_with_params()
-        with transaction.atomic(), connection.cursor() as cursor:
-            cursor.execute("SET LOCAL enable_seqscan = off")
+        with connection.cursor() as cursor:
             cursor.execute(f"EXPLAIN {sql}", params)
-            plan = " ".join(row[0] for row in cursor.fetchall())
-        self.assertIn("msg_text_upper_trgm_idx", plan)
+            return " ".join(row[0] for row in cursor.fetchall())
+
+    def test_real_search_query_uses_composite_index(self):
+        # объём, при котором планировщику невыгоден перебор всех сообщений чата
+        Message.objects.bulk_create(
+            Message(chat=self.chat, sender=self.specialist, text=f"обычное сообщение номер {i}",
+                    created_at=self.base + timedelta(seconds=i))
+            for i in range(5000)
+        )
+        self.make("редкий анализ крови")
+        with connection.cursor() as cursor:
+            cursor.execute("ANALYZE messenger_message")
+
+        plan = self.search_plan("анализ")
+        self.assertIn("msg_chat_text_upper_trgm_idx", plan, plan)
+        # 2 символа: триграмм нет, но поиск всё равно сужен чатами пользователя (chat_id в условии индекса)
+        plan = self.search_plan("ан")
+        self.assertRegex(plan, r"Index Cond: \(+chat_id = ", plan)
+        self.assertNotIn("Seq Scan on messenger_message", plan)

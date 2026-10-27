@@ -5,12 +5,24 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.utils import timezone
 
-from account.models import InviteDelivery
-from chat_access.models import AccessOrder, BlockedChat, FavoriteChat
+from account.models import ROLE_CLIENT, ROLE_SPECIALIST, InviteDelivery
+from chat_access.models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from common.stream_client import chat_client
 from messenger.models import ChatMember, Message
 
 logger = logging.getLogger(__name__)
+
+
+def visible_chats(user):
+    """
+    Чаты списка пользователя (до фильтров и подгрузки): специалисту — где он специалист, клиенту —
+    где он клиент, без скрытых этой стороной (soft-delete). Это же правило — у поиска сообщений.
+    """
+    if user.role == ROLE_SPECIALIST:
+        return Chat.objects.filter(specialist=user, deleted_by_specialist_at__isnull=True)
+    if user.role == ROLE_CLIENT:
+        return Chat.objects.filter(client=user, deleted_by_client_at__isnull=True)
+    return Chat.objects.none()
 
 
 def get_user_role(chat, user):

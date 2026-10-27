@@ -677,6 +677,24 @@ nginx подключается к сети `profichat-edge` — её созда�
 Миграции применяются при старте backend. GetStream-код на месте: **старое приложение
 работает как раньше** (сообщения, звонки, пуши Stream). Проверки — как A5 (с доменом прода и `-f docker-compose.prod.yml`).
 
+Индекс поиска (`messenger/0006_message_text_trgm_index`) — то же для staging (A4):
+
+- Включает расширения `pg_trgm` и `btree_gin` (нужен владелец базы или суперпользователь;
+  у нас `postgres`) и строит GIN-индекс `CREATE INDEX CONCURRENTLY`: запись не блокируется,
+  но миграция **ждёт завершения всех открытых транзакций**. Не запускайте импорт
+  (`import_getstream`) одновременно с `migrate`.
+- Если миграция прервалась (таймаут, остановка контейнера), остаётся INVALID-индекс; повторный
+  `migrate` сам удаляет его (`DROP INDEX CONCURRENTLY IF EXISTS`) и строит заново.
+- С этим индексом импорт немного медленнее (GIN-индекс обновляется на каждую вставку) — это
+  ожидаемо.
+- Поиск без учёта регистра по кириллице работает, только если `LC_CTYPE` базы — UTF-8-локаль.
+  Проверка (ожидается `en_US.utf8` или другая `*.utf8`, не `C`/`POSIX`):
+
+  ```bash
+  docker compose -f docker-compose.prod.yml exec database \
+    sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "select datctype from pg_database where datname = current_database()"'
+  ```
+
 `MESSENGER_LEGACY_MODE=True` (по умолчанию, раздел 0.3): `shouldReply` и порядок чатов в
 `GET /api/chats/` — как раньше, по GetStream и дате создания; приветствие не шлёт второй пуш.
 Новые поля списка (`lastMessage`, `lastMessageAt`, `unreadCount`) старое приложение не

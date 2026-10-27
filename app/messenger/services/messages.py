@@ -22,6 +22,7 @@ MAX_LIMIT = 100
 SEARCH_DEFAULT_LIMIT = 20
 SEARCH_MAX_LIMIT = 50
 SEARCH_MIN_QUERY_LENGTH = 2
+SEARCH_MAX_QUERY_LENGTH = 100
 
 
 # --- события ---
@@ -343,12 +344,29 @@ def list_messages_around(chat, message_id: int, *, limit: int = DEFAULT_LIMIT) -
 
 # --- поиск ---
 
-def visible_chat_ids(user):
-    """id чатов пользователя, не скрытых им (как в списке чатов) — подзапрос, не список."""
-    return Chat.objects.filter(
-        Q(client=user, deleted_by_client_at__isnull=True)
-        | Q(specialist=user, deleted_by_specialist_at__isnull=True)
-    ).values("pk")
+def search_queryset(user, query: str, *, before: str | None = None):
+    """
+    Выборка поиска (от новых к старым), без LIMIT. Чаты — как в списке (`visible_chats`: по роли,
+    без скрытых). Условия совпадают с составным индексом msg_chat_text_upper_trgm_idx
+    (chat_id, UPPER(text) gin_trgm_ops; type='regular' AND deleted_at IS NULL): поиск сужается
+    чатами пользователя и для 2-символьных запросов, где триграмм нет.
+    """
+    from chat_access.services.chat_list import visible_chats
+
+    qs = (
+        Message.objects.filter(
+            chat_id__in=visible_chats(user).values("pk"),
+            type=Message.Type.REGULAR,
+            deleted_at__isnull=True,
+            text__icontains=query,
+        )
+        .select_related("chat", "reply_to", "call")
+        .prefetch_related("attachments", "reply_to__attachments")
+    )
+    if before:
+        created_at, message_id = decode_cursor(before)
+        qs = qs.filter(_older_q(created_at, message_id))
+    return qs.order_by("-created_at", "-id")
 
 
 def search_messages(
@@ -361,20 +379,7 @@ def search_messages(
     проверен вьюхой. Фильтр `text__icontains` совпадает с выражением индекса msg_text_upper_trgm_idx.
     """
     limit = max(1, min(int(limit), SEARCH_MAX_LIMIT))
-    qs = (
-        Message.objects.filter(
-            chat_id__in=visible_chat_ids(user),
-            type=Message.Type.REGULAR,
-            deleted_at__isnull=True,
-            text__icontains=query,
-        )
-        .select_related("chat", "reply_to", "call")
-        .prefetch_related("attachments", "reply_to__attachments")
-    )
-    if before:
-        created_at, message_id = decode_cursor(before)
-        qs = qs.filter(_older_q(created_at, message_id))
-    items = list(qs.order_by("-created_at", "-id")[: limit + 1])
+    items = list(search_queryset(user, query, before=before)[: limit + 1])
     has_more = len(items) > limit
     items = items[:limit]
     next_cursor = encode_cursor(items[-1]) if items else None

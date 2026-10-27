@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 from django.db.models.functions import Upper
 from django.utils import timezone
 
@@ -55,10 +55,13 @@ class Message(models.Model):
         verbose_name_plural = "Сообщения"
         indexes = [
             models.Index(fields=["chat", "-created_at", "-id"], name="msg_chat_created_id_idx"),
-            # поиск по тексту: Django строит icontains как UPPER(text) LIKE UPPER('%q%') — индекс по тому же выражению
+            # поиск по тексту: Django строит icontains как UPPER(text) LIKE UPPER('%q%') — индекс по тому же
+            # выражению; chat_id первым (btree_gin) — поиск сужается чатами пользователя, в том числе
+            # для 2-символьных запросов, где у pg_trgm нет триграмм
             GinIndex(
+                F("chat"),
                 OpClass(Upper("text"), name="gin_trgm_ops"),
-                name="msg_text_upper_trgm_idx",
+                name="msg_chat_text_upper_trgm_idx",
                 condition=Q(type="regular", deleted_at__isnull=True),
             ),
         ]

@@ -257,9 +257,10 @@ class MessageSearchView(APIView):
     )
     def get(self, request):
         query = (request.query_params.get("q") or "").strip()
-        if len(query) < message_service.SEARCH_MIN_QUERY_LENGTH:
+        min_length, max_length = message_service.SEARCH_MIN_QUERY_LENGTH, message_service.SEARCH_MAX_QUERY_LENGTH
+        if not min_length <= len(query) <= max_length:
             raise AppError(
-                f"Запрос должен быть не короче {message_service.SEARCH_MIN_QUERY_LENGTH} символов",
+                f"Длина запроса — от {min_length} до {max_length} символов",
                 code=ErrorCode.VALIDATION_ERROR,
                 status_code=400,
             )
