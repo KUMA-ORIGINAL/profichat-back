@@ -738,7 +738,7 @@ await dio.put(
 | `chat.unread` | только себе | `{channelId, lastReadMessageId, unreadCount}` | вы пометили чат непрочитанным (раздел 3.7) на любом своём устройстве |
 | `chat.updated` | каждому свой | см. ниже | заметка, `clientCanSendVoice`, избранное, ЧС, оплата/активация тарифа; закрепление — только себе |
 | `chat.user_updated` | собеседникам пользователя | см. ниже | собеседник изменил профиль, график, нерабочие даты |
-| `call.incoming` | вызываемому | `{call, caller: {id, name}}` | входящий звонок |
+| `call.incoming` | вызываемому | `{call, caller: {id, name, photo}}` | входящий звонок |
 | `call.accepted`, `call.declined`, `call.cancelled`, `call.ended`, `call.missed` | обоим | `{call}` | смена статуса звонка ([CALLS_API.md](CALLS_API.md)) |
 
 Обработка `message.new` / `message.updated`: вставить или заменить сообщение по `id`

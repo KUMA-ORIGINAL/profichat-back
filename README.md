@@ -33,5 +33,6 @@
 - [PROFESSION_REQUEST_API.md](PROFESSION_REQUEST_API.md) — заявка на новую профессию (из анкеты и из профиля), модерация
 - [MESSENGER_API.md](MESSENGER_API.md) — мессенджер вместо GetStream: Centrifugo, чаты, сообщения, вложения, события, пуши
 - [CALLS_API.md](CALLS_API.md) — аудио- и видеозвонки (LiveKit, CallKit/PushKit, FCM)
+- [FLUTTER_MIGRATION.md](FLUTTER_MIGRATION.md) — переход Flutter-приложения с GetStream: что удалить, на что заменить, пуши, звонки, грабли, чек-лист
 - [MESSENGER_MIGRATION.md](MESSENGER_MIGRATION.md) — runbook перехода с GetStream: staging, импорт истории, сверка, уборка
 - [FLUTTER_NOTIFICATIONS.md](FLUTTER_NOTIFICATIONS.md) — уведомления: лента и push
