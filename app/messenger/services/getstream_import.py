@@ -288,12 +288,14 @@ class _ChannelImporter:
             ensure_members(self.chat)
 
         read_entries = None
+        member_entries = None
 
         def fetch_channel(options):
-            nonlocal read_entries
+            nonlocal read_entries, member_entries
             response = _with_backoff(channel.query, messages=options)
             if read_entries is None:
                 read_entries = response.get("read") or []
+                member_entries = response.get("members") or []
             return response.get("messages") or []
 
         cursor = _format_ts(since) if since else EPOCH
@@ -307,6 +309,7 @@ class _ChannelImporter:
             return
         self._link_replies()
         self._apply_read_state(read_entries or [])
+        self._apply_pinned_state(member_entries or [])
         self._update_last_message()
 
     def _import_thread(self, channel, parent_id, cursor) -> None:
@@ -688,6 +691,24 @@ class _ChannelImporter:
                     member.last_read_message_id = last_read_id
                     member.unread_count = unread
                     member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
+
+    def _apply_pinned_state(self, member_entries) -> None:
+        """
+        `channel.members[].pinned_at` -> ChatMember.pinned_at, только если у нас чат ещё не закреплён
+        (закрепление/открепление в новом приложении не перетираем). Идемпотентно.
+        """
+        for entry in member_entries:
+            user_id = str(entry.get("user_id") or (entry.get("user") or {}).get("id") or "")
+            try:
+                pinned_at = _parse_ts(entry.get("pinned_at"))
+            except ValueError as exc:
+                self.stats.errors.append(f"{self.chat.channel_id}: pinned_at of {user_id}: {exc}")
+                continue
+            if not user_id.isdigit() or pinned_at is None:
+                continue
+            ChatMember.objects.filter(chat=self.chat, user_id=int(user_id), pinned_at__isnull=True).update(
+                pinned_at=pinned_at
+            )
 
     def _update_last_message(self) -> None:
         last = Message.objects.filter(chat=self.chat).order_by("-created_at", "-id").first()

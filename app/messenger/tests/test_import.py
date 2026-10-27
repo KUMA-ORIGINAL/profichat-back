@@ -520,6 +520,49 @@ class ImportReadStateTestCase(ImportTestCase):
         self.assertEqual(self.chat.last_message_id, newer.pk)
 
 
+class ImportPinnedStateTestCase(ImportTestCase):
+    def member(self, user):
+        return ChatMember.objects.get(chat=self.chat, user=user)
+
+    def pin_in_stream(self, user, value):
+        for member in self.fixture["query_response"]["members"]:
+            if member["user_id"] == str(user.pk):
+                member["pinned_at"] = value
+
+    def test_import_copies_member_pinned_at(self):
+        self.pin_in_stream(self.client_user, "2025-03-02T10:00:00.000000Z")
+
+        self.run_import()
+
+        self.assertEqual(
+            self.member(self.client_user).pinned_at, datetime(2025, 3, 2, 10, 0, tzinfo=dt_timezone.utc)
+        )
+        self.assertIsNone(self.member(self.specialist).pinned_at)
+
+    def test_import_does_not_overwrite_existing_pin_and_is_idempotent(self):
+        ours = timezone.now()
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(pinned_at=ours)
+        self.pin_in_stream(self.client_user, "2025-03-02T10:00:00.000000Z")
+        self.pin_in_stream(self.specialist, "2025-03-03T10:00:00.000000Z")
+
+        self.run_import()
+        self.run_import()
+
+        self.assertEqual(self.member(self.client_user).pinned_at, ours)
+        self.assertEqual(
+            self.member(self.specialist).pinned_at, datetime(2025, 3, 3, 10, 0, tzinfo=dt_timezone.utc)
+        )
+
+    def test_unpinned_in_stream_keeps_ours_and_dry_run_writes_nothing(self):
+        self.pin_in_stream(self.client_user, None)
+        self.run_import()
+        self.assertIsNone(self.member(self.client_user).pinned_at)
+
+        self.pin_in_stream(self.client_user, "2025-03-02T10:00:00.000000Z")
+        self.run_import(dry_run=True)
+        self.assertIsNone(self.member(self.client_user).pinned_at)
+
+
 class ImportIdempotencyTestCase(ImportTestCase):
     def test_import_is_idempotent(self):
         first = self.run_import()
