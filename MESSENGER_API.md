@@ -235,7 +235,7 @@ Centrifugo не хранит историю: события, пришедшие 
 | Поле | Описание |
 |---|---|
 | `userRole` | `client` / `specialist` — роль текущего пользователя в этом чате |
-| `companion` | собеседник: `id`, `firstName`, `lastName`, `middleName` (может быть `""` или `null`), `photo`, `phoneNumber`, `lastActiveAt`, `isOnline` — раздел 2.5 |
+| `companion` | собеседник: `id`, `firstName`, `lastName`, `middleName` (может быть `""` или `null`), `photo` (абсолютный URL `https://<DOMAIN>/media/...` или `null`), `phoneNumber`, `lastActiveAt`, `isOnline` — раздел 2.5 |
 | `lastMessage` | последнее сообщение любого типа (обычное, системное, звонок; удалённое — с пустым текстом и `deletedAt`) или `null` |
 | `lastMessageAt` | время последнего сообщения или `null` |
 | `unreadCount` | непрочитанные **обычные** сообщения собеседника (системные и звонки не считаются) |
@@ -697,7 +697,8 @@ await dio.put(
   повторяется при каждом открытии просроченного чата; цепочка provided → expired → activated → expired
   пишется целиком, а expired → expired — нет. Хранить `lastTariffStatusMessage` в данных канала, как
   делало старое приложение, больше не нужно — сервер решает сам, вызывать можно при каждом открытии;
-- `chatBlocked`: сообщение того же типа уже было в этом чате за последние 10 минут.
+- любой тип, включая тарифные: сообщение того же типа уже было в этом чате за последние
+  10 минут (поэтому быстрое чередование expired → activated → expired тоже не проходит).
 
 Созданное сообщение (`type: "system"`, `senderId: null`) приходит
 обоим как `message.new`; пушей и `unreadCount` не даёт.
@@ -805,10 +806,12 @@ await dio.put(
 `changes` — имена изменённых полей **в snake_case** (как в старом `user_update`):
 поля профиля, `"schedule"` или `"non_working_dates"`.
 
-`user` — **публичный** профиль: `id`, `firstName`, `lastName`, `middleName`, `photo`, `role`,
-`description`, `canAudioCall`, `canVideoCall`, `profession`, `organization`, `education`,
-`workExperience`. Баланса, даты рождения, пола и статуса заявки в нём нет. `phoneNumber` есть
-только в событии **специалисту** об изменении профиля его клиента; клиенты телефон не получают.
+`user` — **публичный** профиль: `id`, `firstName`, `lastName`, `middleName`, `photo`, `phoneNumber`,
+`role`, `description`, `canAudioCall`, `canVideoCall`, `profession`, `organization`, `education`,
+`workExperience`. Баланса, даты рождения, пола и статуса заявки в нём нет. `phoneNumber` заполнен
+только в событии **специалисту** об изменении профиля его клиента; клиентам приходит
+`phoneNumber: null` (ключ есть, как в `companion`). `photo`, `profession.photo` и
+`organization.logo` — абсолютные URL (как `companion.photo`) или `null`.
 `changes` может назвать поле, которого нет в `user` (например, `balance`) — тогда просто
 перезапросите то, что показываете.
 

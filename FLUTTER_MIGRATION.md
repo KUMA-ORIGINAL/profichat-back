@@ -80,7 +80,7 @@ Centrifuge(wsUrl, token, getToken: → тот же эндпоинт) — лич�
 | `WhatsAppQuotedMessage` (`quotedMessage`) | | `replyTo {id, text, senderId, createdAt, deletedAt, attachment}` |
 | `channel.extraData['tariffName' / 'activatedAt' / 'expiresAt']` (`info_about_tariff.dart`, `second_user_box.dart`, `channel_page.dart`) | | `tariff {name, activatedAt, expiresAt}`; активен, если `expiresAt > now` |
 | `extraData['favoriteBy' / 'blockedBy' / 'specialist_note']` | | `isFavorite`, `isBlocked`, `specialistNote` |
-| `channel_system_message_editor.dart` (`/api/stream/send-system-message/` + `updatePartial({'lastTariffStatusMessage'})`), `channel_page.dart` `_trySendSystemMessage` / `onCanSendMessagesChanged` | | `POST /api/chats/<channelId>/system-messages/` `{customType}`. Дедуп делает сервер: повтор того же тарифного статуса подряд не создаётся, поэтому `lastTariffStatusMessage`, `hasSystemMessageOfType` и флаги «уже отправляли в этой сессии» не нужны |
+| `channel_system_message_editor.dart` (`/api/stream/send-system-message/` + `updatePartial({'lastTariffStatusMessage'})`), `channel_page.dart` `_trySendSystemMessage` / `onCanSendMessagesChanged` | | `POST /api/chats/<channelId>/system-messages/` `{customType}`. Дедуп делает сервер: повтор того же тарифного статуса подряд и того же типа чаще раза в 10 минут не создаётся, поэтому `lastTariffStatusMessage`, `hasSystemMessageOfType` и флаги «уже отправляли в этой сессии» не нужны |
 | `edit_profile_screen.dart`, `user_provider.dart` `updateUser` | синхронизация профиля в Stream | ничего: собеседники получают `chat.user_updated` |
 | `ws_providers.dart` `user_update` | | `chat.user_updated` в личном канале (`user`, `changes`, `schedule`, `nonWorkingDates`) |
 | `channel.hide()` | | `POST /api/chats/soft-delete/` (как сейчас) |
@@ -138,6 +138,24 @@ Centrifuge(wsUrl, token, getToken: → тот же эндпоинт) — лич�
    - `core/push/push_router.dart` — `_openChatByChannel` (`client.channel(...).watch()`, см. п. 2).
    Лучше всего свести все четыре первых в `PushRouter.handleTap` — там уже есть ожидание роутера.
 
+   **Плюс отложенный тап (`initial_chat_payload`)** — его тоже перевести, иначе тап по пушу из
+   убитого/фонового приложения теряется:
+   - payload пишут `app/app.dart` (`localStorage.initialChatPayload = …`) и
+     `core/utils/theme/notification_service.dart` (если контекста ещё нет);
+   - читают `navigation_screen.dart` (`localStorage.initialChatPayload`) и
+     `lib/app_lifecycle_reactor.dart` на каждом `resumed`: `_handleChatPayload` **сначала удаляет**
+     сохранённый payload, а потом молча выходит, если нет `channel_id` / `sender_id`. У
+     `chat_message` ключи `channelId` / `senderId`, поэтому реактор съест payload раньше
+     `navigation_screen.dart`, и чат не откроется;
+   - `notification_service.dart` `_handlePayloadNavigation` ветвится по `type == 'message.new'`
+     и `channel_id` и делает `pushNamed('/chat?cid=…')` — такого маршрута в go_router нет.
+
+   Исправление: один потребитель. Оставьте сохранение payload, а разбор везде делайте через
+   `PushPayload.from(data)` (геттеры `channelId` / `senderId` читают оба стиля ключей) и
+   `PushRouter.handleTap`; из `app_lifecycle_reactor.dart` чтение `initial_chat_payload` и
+   `_handleChatPayload` удалите (или вызывайте там тот же `PushRouter.handleTap`), а ветку
+   `message.new` в `notification_service.dart` замените на `PushRouter.handleTap`.
+
 4. **Звонки.** Android: в `firebaseMessagingBackgroundHandler` (`main.dart`) ветку Stream
    (`handleRingingFlowNotifications`) заменить на `type == 'incoming_call'` →
    `FlutterCallkitIncoming.showCallkitIncoming(...)` (код — CALLS_API.md 5.3).
@@ -151,8 +169,13 @@ Centrifuge(wsUrl, token, getToken: → тот же эндпоинт) — лич�
      свой `PKPushRegistry` с `pushRegistry(_:didReceiveIncomingPushWith:...)`, который **сразу**
      показывает CallKit через `flutter_callkit_incoming` (CALLS_API.md 5.1, готовый код).
      Без немедленного CallKit iOS перестаёт доставлять VoIP-пуши.
-   - `willPresent`: типы Stream (`call.ring`, `call.notification`, `message.new`) заменить на
-     `chat_message` — не показывать баннер, только если открыт этот чат (`channelId`).
+   - `willPresent`: ветки типов Stream (`call.ring`, `call.notification`, `message.new`) убрать;
+     для `chat_message` возвращать `completionHandler([])` всегда. Решение «показывать ли баннер»
+     принимает Dart: приложение уже забрало foreground-баннеры себе
+     (`PushChannels.takeOverForegroundBanners()` в `app/app.dart`) и рисует локальное
+     уведомление из `FirebaseMessaging.onMessage` — там и пропускайте `chat_message`, если открыт
+     этот `channelId` (`CurrentChatTracker().isChannelOpen(channelId)`). Нативной стороне знать
+     открытый чат не нужно.
    - VoIP-токен: `FlutterCallkitIncoming.getDevicePushTokenVoIP()` →
      `POST /api/messenger/voip-devices/` `{token, bundleId}` после логина и на каждом старте.
 
@@ -199,7 +222,7 @@ Centrifuge(wsUrl, token, getToken: → тот же эндпоинт) — лич�
   `my_video_call_widget.dart`, `custom_active_call_screen.dart`: `leave()` + `end()`) —
   `POST /api/calls/<id>/end/`, затем `room.disconnect()`.
 - **Входящий из двух источников** (событие + пуш) — один и тот же `callId`: показывайте один экран.
-- **Аватар звонящего** — `caller.photo` / `callerPhoto` (абсолютный URL или нет). CallKit на
+- **Аватар звонящего** — `caller.photo` / `callerPhoto` (абсолютный URL, как `companion.photo`, или `null`). CallKit на
   iOS картинку по URL не показывает — используйте на своём экране звонка.
 - Аудио → видео в том же звонке нельзя (токен не даёт камеру), демонстрации экрана нет.
 - `dropIfAloneInRingingFlow`, `consumeAndAcceptActiveCall` — заменяет `GET /api/calls/active/`.
@@ -243,7 +266,15 @@ Centrifuge(wsUrl, token, getToken: → тот же эндпоинт) — лич�
 13. **Системные сообщения** — `type: "system"`, `senderId: null`, `customType`
     (`tariffProvided`, `tariffExpired`, `tariffActivated`, `chatBlocked`). Флага `isSystem` и
     текстового распознавания (`channel_system_message_editor.dart`) больше нет — при импорте
-    сервер сам превратил такие сообщения в `system`.
+    сервер сам превратил такие сообщения в `system`. **`customType` может быть `""`**: старые
+    системные сообщения без типа (или с неизвестным типом) — рисуйте их обычным системным
+    пузырём с `text`, не прячьте и не пытайтесь угадать тип по тексту.
+17. **Фото — абсолютные URL.** `companion.photo` в `GET /api/chats/`, `user.photo` /
+    `profession.photo` / `organization.logo` в `chat.user_updated`, `caller.photo` и
+    `callerPhoto` в звонках — готовые `https://<DOMAIN>/media/...` (или `null`), ничего не
+    приклеивать. Не путать с полями, которые старое приложение склеивает само (например,
+    `'https://profichat.operator.kg${…photo}'` в `payment_screen.dart` для заказа — это другой
+    эндпоинт, он не менялся).
 14. **Звонки в ленте** — сообщения `type: "call"` с объектом `call` (статус меняется через
     `message.updated`); пуш о новом сообщении для них не приходит.
 15. **Тариф:** клиент без активного тарифа получает `403 TARIFF_REQUIRED` на отправку, вложения
