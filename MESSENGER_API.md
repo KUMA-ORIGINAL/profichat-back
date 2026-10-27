@@ -179,14 +179,15 @@ Centrifugo не хранит историю: события, пришедшие 
 
 ### 2.1. Список — `GET /api/chats/`
 
-Без пагинации, отсортирован по `lastMessageAt` (новые сверху; чаты без сообщений — в конце,
-по дате создания). Чаты, скрытые этой стороной (`soft-delete`), не возвращаются, пока не
+Без пагинации. Сначала **закреплённые вами** чаты (`pinnedAt`, новое закрепление выше),
+затем остальные по `lastMessageAt` (новые сверху; чаты без сообщений — в конце, по дате
+создания). Чаты, скрытые этой стороной (`soft-delete`), не возвращаются, пока не
 придёт новое сообщение. Параметр `?access_status=active|inactive` — фильтр для клиента по
 наличию активного тарифа (как раньше).
 
 > До переключения прода (серверный флаг `MESSENGER_LEGACY_MODE`, см. MESSENGER_MIGRATION.md)
-> список отсортирован по дате создания чата, а `shouldReply` считается по GetStream — так,
-> как ждёт старое приложение. Staging работает уже в новом режиме. Новому приложению не
+> незакреплённые чаты отсортированы по дате создания чата (закреплённые всё равно сверху),
+> а `shouldReply` считается по GetStream — так, как ждёт старое приложение. Staging работает уже в новом режиме. Новому приложению не
 > нужно ничего различать: при необходимости сортируйте локально по `lastMessageAt`.
 
 ```json
@@ -204,6 +205,9 @@ Centrifugo не хранит историю: события, пришедшие 
     "lastMessage": { "...": "объект сообщения (раздел 3.1) или null" },
     "lastMessageAt": "2026-10-26T16:47:36.272523+06:00",
     "unreadCount": 2,
+    "lastReadMessageId": 1230,
+    "companionLastReadMessageId": 1234,
+    "pinnedAt": null,
     "isFavorite": false,
     "isBlocked": false,
     "clientCanSendVoice": true,
@@ -219,6 +223,9 @@ Centrifugo не хранит историю: события, пришедшие 
 | `lastMessage` | последнее сообщение любого типа (обычное, системное, звонок; удалённое — с пустым текстом и `deletedAt`) или `null` |
 | `lastMessageAt` | время последнего сообщения или `null` |
 | `unreadCount` | непрочитанные **обычные** сообщения собеседника (системные и звонки не считаются) |
+| `lastReadMessageId` | ваша позиция «прочитано» (id сообщения) или `null`, если ничего не прочитано: разделитель «Новые сообщения» и переход к первому непрочитанному — первое сообщение **после** него по порядку ленты (`createdAt`, `id`) |
+| `companionLastReadMessageId` | позиция «прочитано» собеседника или `null`: галочки «прочитано» у ваших сообщений до неё включительно (после перезапуска приложения; дальше — по `chat.read`) |
+| `pinnedAt` | когда **вы** закрепили чат (ISO) или `null`; закрепление у каждого участника своё (раздел 2.4) |
 | `shouldReply` | последнее сообщение обычное и от собеседника — «нужно ответить» |
 | `isFavorite` / `isBlocked` | **свои** отметки текущего пользователя («Избранное», «Чёрный список» — только у специалиста; у клиента всегда `false`) |
 | `clientCanSendVoice` | разрешил ли специалист клиенту голосовые |
@@ -248,6 +255,25 @@ Centrifugo не хранит историю: события, пришедшие 
 | `POST /api/chats/soft-delete/` `{"channelId"}` | скрыть чат у себя (специалист). Новое сообщение вернёт чат обеим сторонам |
 | `GET /api/chats/favorites/`, `POST .../favorites/add/`, `.../favorites/remove/` `{"channelId"}` | избранное специалиста → `chat.updated` |
 | `GET /api/chats/blacklist/`, `POST .../blacklist/add/`, `.../blacklist/remove/` `{"channelId"}` | чёрный список специалиста → `chat.updated` |
+
+### 2.4. Закреплённые чаты — `POST /api/chats/pins/add/`, `POST /api/chats/pins/remove/`
+
+Как `membership.pinned_at` в Stream: закрепление своё у каждого участника, доступно и
+клиенту, и специалисту, тариф не нужен. URL и тело — по образцу избранного:
+
+```json
+{"channelId": "chat_12_34"}
+```
+
+- `pins/add/` → `{"channelId": "chat_12_34", "pinnedAt": "2026-10-27T17:45:00+06:00"}`.
+  Повторное закрепление идемпотентно и **сохраняет исходное** `pinnedAt` (чат не поднимается
+  выше других закреплённых).
+- `pins/remove/` → `{"status": "success", "deleted": true}` (`false`, если чат не был закреплён).
+- Оба вызова рассылают `chat.updated` **только вашим** устройствам (поле `pinnedAt`);
+  собеседник ничего не получает.
+- Не участник → `404 CHAT_NOT_FOUND`; нет `channelId` → `400 VALIDATION_ERROR`.
+- Закрепления из GetStream (`membership.pinned_at`) переносит импорт истории, если в нашей
+  БД чат у этого участника ещё не закреплён.
 
 Чёрный список = «не беспокоить» для того, кто внёс чат: ему не приходят пуши о сообщениях
 этого чата, и собеседник не может ему позвонить (`CALL_NOT_ALLOWED`). Отправку сообщений
@@ -445,6 +471,30 @@ while (true) {
 Вызывайте, когда последнее сообщение собеседника стало видно на экране (не на каждое
 сообщение — достаточно последнего видимого).
 
+### 3.7. Пометить непрочитанным — `POST /api/chats/<channelId>/unread/`
+
+```json
+{"messageId": 1234}
+```
+
+```json
+{"channelId": "chat_12_34", "lastReadMessageId": 1230, "unreadCount": 3}
+```
+
+- Делает сообщение `messageId` и всё после него непрочитанным: `lastReadMessageId`
+  становится последним сообщением **строго до** `messageId` по порядку ленты (`createdAt`, `id`;
+  любого типа) или `null`, если раньше сообщений нет. `unreadCount` пересчитывается по тому же
+  правилу, что в `read/` (только обычные сообщения собеседника), — может быть `0`, если после
+  `messageId` только ваши сообщения.
+- **Единственное исключение из правила «прочитано только вперёд»**: следующий `read/`
+  снова двигает позицию вперёд как обычно.
+- Событие `chat.unread` `{channelId, lastReadMessageId, unreadCount}` уходит **только вашим**
+  устройствам. Собеседнику событие не отправляется — его галочки не «откатываются» в реальном
+  времени; новую позицию он увидит в `companionLastReadMessageId` при следующей загрузке
+  списка/чата.
+- Тариф не нужен. Сообщение не из этого чата, неизвестное или удалённое →
+  `404 MESSAGE_NOT_FOUND`; нет `messageId` → `400 VALIDATION_ERROR`.
+
 ---
 
 ## 4. Вложения, фото, видео, голосовые
@@ -582,7 +632,8 @@ await dio.put(
 | `message.new` | обоим | объект сообщения | новое обычное/системное сообщение, приветствие, карточка звонка |
 | `message.updated` | обоим | объект сообщения | правка, удаление, смена статуса звонка в карточке |
 | `chat.read` | обоим | `{channelId, userId, lastReadMessageId}` | `userId` прочитал до `lastReadMessageId` |
-| `chat.updated` | каждому свой | см. ниже | заметка, `clientCanSendVoice`, избранное, ЧС, оплата/активация тарифа |
+| `chat.unread` | только себе | `{channelId, lastReadMessageId, unreadCount}` | вы пометили чат непрочитанным (раздел 3.7) на любом своём устройстве |
+| `chat.updated` | каждому свой | см. ниже | заметка, `clientCanSendVoice`, избранное, ЧС, оплата/активация тарифа; закрепление — только себе |
 | `chat.user_updated` | собеседникам пользователя | см. ниже | собеседник изменил профиль, график, нерабочие даты |
 | `call.incoming` | вызываемому | `{call, caller: {id, name}}` | входящий звонок |
 | `call.accepted`, `call.declined`, `call.cancelled`, `call.ended`, `call.missed` | обоим | `{call}` | смена статуса звонка ([CALLS_API.md](CALLS_API.md)) |
@@ -601,7 +652,14 @@ await dio.put(
 `userId` — собеседник → пометить свои сообщения до `lastReadMessageId` (по порядку ленты)
 прочитанными; `userId` — вы → обнулить счётчик на этом устройстве.
 
-`chat.updated` (у каждого участника свои `isFavorite`/`isBlocked`; `specialistNote` есть
+`chat.unread` (только ваши устройства) — заменить у чата `lastReadMessageId` и `unreadCount`
+значениями из события:
+
+```json
+{"type": "chat.unread", "data": {"channelId": "chat_12_34", "lastReadMessageId": 1230, "unreadCount": 3}}
+```
+
+`chat.updated` (у каждого участника свои `isFavorite`/`isBlocked`/`pinnedAt`; `specialistNote` есть
 **только** в событии специалисту — у клиента ключа нет):
 
 ```json
@@ -613,12 +671,14 @@ await dio.put(
     "tariff": {"name": "Месяц", "activatedAt": "2026-10-26T15:00:00+06:00", "expiresAt": "2026-11-25T15:00:00+06:00"},
     "isFavorite": true,
     "isBlocked": false,
+    "pinnedAt": null,
     "specialistNote": "заметка"
   }
 }
 ```
 
-Значения те же, что в `GET /api/chats/` (`tariff: null`, если оплат не было).
+Значения те же, что в `GET /api/chats/` (`tariff: null`, если оплат не было). Позиции
+«прочитано» в `chat.updated` не входят — их меняют `chat.read` и `chat.unread`.
 
 `chat.user_updated` (замена `user_update` из `ws/chats/`):
 
@@ -670,7 +730,7 @@ await dio.put(
 | `TARIFF_REQUIRED` | 403 | отправка, вложения, звонки | показать экран покупки/продления тарифа |
 | `VOICE_NOT_ALLOWED` | 403 | голосовое | скрыть запись голосового, показать `message` |
 | `MESSAGE_EMPTY` | 400 | отправка, правка | не отправлять пустое |
-| `MESSAGE_NOT_FOUND` | 404 / 400 | правка, удаление, прочитано (404); `replyToId` (400) | обновить ленту |
+| `MESSAGE_NOT_FOUND` | 404 / 400 | правка, удаление, прочитано, непрочитано (404); `replyToId` (400) | обновить ленту |
 | `MESSAGE_EDIT_FORBIDDEN` | 403 | правка, удаление | не показывать действие для чужих/системных |
 | `ATTACHMENT_INVALID` | 400 | отправка с вложениями | загрузить файл заново (новый резерв) |
 | `ATTACHMENT_TOO_LARGE` | 413 | резерв вложения | показать лимит |
@@ -697,7 +757,9 @@ await dio.put(
 | `channel.sendImage/sendFile`, `Attachment(type: 'voiceRecording')` | резерв → `PUT` → `attachmentIds` (раздел 4) |
 | `client.updateMessage` / `client.deleteMessage` | `PATCH` / `DELETE .../messages/<id>/` |
 | Треды (`parentId`, `channel.getReplies`) | нет; ответ — `replyToId` (перенесённые треды стали ответами) |
-| `channel.markRead()`, `channel.state.unreadCount`, `read` других участников | `POST .../read/`, `unreadCount` в списке, событие `chat.read` |
+| `channel.markRead()`, `channel.state.unreadCount`, `read` других участников | `POST .../read/`, `unreadCount`, `lastReadMessageId`, `companionLastReadMessageId` в списке, событие `chat.read` |
+| `channel.markUnread(messageId)` | `POST .../unread/` `{messageId}`, событие `chat.unread` (раздел 3.7) |
+| `channel.pin()` / `unpin()`, `membership.pinnedAt` | `POST /api/chats/pins/add/` / `pins/remove/`, `pinnedAt` в списке (раздел 2.4) |
 | `channel.keyStroke()` / `typing.start` | публикация `{"type":"typing"}` в `chat:<channelId>` (раздел 1.4) |
 | `watcherCount`, `user.online` | presence/join/leave канала `chat:<channelId>` |
 | `channel.extraData`: `tariffName`, `activatedAt`, `expiresAt` | `tariff {name, activatedAt, expiresAt}` в списке и `chat.updated` |
@@ -708,16 +770,16 @@ await dio.put(
 | Пуши Stream о сообщениях | FCM `type: chat_message` (раздел 8) |
 | `ws/chats/<channelId>/` (`user_update`) | событие `chat.user_updated` в личном канале |
 | Звонки Stream Video | [CALLS_API.md](CALLS_API.md) |
-| Реакции, закрепы, пересылка, поиск | пока нет (будут, если понадобятся) |
+| Реакции, закреплённые **сообщения**, пересылка, поиск | пока нет (будут, если понадобятся) |
 
 Чек-лист перехода:
 
 - [ ] Убрать зависимости `stream_chat_flutter*`, инициализацию Stream и `streamToken`.
 - [ ] Подключение к Centrifugo после логина, отключение при выходе; обработчик всех типов из раздела 7.
-- [ ] Список чатов из `GET /api/chats/`, сортировка по `lastMessageAt`, бейджи из `unreadCount`, «нужно ответить» из `shouldReply`.
+- [ ] Список чатов из `GET /api/chats/`, сортировка: закреплённые (`pinnedAt`) сверху, затем по `lastMessageAt`; бейджи из `unreadCount`, «нужно ответить» из `shouldReply`.
 - [ ] Экран чата: история с курсорами, отправка с `clientMsgId` и ретраями, правка, удаление, ответ на сообщение.
 - [ ] Вложения и голосовые через резерв + `PUT`; кэш файлов по `id` вложения.
-- [ ] Прочитано: `POST .../read/` при показе последнего сообщения, галочки по `chat.read`.
+- [ ] Прочитано: `POST .../read/` при показе последнего сообщения, галочки по `companionLastReadMessageId` и `chat.read`, разделитель «Новые» по `lastReadMessageId`; «Пометить непрочитанным» — `POST .../unread/` и `chat.unread`.
 - [ ] «Печатает…» и «в чате» через канал `chat:<channelId>`.
 - [ ] Тариф: доступность ввода по `tariff.expiresAt`, обработка `TARIFF_REQUIRED` / `VOICE_NOT_ALLOWED`.
 - [ ] Системные сообщения через новый эндпоинт; рендер `type: system` по `customType`.
