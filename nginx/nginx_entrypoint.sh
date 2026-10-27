@@ -35,15 +35,29 @@ STAGING_MAIN_HTTP_DIR=/etc/nginx/staging-main-http.d
 
 mkdir -p "$WEBROOT" /etc/nginx/stream-conf.d /etc/nginx/stream-map.d "$MAIN_HTTP_DIR" "$STAGING_MAIN_HTTP_DIR"
 
-# STAGING_DOMAIN: только имя хоста, не совпадает с DOMAIN — иначе staging выключен.
+# STAGING_DOMAIN: только имя хоста, и ни одно staging-имя (S, files./rtc./turn.S) не совпадает
+# с именем прода (D, www./files./rtc./turn.D) — иначе staging выключен, прод работает как без него.
+# Серверы staging лежат в conf.d раньше прода по алфавиту: при совпадении server_name nginx
+# отдал бы прод-имя в staging. Совпадение возможно, только если S — одно из имён прода или
+# D заканчивается на .S (files.S = D и т. п.); такие значения отвергаются целиком.
+staging_reject() {
+    echo "[staging] !!! STAGING_DOMAIN='$STAGING_DOMAIN' ОТВЕРГНУТ: $1 — staging ВЫКЛЮЧЕН, прод работает без него. Исправьте STAGING_DOMAIN в .env.prod"
+    STAGING_DOMAIN=
+}
 STAGING_DOMAIN=$(echo "$STAGING_DOMAIN" | tr '[:upper:]' '[:lower:]')
+domain_lower=$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')
 if [ -n "$STAGING_DOMAIN" ]; then
     if ! echo "$STAGING_DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'; then
-        echo "[staging] STAGING_DOMAIN='$STAGING_DOMAIN' — не имя хоста, staging выключен"
-        STAGING_DOMAIN=
-    elif [ "$STAGING_DOMAIN" = "$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')" ]; then
-        echo "[staging] STAGING_DOMAIN совпадает с DOMAIN, staging выключен"
-        STAGING_DOMAIN=
+        staging_reject "не имя хоста"
+    else
+        case "$STAGING_DOMAIN" in
+            "$domain_lower"|"www.$domain_lower"|"files.$domain_lower"|"rtc.$domain_lower"|"turn.$domain_lower")
+                staging_reject "совпадает с именем прода ($DOMAIN, www./files./rtc./turn.)" ;;
+        esac
+        case "$domain_lower" in
+            *".$STAGING_DOMAIN")
+                [ -n "$STAGING_DOMAIN" ] && staging_reject "DOMAIN=$DOMAIN лежит внутри него (имена staging могут совпасть с прод-доменом)" ;;
+        esac
     fi
 fi
 export STAGING_DOMAIN
