@@ -25,7 +25,7 @@ class MessengerTestCase(APITestCase):
     - Celery выполняет задачи синхронно: CELERY_TASK_ALWAYS_EAGER=True (override_settings) и явно в конфигурации
       приложения Celery. Исключения задач не пробрасываются (task_eager_propagates=False), как в проде.
     - Сеть выключена: GetStream (upsert пользователя, создание канала) и Centrifugo замоканы.
-      Публикации в Centrifugo доступны как `self.broadcast_mock`.
+      Публикации в Centrifugo доступны как `self.broadcast_mock`, presence — как `self.presence_mock`.
     """
 
     def setUp(self):
@@ -46,6 +46,10 @@ class MessengerTestCase(APITestCase):
         broadcast_patcher = patch("messenger.clients.centrifugo.broadcast")
         self.broadcast_mock = broadcast_patcher.start()
         self.addCleanup(broadcast_patcher.stop)
+        # presence для `companion.isOnline`: по умолчанию все не в сети
+        presence_patcher = patch("messenger.clients.centrifugo.presence_stats_batch", return_value={})
+        self.presence_mock = presence_patcher.start()
+        self.addCleanup(presence_patcher.stop)
 
         self.client_user = User.objects.create_user(
             username="client_1", password="pass", role=ROLE_CLIENT,

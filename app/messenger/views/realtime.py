@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from common.errors import AppError, ErrorCode
 from messenger.clients import centrifugo
-from messenger.services import access
+from messenger.services import access, presence
 
 
 def _realtime_unavailable():
@@ -28,6 +28,7 @@ class ConnectionTokenView(APIView):
             token, expires_at = centrifugo.connection_token(request.user.pk)
         except centrifugo.CentrifugoError:
             raise _realtime_unavailable()
+        presence.touch(request.user.pk)
         return Response(
             {"token": token, "ws_url": settings.CENTRIFUGO_WS_URL, "expires_at": expires_at}
         )

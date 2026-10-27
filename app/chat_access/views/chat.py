@@ -31,6 +31,7 @@ from ..serializers import (
 )
 from ..services import (
     build_chat_list_item,
+    companion_online_ids,
     chat_list_queryset,
     create_or_get_chat,
     get_should_reply_map,
@@ -112,7 +113,8 @@ class ChatViewSet(
     def list(self, request, *args, **kwargs):
         chats = list(self.get_queryset())
         should_reply_map = get_should_reply_map(chats, request.user)
-        items = [build_chat_list_item(chat, request.user, should_reply_map) for chat in chats]
+        online_ids = companion_online_ids(chats, request.user)
+        items = [build_chat_list_item(chat, request.user, should_reply_map, online_ids) for chat in chats]
 
         page = self.paginate_queryset(items)
         if page is not None:
@@ -126,7 +128,9 @@ class ChatViewSet(
         """Один чат по channel_id (в URL detail-маршрута) в формате списка; только для участника."""
         chat = ensure_member(request.user, pk)
         chat = chat_list_queryset(Chat.objects.filter(pk=chat.pk), request.user).get()
-        item = build_chat_list_item(chat, request.user, get_should_reply_map([chat], request.user))
+        item = build_chat_list_item(
+            chat, request.user, get_should_reply_map([chat], request.user), companion_online_ids([chat], request.user)
+        )
         return Response(ChatListSerializer(item).data)
 
     def perform_create(self, serializer):

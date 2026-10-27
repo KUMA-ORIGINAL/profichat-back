@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from common.errors import AppError, ErrorCode
 from messenger.models import Message
 from messenger.serializers import MessageSerializer
-from messenger.services import access, messages as message_service, read_state
+from messenger.services import access, messages as message_service, presence, read_state
 
 
 class SendMessageRequestSerializer(serializers.Serializer):
@@ -163,6 +163,7 @@ class ChatMessagesView(APIView):
             reply_to_id=data.get("reply_to_id"),
             attachment_ids=data.get("attachment_ids") or [],
         )
+        presence.touch(request.user.pk)
         return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
 
 
@@ -207,6 +208,7 @@ class ChatReadView(APIView):
         serializer = MarkReadRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         member = read_state.mark_read(chat, request.user, serializer.validated_data["last_read_message_id"])
+        presence.touch(request.user.pk)
         return Response(
             {
                 "channel_id": chat.channel_id,
@@ -228,6 +230,7 @@ class ChatUnreadView(APIView):
         serializer = MarkUnreadRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         member = read_state.mark_unread(chat, request.user, serializer.validated_data["message_id"])
+        presence.touch(request.user.pk)
         return Response(
             {
                 "channel_id": chat.channel_id,

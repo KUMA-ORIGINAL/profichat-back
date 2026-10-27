@@ -1,6 +1,7 @@
 import logging
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.utils import timezone
 
@@ -28,10 +29,29 @@ def get_companion(chat, user):
     return None
 
 
-def build_companion(chat, user):
+def get_companion_id(chat, user):
+    return chat.specialist_id if chat.client_id == user.id else chat.client_id
+
+
+def companion_online_ids(chats, user):
+    """Кто из собеседников `chats` в сети — один batch-запрос к Centrifugo (ошибка → никто)."""
+    from messenger.services import presence
+
+    return presence.online_user_ids(get_companion_id(chat, user) for chat in chats)
+
+
+def _last_active_at(companion):
+    try:
+        return companion.messenger_presence.last_active_at
+    except ObjectDoesNotExist:
+        return None
+
+
+def build_companion(chat, user, online_ids=None):
     """
     Собеседник для объекта чата. Телефон — только специалисту этого чата (телефон его клиента);
-    клиенту `phone_number` не отдаётся.
+    клиенту `phone_number` не отдаётся. `is_online` — по `online_ids` (`companion_online_ids`);
+    без него False (например, в `chat.updated`, где собеседник не нужен).
     """
     companion = get_companion(chat, user)
     if companion is None:
@@ -44,6 +64,8 @@ def build_companion(chat, user):
         "middle_name": companion.middle_name,
         "photo": companion.photo,
         "phone_number": str(companion.phone_number) if show_phone else None,
+        "last_active_at": _last_active_at(companion),
+        "is_online": online_ids is not None and companion.id in online_ids,
     }
 
 
@@ -255,7 +277,7 @@ def chat_list_queryset(base_qs, user):
     now = timezone.now()
     my_pinned_at = ChatMember.objects.filter(chat=OuterRef("pk"), user=user).values("pinned_at")[:1]
     return base_qs.annotate(my_pinned_at=Subquery(my_pinned_at)).select_related(
-        "client", "specialist", "last_message", "last_message__reply_to", "last_message__call"
+        "client", "specialist", "client__messenger_presence", "specialist__messenger_presence", "last_message", "last_message__reply_to", "last_message__call"
     ).prefetch_related(
         "last_message__attachments",
         "last_message__reply_to__attachments",
@@ -294,7 +316,7 @@ def chat_list_queryset(base_qs, user):
     ).order_by(*chat_list_ordering())
 
 
-def build_chat_list_item(chat, user, should_reply_map=None):
+def build_chat_list_item(chat, user, should_reply_map=None, online_ids=None):
     invite_delivery = get_latest_invite_delivery(chat, user)
     invite_delivery_payload = None
     if invite_delivery:
@@ -316,7 +338,7 @@ def build_chat_list_item(chat, user, should_reply_map=None):
 
     return {
         "id": chat.id,
-        "companion": build_companion(chat, user),
+        "companion": build_companion(chat, user, online_ids),
         "channel_id": chat.channel_id,
         "created_at": chat.created_at,
         "user_role": get_user_role(chat, user),

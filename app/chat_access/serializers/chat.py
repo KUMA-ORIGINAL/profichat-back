@@ -30,6 +30,8 @@ class ChatCompanionSerializer(serializers.Serializer):
     middle_name = serializers.CharField(allow_null=True)
     photo = serializers.ImageField(allow_null=True)
     phone_number = serializers.CharField(allow_null=True)
+    last_active_at = serializers.DateTimeField(allow_null=True)
+    is_online = serializers.BooleanField()
 
 
 class ChatTariffSerializer(serializers.Serializer):
