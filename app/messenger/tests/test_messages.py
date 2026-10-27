@@ -430,6 +430,116 @@ class ReadStateTests(MessageApiTestCase):
         self.assertEqual(response.status_code, 400)
 
 
+class MarkUnreadTests(MessageApiTestCase):
+    def unread_url(self, chat=None):
+        return f"/api/chats/{(chat or self.chat).channel_id}/unread/"
+
+    def mark_unread(self, user, message_id, chat=None):
+        self.auth(user)
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(self.unread_url(chat), {"messageId": message_id}, format="json")
+
+    def setUp(self):
+        super().setUp()
+        now = timezone.now()
+        self.m1 = self.make_message(sender=self.specialist, text="1", created_at=now)
+        self.m2 = self.make_message(sender=self.client_user, text="2", created_at=now + timedelta(seconds=1))
+        self.m3 = self.make_message(sender=self.specialist, text="3", created_at=now + timedelta(seconds=2))
+        self.m4 = self.make_message(sender=self.specialist, text="4", created_at=now + timedelta(seconds=3))
+        ChatMember.objects.filter(chat=self.chat, user=self.client_user).update(
+            last_read_message_id=self.m4.id, unread_count=0
+        )
+        ChatMember.objects.filter(chat=self.chat, user=self.specialist).update(
+            last_read_message_id=self.m4.id, unread_count=0
+        )
+
+    def test_mark_unread_moves_read_position_back_and_notifies_only_self(self):
+        response = self.mark_unread(self.client_user, self.m3.id)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            response.json(),
+            {"channelId": self.chat.channel_id, "lastReadMessageId": self.m2.id, "unreadCount": 2},
+        )
+        member = self.member(self.client_user)
+        self.assertEqual(member.last_read_message_id, self.m2.id)
+        self.assertEqual(member.unread_count, 2)  # m3, m4 от специалиста
+        [(channels, envelope)] = self.events_of_type("chat.unread")
+        self.assertEqual(channels, [f"personal:{self.client_user.id}"])
+        self.assertEqual(
+            envelope["data"],
+            {"channelId": self.chat.channel_id, "lastReadMessageId": self.m2.id, "unreadCount": 2},
+        )
+        self.assertEqual(self.events_of_type("chat.read"), [])
+        # у собеседника своя позиция не меняется
+        self.assertEqual(self.member(self.specialist).last_read_message_id, self.m4.id)
+
+    def test_mark_unread_uses_created_at_order_not_id(self):
+        # импортированное сообщение: больший id, но раньше m3 по времени — станет «прочитанным до»
+        imported = self.make_message(
+            sender=self.specialist, text="imported", created_at=self.m3.created_at - timedelta(milliseconds=500)
+        )
+        response = self.mark_unread(self.client_user, self.m3.id)
+        self.assertEqual(response.json()["lastReadMessageId"], imported.id)
+        self.assertEqual(response.json()["unreadCount"], 2)
+
+    def test_mark_unread_first_message_resets_to_null(self):
+        response = self.mark_unread(self.client_user, self.m1.id)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.json()["lastReadMessageId"])
+        self.assertEqual(response.json()["unreadCount"], 3)
+        self.assertIsNone(self.member(self.client_user).last_read_message_id)
+
+    def test_mark_read_after_unread_moves_forward_again(self):
+        self.mark_unread(self.client_user, self.m3.id)
+        self.auth(self.client_user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                f"/api/chats/{self.chat.channel_id}/read/", {"lastReadMessageId": self.m3.id}, format="json"
+            )
+        self.assertEqual(response.json()["lastReadMessageId"], self.m3.id)
+        self.assertEqual(response.json()["unreadCount"], 1)
+
+    def test_mark_unread_works_without_tariff(self):
+        # у клиента нет активного тарифа (setUp не активирует) — отметка всё равно работает
+        response = self.mark_unread(self.client_user, self.m3.id)
+        self.assertEqual(response.status_code, 200)
+
+    def test_mark_unread_unknown_or_foreign_message_404(self):
+        other_specialist = User.objects.create_user(username="sp_unread", password="p", role=ROLE_SPECIALIST)
+        other_chat = create_or_get_chat(self.client_user, other_specialist)
+        foreign = Message.objects.create(chat=other_chat, sender=other_specialist, text="x")
+        for message_id in (999999, foreign.id):
+            response = self.mark_unread(self.client_user, message_id)
+            self.assertEqual(response.status_code, 404, message_id)
+            self.assertEqual(response.json()["code"], "MESSAGE_NOT_FOUND")
+        self.assertEqual(self.member(self.client_user).last_read_message_id, self.m4.id)
+
+    def test_mark_unread_deleted_message_404(self):
+        self.m3.deleted_at = timezone.now()
+        self.m3.save(update_fields=["deleted_at"])
+        response = self.mark_unread(self.client_user, self.m3.id)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "MESSAGE_NOT_FOUND")
+
+    def test_mark_unread_requires_message_id_and_membership(self):
+        self.auth(self.client_user)
+        response = self.client.post(self.unread_url(), {}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        stranger = User.objects.create_user(username="stranger_unread", password="p", role=ROLE_CLIENT)
+        response = self.mark_unread(stranger, self.m3.id)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "CHAT_NOT_FOUND")
+
+    def test_companion_sees_new_position_in_rest(self):
+        self.mark_unread(self.client_user, self.m3.id)
+        self.auth(self.specialist)
+        body = self.client.get(f"/api/chats/{self.chat.channel_id}/").json()
+        self.assertEqual(body["lastReadMessageId"], self.m4.id)
+        self.assertEqual(body["companionLastReadMessageId"], self.m2.id)
+
+
 class MessagePushTests(MessageApiTestCase):
     def test_push_sent_to_recipient_with_thread_id(self):
         self.specialist.first_name = "Анна"

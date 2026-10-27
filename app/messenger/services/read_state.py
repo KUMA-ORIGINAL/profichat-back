@@ -59,3 +59,44 @@ def mark_read(chat, user, message_id: int) -> ChatMember:
             {"channel_id": chat.channel_id, "user_id": user.pk, "last_read_message_id": message.id},
         )
     return member
+
+
+def _message_before(chat, message):
+    """Последнее сообщение чата строго до `message` в порядке ленты (created_at, id) или None."""
+    return (
+        Message.objects.filter(chat=chat)
+        .filter(Q(created_at__lt=message.created_at) | Q(created_at=message.created_at, id__lt=message.id))
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+
+def mark_unread(chat, user, message_id: int) -> ChatMember:
+    """
+    «Пометить непрочитанным начиная с сообщения message_id» — явное исключение из правила «только вперёд».
+
+    last_read_message_id = последнее сообщение строго до message_id (None, если его нет),
+    unread_count пересчитывается по общему правилу `unread_count`. Удалённое сообщение — 404.
+    Событие `chat.unread` уходит только своим устройствам; собеседник не уведомляется
+    (его `companionLastReadMessageId` в REST покажет новое значение).
+    """
+    message = Message.objects.filter(chat=chat, pk=message_id, deleted_at__isnull=True).first()
+    if message is None:
+        raise AppError("Сообщение не найдено", code=ErrorCode.MESSAGE_NOT_FOUND, status_code=404)
+
+    with transaction.atomic():
+        member = ChatMember.objects.select_for_update().get(chat=chat, user_id=user.pk)
+        previous = _message_before(chat, message)
+        member.last_read_message_id = previous.id if previous else None
+        member.unread_count = unread_count(chat, user.pk, previous)
+        member.save(update_fields=["last_read_message_id", "unread_count", "updated_at"])
+        events.publish(
+            [user.pk],
+            "chat.unread",
+            {
+                "channel_id": chat.channel_id,
+                "last_read_message_id": member.last_read_message_id,
+                "unread_count": member.unread_count,
+            },
+        )
+    return member

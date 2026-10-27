@@ -37,6 +37,10 @@ class MarkReadRequestSerializer(serializers.Serializer):
     last_read_message_id = serializers.IntegerField()
 
 
+class MarkUnreadRequestSerializer(serializers.Serializer):
+    message_id = serializers.IntegerField()
+
+
 HistoryResponseSerializer = inline_serializer(
     name="MessageHistory",
     fields={
@@ -171,6 +175,27 @@ class ChatReadView(APIView):
         serializer = MarkReadRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         member = read_state.mark_read(chat, request.user, serializer.validated_data["last_read_message_id"])
+        return Response(
+            {
+                "channel_id": chat.channel_id,
+                "last_read_message_id": member.last_read_message_id,
+                "unread_count": member.unread_count,
+            }
+        )
+
+
+@extend_schema(tags=["Messenger"])
+class ChatUnreadView(APIView):
+    """«Пометить непрочитанным» с указанного сообщения (без проверки тарифа)."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary="Mark chat unread", request=MarkUnreadRequestSerializer, responses=ReadResponseSerializer)
+    def post(self, request, channel_id):
+        chat = access.ensure_member(request.user, channel_id)
+        serializer = MarkUnreadRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        member = read_state.mark_unread(chat, request.user, serializer.validated_data["message_id"])
         return Response(
             {
                 "channel_id": chat.channel_id,
