@@ -55,6 +55,7 @@ GET /api/messenger/connection-token/
 
 Токен живёт 1 час. SDK сам запрашивает новый через `getToken` до истечения — вызывайте
 этот же эндпоинт. `503 REALTIME_UNAVAILABLE` — сервер не настроен, повторите позже.
+Запрос токена отмечает вашу активность (`companion.lastActiveAt` у собеседника, раздел 2.5).
 
 ### 1.2. Подключение (Dart, пакет [`centrifuge`](https://pub.dev/packages/centrifuge))
 
@@ -159,7 +160,9 @@ client.removeSubscription(sub);
   группируйте по `user`.
 - В канал чата клиент публикует только `{"type": "typing"}`. Сообщения через Centrifugo
   **не отправляются** — только `POST .../messages/`.
-- Глобального статуса «в сети» нет: присутствие видно только внутри открытого чата.
+- В списке чатов есть снимок «в сети» собеседника (`companion.isOnline`, раздел 2.5), но
+  событий о его подключении/отключении сервер не шлёт. Внутри открытого чата живой статус —
+  presence/join/leave этого канала.
 
 ### 1.5. Переподключение и догрузка
 
@@ -195,7 +198,10 @@ Centrifugo не хранит историю: события, пришедшие 
   {
     "id": 77,
     "channelId": "chat_12_34",
-    "companion": {"id": 34, "firstName": "Анна", "lastName": "Петрова", "photo": null},
+    "companion": {
+      "id": 34, "firstName": "Анна", "lastName": "Петрова", "middleName": "Сергеевна", "photo": null,
+      "phoneNumber": null, "lastActiveAt": "2026-10-26T16:40:00+06:00", "isOnline": true
+    },
     "createdAt": "2026-10-20T14:00:00+06:00",
     "userRole": "client",
     "lastAccessOrder": {"id": 5, "activatedAt": "...", "expiresAt": "...", "tariffType": "...", "paymentStatus": "success"},
@@ -219,7 +225,7 @@ Centrifugo не хранит историю: события, пришедшие 
 | Поле | Описание |
 |---|---|
 | `userRole` | `client` / `specialist` — роль текущего пользователя в этом чате |
-| `companion` | собеседник |
+| `companion` | собеседник: `id`, `firstName`, `lastName`, `middleName` (может быть `""` или `null`), `photo`, `phoneNumber`, `lastActiveAt`, `isOnline` — раздел 2.5 |
 | `lastMessage` | последнее сообщение любого типа (обычное, системное, звонок; удалённое — с пустым текстом и `deletedAt`) или `null` |
 | `lastMessageAt` | время последнего сообщения или `null` |
 | `unreadCount` | непрочитанные **обычные** сообщения собеседника (системные и звонки не считаются) |
@@ -283,6 +289,22 @@ Centrifugo не хранит историю: события, пришедшие 
 сервер **не запрещает**. Клиент не видит, что специалист внёс чат в ЧС (флаг `isBlocked`
 только свой).
 
+### 2.5. Собеседник: телефон, «в сети», последняя активность
+
+| Поле `companion` | Описание |
+|---|---|
+| `phoneNumber` | телефон собеседника (`+996…`) **только если вы — специалист этого чата** (телефон вашего клиента); клиенту всегда `null`. `null` и тогда, когда номера нет |
+| `isOnline` | собеседник сейчас подключён к WebSocket (есть хотя бы одно соединение в его `personal:<id>`). **Снимок на момент запроса** |
+| `lastActiveAt` | последняя активность собеседника (ISO) или `null`, если он ещё не заходил в новое приложение. Обновляется не чаще раза в минуту: при запросе `connection-token`, отправке сообщения, `read/` и `unread/`. Пользователь, который только читает, обновляет его не реже раза в час (продление токена) |
+
+- Событий «появился/ушёл» нет. Обновляйте статус перезапросом `GET /api/chats/` (например,
+  при возврате на экран списка, после переподключения) или `GET /api/chats/<channelId>/` при
+  открытии чата; внутри открытого чата — presence/join/leave канала `chat:<channelId>` (раздел 1.4).
+- Если Centrifugo недоступен, список всё равно отдаётся, у всех `isOnline: false`.
+- «Был(а) в сети N минут назад» показывайте по `lastActiveAt`, когда `isOnline: false`.
+- В `chat.updated` собеседника нет. `chat.user_updated` по-прежнему несёт профиль собеседника
+  целиком (как `GET /api/users/me/`, в том числе `middleName`).
+
 ---
 
 ## 3. Сообщения
@@ -300,7 +322,11 @@ Centrifugo не хранит историю: события, пришедшие 
   "type": "regular",
   "customType": "",
   "text": "Здравствуйте",
-  "replyTo": {"id": 1200, "senderId": 12, "text": "Вопрос", "type": "regular"},
+  "replyTo": {
+    "id": 1200, "senderId": 12, "text": "Вопрос", "type": "regular",
+    "createdAt": "2026-10-26T16:40:00+06:00", "deletedAt": null,
+    "attachment": {"id": "9a1b…", "kind": "image", "fileName": "photo.jpg", "url": "https://files.<DOMAIN>/…"}
+  },
   "attachments": [
     {
       "id": "0c4e9b1a-6f0e-4a8b-9a51-1c3a2f6f1e77",
@@ -329,7 +355,7 @@ Centrifugo не хранит историю: события, пришедшие 
 | `type` | `regular` — обычное; `system` — системное (`senderId: null`); `call` — карточка звонка (`senderId` = звонящий, `text: ""`, объект в `call`, см. [CALLS_API.md](CALLS_API.md)) |
 | `customType` | у системных: `tariffProvided`, `tariffExpired`, `tariffActivated`, `chatBlocked`; иначе `""` |
 | `text` | текст; у удалённого — `""` |
-| `replyTo` | краткая копия сообщения, на которое ответили (`text` у удалённого — `""`), или `null` |
+| `replyTo` | краткая копия сообщения, на которое ответили, или `null`: `id`, `senderId`, `text`, `type`, `createdAt`, `deletedAt`, `attachment`. `attachment` — первое вложение (по порядку отправки) `{id, kind, fileName, url}` или `null`; `url` — такая же ссылка на час, как у вложений. У удалённого — `text: ""`, `deletedAt` заполнен, `attachment: null` (показывайте «Сообщение удалено», как у обычных сообщений) |
 | `attachments` | вложения по порядку отправки; у удалённого — `[]` |
 | `extraData` | у системных: `{"customType", "clientName", "specialistName"}`; у обычных — `{}`. У перенесённых из GetStream могут быть служебные ключи (`streamUserId`, `streamReplyToId`, `streamAttachments`, `streamType`) — их можно игнорировать. В `streamAttachments` лежат вложения Stream, которые не удалось перенести (giphy, неизвестный тип; с `importFailedIndex` — файл не скачался при импорте) |
 | `editedAt` | время последней правки или `null` («изменено») |
@@ -359,6 +385,7 @@ Centrifugo не хранит историю: события, пришедшие 
 | `before=<cursor>` | страница старее курсора (листание вверх), от новых к старым |
 | `after=<cursor>` | страница новее курсора (догрузка после переподключения), **от старых к новым** |
 | `limit` | 1–100, по умолчанию 50 (больше 100 — обрежется до 100) |
+| `around=<messageId>` | окно **вокруг сообщения** (переход к цитате, к результату поиска) — ответ другой формы, см. ниже |
 
 ```json
 {
@@ -394,6 +421,29 @@ while (true) {
 
 Ошибки: битый курсор, `before` и `after` вместе, `limit` < 1 или не число →
 `400 PARAM_INVALID`; не участник → `404 CHAT_NOT_FOUND`. История видна и без тарифа.
+
+**Окно вокруг сообщения — `?around=<messageId>&limit=<N>`.** До `limit` сообщений, включая
+само `messageId`: половина старее, половина новее (при чётном `limit` старых на одно
+больше). Если с одной стороны сообщений не хватает, окно добирается с другой.
+
+```json
+{
+  "results": [ { "...": "сообщения от новых к старым, как без курсора" } ],
+  "hasMoreBefore": true,
+  "hasMoreAfter": false,
+  "beforeCursor": "MjAyNi0xMC0yNlQxMDo0Mzo…",
+  "afterCursor": "MjAyNi0xMC0yNlQxMDo1MDo…"
+}
+```
+
+- `beforeCursor` — курсор **самого старого** сообщения окна: дальше вверх —
+  `?before=<beforeCursor>` (`hasMoreBefore` — есть ли там что-то).
+- `afterCursor` — курсор **самого нового**: дальше вниз — `?after=<afterCursor>` (от старых к
+  новым); `hasMoreAfter: false` — окно уже доходит до конца чата.
+- Дальше листайте обычными страницами (`nextCursor`, `hasMore`).
+- Сообщение может быть любого типа, в том числе удалённое.
+- Ошибки: сообщения нет в этом чате → `404 MESSAGE_NOT_FOUND`; `around` не число или вместе с
+  `before`/`after` → `400 PARAM_INVALID`.
 
 ### 3.3. Отправка — `POST /api/chats/<channelId>/messages/`
 
@@ -504,6 +554,26 @@ while (true) {
   списка/чата.
 - Тариф не нужен. Сообщение не из этого чата, неизвестное или удалённое →
   `404 MESSAGE_NOT_FOUND`; нет `messageId` → `400 VALIDATION_ERROR`.
+
+### 3.8. Поиск — `GET /api/messages/search/?q=<текст>`
+
+| Параметр | Описание |
+|---|---|
+| `q` | искомая подстрока, без учёта регистра; пробелы по краям обрезаются; минимум 2 символа |
+| `limit` | 1–50, по умолчанию 20 (больше 50 — обрежется до 50) |
+| `before=<cursor>` | следующая страница (`nextCursor` предыдущего ответа) |
+
+Ответ — как у истории: `{results, hasMore, nextCursor}`, результаты **от новых к старым** по
+(`createdAt`, `id`) сразу по всем чатам. Каждый результат — обычный объект сообщения (раздел
+3.1), чат — в его `channelId`. Чтобы открыть найденное в ленте, загрузите окно
+`GET /api/chats/<channelId>/messages/?around=<id>` (раздел 3.2).
+
+- Ищутся только **обычные** неудалённые сообщения (без системных и карточек звонков) в ваших
+  чатах, кроме скрытых вами (`soft-delete`) — как в списке чатов. Имена файлов вложений не ищутся.
+- `%` и `_` в запросе — обычные символы.
+- Тариф не нужен.
+- Ошибки: `q` короче 2 символов или нет → `400 VALIDATION_ERROR`; битый курсор, `limit` < 1
+  или не число → `400 PARAM_INVALID`.
 
 ---
 
@@ -740,14 +810,14 @@ await dio.put(
 | `TARIFF_REQUIRED` | 403 | отправка, вложения, звонки | показать экран покупки/продления тарифа |
 | `VOICE_NOT_ALLOWED` | 403 | голосовое | скрыть запись голосового, показать `message` |
 | `MESSAGE_EMPTY` | 400 | отправка, правка | не отправлять пустое |
-| `MESSAGE_NOT_FOUND` | 404 / 400 | правка, удаление, прочитано, непрочитано (404); `replyToId` (400) | обновить ленту |
+| `MESSAGE_NOT_FOUND` | 404 / 400 | правка, удаление, прочитано, непрочитано, история `around` (404); `replyToId` (400) | обновить ленту |
 | `MESSAGE_EDIT_FORBIDDEN` | 403 | правка, удаление | не показывать действие для чужих/системных |
 | `ATTACHMENT_INVALID` | 400 | отправка с вложениями | загрузить файл заново (новый резерв) |
 | `ATTACHMENT_TOO_LARGE` | 413 | резерв вложения | показать лимит |
 | `CHAT_NOT_FOUND` | 404 | всё под `chats/<channelId>/` | чата нет или вы не участник |
-| `PARAM_INVALID` | 400 | история (`before`/`after`/`limit`) | сбросить курсор, загрузить с начала |
+| `PARAM_INVALID` | 400 | история (`before`/`after`/`around`/`limit`), поиск (`before`/`limit`) | сбросить курсор, загрузить с начала |
 | `REALTIME_UNAVAILABLE` | 503 | токены Centrifugo, звонки | повторить позже |
-| `VALIDATION_ERROR` | 400 | любые тела запросов | ошибки по полям в `errors` |
+| `VALIDATION_ERROR` | 400 | любые тела запросов; поиск с `q` короче 2 символов | ошибки по полям в `errors` |
 
 Коды звонков (`CALL_*`) — в [CALLS_API.md](CALLS_API.md). Полный список —
 [API_ERROR_CODES.md](API_ERROR_CODES.md).
@@ -771,7 +841,11 @@ await dio.put(
 | `channel.markUnread(messageId)` | `POST .../unread/` `{messageId}`, событие `chat.unread` (раздел 3.7) |
 | `channel.pin()` / `unpin()`, `membership.pinnedAt` | `POST /api/chats/pins/add/` / `pins/remove/`, `pinnedAt` в списке (раздел 2.4) |
 | `channel.keyStroke()` / `typing.start` | публикация `{"type":"typing"}` в `chat:<channelId>` (раздел 1.4) |
-| `watcherCount`, `user.online` | presence/join/leave канала `chat:<channelId>` |
+| `watcherCount` | presence/join/leave канала `chat:<channelId>` |
+| `user.online`, `user.lastActive` | `companion.isOnline`, `companion.lastActiveAt` в списке/чате (снимок, раздел 2.5); в открытом чате — presence `chat:<channelId>` |
+| `client.search(...)` | `GET /api/messages/search/?q=` (раздел 3.8) |
+| загрузка вокруг сообщения (`idAround`), переход к цитате | `?around=<messageId>` (раздел 3.2) |
+| `quotedMessage` (время, вложение, удалено) | `replyTo.createdAt`, `replyTo.attachment`, `replyTo.deletedAt` |
 | `channel.extraData`: `tariffName`, `activatedAt`, `expiresAt` | `tariff {name, activatedAt, expiresAt}` в списке и `chat.updated` |
 | `channel.extraData`: `favoriteBy`, `blockedBy`, `specialist_note` | `isFavorite`, `isBlocked` (свои), `specialistNote` (специалисту) |
 | `channel.mute()` / `client.muteUser` | ничего: ЧС на сервере сам отключает пуши |
@@ -780,7 +854,7 @@ await dio.put(
 | Пуши Stream о сообщениях | FCM `type: chat_message` (раздел 8) |
 | `ws/chats/<channelId>/` (`user_update`) | событие `chat.user_updated` в личном канале |
 | Звонки Stream Video | [CALLS_API.md](CALLS_API.md) |
-| Реакции, закреплённые **сообщения**, пересылка, поиск | пока нет (будут, если понадобятся) |
+| Реакции, закреплённые **сообщения**, пересылка | пока нет (будут, если понадобятся) |
 
 Чек-лист перехода:
 
@@ -790,7 +864,8 @@ await dio.put(
 - [ ] Экран чата: история с курсорами, отправка с `clientMsgId` и ретраями, правка, удаление, ответ на сообщение.
 - [ ] Вложения и голосовые через резерв + `PUT`; кэш файлов по `id` вложения.
 - [ ] Прочитано: `POST .../read/` при показе последнего сообщения, галочки по `companionLastReadMessageId` и `chat.read`, разделитель «Новые» по `lastReadMessageId`; «Пометить непрочитанным» — `POST .../unread/` и `chat.unread`.
-- [ ] «Печатает…» и «в чате» через канал `chat:<channelId>`.
+- [ ] «Печатает…» и «в чате» через канал `chat:<channelId>`; «в сети» / «был(а) в сети» в списке — `companion.isOnline` / `lastActiveAt`.
+- [ ] Поиск по сообщениям (`messages/search/`) и переход к найденному/цитате через `?around=`.
 - [ ] Тариф: доступность ввода по `tariff.expiresAt`, обработка `TARIFF_REQUIRED` / `VOICE_NOT_ALLOWED`.
 - [ ] Системные сообщения через новый эндпоинт; рендер `type: system` по `customType`.
 - [ ] Пуши `chat_message` (открыть чат) и звонки по [CALLS_API.md](CALLS_API.md).
