@@ -1,0 +1,258 @@
+# STAGING-стенд на том же сервере, что и прод (MESSENGER_MIGRATION.md, раздел A).
+#
+#   docker compose -f docker-compose.staging.yml <команда>
+#
+# Безопасность:
+# - `name:` ниже фиксирует имя проекта: контейнеры, тома и сеть staging называются
+#   profichat-staging_*, независимо от каталога и забытого `-p`. Прод-проект (имя каталога
+#   прода, docker-compose.prod.yml) этим файлом не затрагивается.
+# - Своего nginx нет: 80/443 держит прод-nginx. Он видит staging только через внешнюю сеть
+#   profichat-edge (её создаёт docker-compose.prod.yml) и только когда в .env.prod задан
+#   STAGING_DOMAIN. В profichat-edge отсюда подключены лишь staging-backend, staging-centrifugo,
+#   staging-minio и staging-static — с префиксом в имени сервиса: в общей сети не должно быть
+#   имён backend/centrifugo/minio, иначе DNS Docker отдал бы прод-nginx и staging-контейнер.
+# - Наружу не публикуется ни один порт, кроме портов LiveKit в сети хоста (17881/tcp,
+#   17882/udp, 13478/udp) и staging-redis на 127.0.0.1:16379 (для LiveKit).
+# - У каждого сервиса лимиты CPU/памяти (deploy.resources.limits), чтобы staging и импорт не
+#   отняли ресурсы у прода. Подбор — MESSENGER_MIGRATION.md, A1; `docker stats` показывает
+#   фактическое потребление и лимит.
+#
+# Код берётся из ./app ЭТОГО checkout-а (bind mount) — staging разворачивается в отдельном
+# каталоге со своей веткой, не в каталоге прода.
+name: profichat-staging
+
+x-backend-common: &backend-common
+  build:
+    context: app
+    dockerfile: Dockerfile.prod
+  env_file:
+    - .env.staging
+  restart: unless-stopped
+  # LiveKit staging — в сети хоста на 17880: LIVEKIT_API_URL=http://host.docker.internal:17880
+  extra_hosts:
+    - 'host.docker.internal:host-gateway'
+  depends_on:
+    database:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  staging-backend:
+    <<: *backend-common
+    expose:
+      - 8000
+    volumes:
+      - ./app:/app
+      - static_volume:/app/static
+      - media_volume:/app/media
+    networks:
+      - default
+      - edge
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  # /static/ и /media/ staging: прод-nginx не может смонтировать тома другого проекта, поэтому
+  # их раздаёт отдельный nginx со стандартным конфигом (root /usr/share/nginx/html).
+  staging-static:
+    image: nginx:1.26.0
+    restart: unless-stopped
+    volumes:
+      - static_volume:/usr/share/nginx/html/static:ro
+      - media_volume:/usr/share/nginx/html/media:ro
+    networks:
+      - edge
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
+  database:
+    image: postgres:16
+    env_file: .env.staging
+    restart: unless-stopped
+    volumes:
+      - database-storage:/var/lib/postgresql/data
+    healthcheck:
+      test: [ 'CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}' ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  redis:
+    image: redis
+    restart: unless-stopped
+    # только для staging-LiveKit (сеть хоста); прод-Redis — 127.0.0.1:6379
+    ports:
+      - '127.0.0.1:16379:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --replicaof no one --maxmemory-policy noeviction
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli ping | grep PONG" ]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  staging-centrifugo:
+    image: centrifugo/centrifugo:v6.10.2
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        export CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY="$$CENTRIFUGO_TOKEN_SECRET"
+        CENTRIFUGO_HTTP_API_KEY="$$CENTRIFUGO_API_KEY";
+        unset CENTRIFUGO_TOKEN_SECRET CENTRIFUGO_API_KEY CENTRIFUGO_WS_URL CENTRIFUGO_API_URL;
+        exec centrifugo --config /centrifugo/config.json
+    # redis://redis:6379/4 из конфига — это staging-redis (в сети default проекта staging)
+    volumes:
+      - ./centrifugo/config.json:/centrifugo/config.json:ro
+    expose:
+      - 8000
+    networks:
+      - default
+      - edge
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  staging-minio:
+    # тот же локально собранный образ, что и в docker-compose.prod.yml (minio/Dockerfile)
+    build: minio
+    image: profichat/minio:RELEASE.2025-10-15T17-29-55Z
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        export MINIO_ROOT_USER="$$S3_ACCESS_KEY" MINIO_ROOT_PASSWORD="$$S3_SECRET_KEY"
+        MINIO_KMS_SECRET_KEY="$$S3_KMS_SECRET_KEY";
+        exec minio server /data --console-address :9001
+    volumes:
+      - minio-data:/data
+    # портов на хосте нет (127.0.0.1:9000/9001 заняты прод-MinIO); консоль —
+    # `docker compose -f docker-compose.staging.yml exec staging-minio mc ...`
+    expose:
+      - 9000
+    networks:
+      - default
+      - edge
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  minio-init:
+    build: minio
+    image: profichat/minio:RELEASE.2025-10-15T17-29-55Z
+    env_file:
+      - .env.staging
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        until mc alias set local http://staging-minio:9000 "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY"; do sleep 1; done;
+        mc mb --ignore-existing "local/$$S3_BUCKET" &&
+        mc anonymous set none "local/$$S3_BUCKET" &&
+        mc encrypt set sse-s3 "local/$$S3_BUCKET"
+    depends_on:
+      - staging-minio
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    # Как в проде, но конфиг livekit.staging.yaml: порты 17880/17881/17882/13478/15349,
+    # Redis 127.0.0.1:16379. Ключ — свой (LIVEKIT_API_KEY/SECRET из .env.staging).
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        export LIVEKIT_KEYS="$$LIVEKIT_API_KEY: $$LIVEKIT_API_SECRET";
+        sed "s|__LIVEKIT_TURN_DOMAIN__|$${LIVEKIT_TURN_DOMAIN:?LIVEKIT_TURN_DOMAIN is required}|" /etc/livekit.yaml > /tmp/livekit.yaml;
+        if [ -n "$$LIVEKIT_WEBHOOK_URL" ]; then
+        printf 'webhook:\n  api_key: %s\n  urls:\n    - %s\n' "$$LIVEKIT_API_KEY" "$$LIVEKIT_WEBHOOK_URL" >> /tmp/livekit.yaml;
+        fi;
+        exec /livekit-server --config /tmp/livekit.yaml
+    volumes:
+      - ./livekit/livekit.staging.yaml:/etc/livekit.yaml:ro
+    network_mode: host
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  celery:
+    <<: *backend-common
+    command: celery -A config worker -l info --concurrency 2
+    volumes:
+      - ./app:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 768M
+
+  celery-beat:
+    <<: *backend-common
+    command: celery -A config beat -l info
+    volumes:
+      - ./app:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+networks:
+  # Сеть между прод-nginx и staging. Создаёт её docker-compose.prod.yml (прод от неё не зависит);
+  # здесь — external: staging не поднимется, пока прод хотя бы раз не запущен с этой версией
+  # ("network profichat-edge declared as external, but could not be found").
+  # PROFICHAT_EDGE_NETWORK — только для тестов (временная сеть), на сервере не задавать.
+  edge:
+    name: ${PROFICHAT_EDGE_NETWORK:-profichat-edge}
+    external: true
+
+volumes:
+  database-storage:
+  redis-data:
+  minio-data:
+  static_volume:
+  media_volume:

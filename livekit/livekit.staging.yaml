@@ -1,0 +1,32 @@
+# LiveKit STAGING-стенда (docker-compose.staging.yml) на том же сервере, что и прод.
+# Как livekit.yaml, но все порты сдвинуты (+10000), чтобы не пересекаться с прод-LiveKit
+# в сети хоста, и своя Redis (staging-redis, опубликована только на 127.0.0.1:16379).
+# Ключи — LIVEKIT_KEYS из .env.staging; __LIVEKIT_TURN_DOMAIN__ (turn.<STAGING_DOMAIN>) и
+# webhook подставляет entrypoint в docker-compose.staging.yml.
+port: 17880        # API/сигналинг: наружу не открывать, снаружи — через nginx (rtc.<STAGING_DOMAIN>)
+rtc:
+  tcp_port: 17881  # открыть наружу (tcp)
+  udp_port: 17882  # открыть наружу (udp), один порт (mux)
+  use_external_ip: true
+room:
+  # комнаты создаёт только backend (как в проде)
+  auto_create: false
+redis:
+  # НЕ прод-Redis (127.0.0.1:6379): узлы с общей Redis объединились бы в один кластер с продом
+  address: 127.0.0.1:16379
+  db: 5
+turn:
+  enabled: true
+  domain: __LIVEKIT_TURN_DOMAIN__
+  udp_port: 13478  # открыть наружу (udp)
+  # TURN/TLS: TLS завершает прод-nginx на 443 (SNI turn.<STAGING_DOMAIN> → 127.0.0.1:5351 →
+  # сюда обычным TCP). Наружу не открывать.
+  tls_port: 15349
+  external_tls: true
+  # relay-порты TURN (связь TURN → SFU на этом же хосте, наружу не нужны); у прода диапазон по
+  # умолчанию 30000–40000 — берём свой, чтобы два сервера не выбирали один и тот же порт
+  relay_range_start: 41000
+  relay_range_end: 41999
+
+logging:
+  level: info

@@ -68,6 +68,11 @@ services:
     # LiveKit работает в сети хоста (network_mode: host) — до него через host.docker.internal
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    # default — прод-сервисы; edge — staging на этом же сервере (только при STAGING_DOMAIN в .env.prod,
+    # MESSENGER_MIGRATION.md, раздел A). Без staging в edge никого нет, nginx работает как обычно.
+    networks:
+      - default
+      - edge
     depends_on:
       - backend
       - centrifugo
@@ -196,6 +201,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+networks:
+  # Сеть прод-nginx ↔ staging (docker-compose.staging.yml подключается к ней как к external).
+  # Создаётся и принадлежит проду: прод-деплой не зависит от того, создана ли она вручную.
+  # Кроме nginx, прод-сервисы в неё не входят. PROFICHAT_EDGE_NETWORK — только для тестов.
+  edge:
+    name: ${PROFICHAT_EDGE_NETWORK:-profichat-edge}
 
 volumes:
   database-storage:
