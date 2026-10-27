@@ -14,7 +14,7 @@
 # - Наружу не публикуется ни один порт, кроме портов LiveKit в сети хоста (17881/tcp,
 #   17882/udp, 13478/udp) и staging-redis на 127.0.0.1:16379 (для LiveKit).
 # - У каждого сервиса лимиты CPU/памяти (deploy.resources.limits), чтобы staging и импорт не
-#   отняли ресурсы у прода. Подбор — MESSENGER_MIGRATION.md, A1; `docker stats` показывает
+#   отняли ресурсы у прода. Подбор — MESSENGER_MIGRATION.md, A3; `docker stats` показывает
 #   фактическое потребление и лимит.
 #
 # Код берётся из ./app ЭТОГО checkout-а (bind mount) — staging разворачивается в отдельном
