@@ -132,7 +132,15 @@ class SendMessageTests(MessageApiTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(
             response.json()["replyTo"],
-            {"id": own.id, "senderId": self.client_user.id, "text": "question", "type": "regular"},
+            {
+                "id": own.id,
+                "senderId": self.client_user.id,
+                "text": "question",
+                "type": "regular",
+                "createdAt": events.format_datetime(own.created_at),
+                "deletedAt": None,
+                "attachment": None,
+            },
         )
 
     def test_non_member_gets_404(self):
@@ -292,6 +300,85 @@ class HistoryTests(MessageApiTestCase):
         response = self.get_history(self.client_user)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 1)
+
+
+class HistoryAroundTests(MessageApiTestCase):
+    """`around=<messageId>`: окно вокруг сообщения (переход к ответу, к результату поиска)."""
+
+    def setUp(self):
+        super().setUp()
+        base = timezone.now() - timedelta(hours=1)
+        self.msgs = [
+            self.make_message(sender=self.specialist, text=f"m{i}", created_at=base + timedelta(seconds=i))
+            for i in range(11)
+        ]
+
+    def get_history(self, **params):
+        self.auth(self.client_user)
+        return self.client.get(self.messages_url(), params)
+
+    @staticmethod
+    def texts(body):
+        return [m["text"] for m in body["results"]]
+
+    def test_around_returns_window_centred_on_message_with_both_cursors(self):
+        response = self.get_history(around=self.msgs[5].id, limit=5)
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(self.texts(body), ["m7", "m6", "m5", "m4", "m3"])  # от новых к старым
+        self.assertTrue(body["hasMoreBefore"])
+        self.assertTrue(body["hasMoreAfter"])
+
+        older = self.get_history(before=body["beforeCursor"], limit=2).json()
+        self.assertEqual(self.texts(older), ["m2", "m1"])
+        newer = self.get_history(after=body["afterCursor"], limit=2).json()
+        self.assertEqual(self.texts(newer), ["m8", "m9"])
+
+    def test_around_near_newest_fills_from_older_side(self):
+        body = self.get_history(around=self.msgs[9].id, limit=5).json()
+        self.assertEqual(self.texts(body), ["m10", "m9", "m8", "m7", "m6"])
+        self.assertFalse(body["hasMoreAfter"])
+        self.assertTrue(body["hasMoreBefore"])
+
+    def test_around_near_oldest_fills_from_newer_side(self):
+        body = self.get_history(around=self.msgs[0].id, limit=4).json()
+        self.assertEqual(self.texts(body), ["m3", "m2", "m1", "m0"])
+        self.assertFalse(body["hasMoreBefore"])
+        self.assertTrue(body["hasMoreAfter"])
+
+    def test_around_whole_chat_fits(self):
+        body = self.get_history(around=self.msgs[5].id).json()
+        self.assertEqual(len(body["results"]), 11)
+        self.assertFalse(body["hasMoreBefore"])
+        self.assertFalse(body["hasMoreAfter"])
+        self.assertEqual(body["afterCursor"], message_service.encode_cursor(self.msgs[10]))
+        self.assertEqual(body["beforeCursor"], message_service.encode_cursor(self.msgs[0]))
+
+    def test_around_limit_one_returns_only_target(self):
+        body = self.get_history(around=self.msgs[5].id, limit=1).json()
+        self.assertEqual(self.texts(body), ["m5"])
+        self.assertTrue(body["hasMoreBefore"])
+        self.assertTrue(body["hasMoreAfter"])
+
+    def test_around_message_of_other_chat_or_unknown_is_404(self):
+        other_specialist = User.objects.create_user(username="sp_around", password="p", role=ROLE_SPECIALIST)
+        other_chat = create_or_get_chat(self.client_user, other_specialist)
+        foreign = Message.objects.create(chat=other_chat, sender=other_specialist, text="x")
+        for around in (foreign.id, 999999999):
+            response = self.get_history(around=around)
+            self.assertEqual(response.status_code, 404, around)
+            self.assertEqual(response.json()["code"], "MESSAGE_NOT_FOUND")
+
+    def test_around_invalid_params(self):
+        cursor = message_service.encode_cursor(self.msgs[1])
+        for params in (
+            {"around": "abc"},
+            {"around": self.msgs[1].id, "before": cursor},
+            {"around": self.msgs[1].id, "after": cursor},
+        ):
+            response = self.get_history(**params)
+            self.assertEqual(response.status_code, 400, params)
+            self.assertEqual(response.json()["code"], "PARAM_INVALID", params)
 
 
 class EditDeleteTests(MessageApiTestCase):

@@ -50,6 +50,17 @@ HistoryResponseSerializer = inline_serializer(
     },
 )
 
+HistoryAroundResponseSerializer = inline_serializer(
+    name="MessageHistoryAround",
+    fields={
+        "results": MessageSerializer(many=True),
+        "has_more_before": serializers.BooleanField(),
+        "has_more_after": serializers.BooleanField(),
+        "before_cursor": serializers.CharField(),
+        "after_cursor": serializers.CharField(),
+    },
+)
+
 ReadResponseSerializer = inline_serializer(
     name="ChatReadState",
     fields={
@@ -84,12 +95,19 @@ class ChatMessagesView(APIView):
             OpenApiParameter("before", OpenApiTypes.STR, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("after", OpenApiTypes.STR, OpenApiParameter.QUERY, required=False),
             OpenApiParameter("limit", OpenApiTypes.INT, OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                "around", OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+                description="id сообщения: окно вокруг него (ответ — MessageHistoryAround)",
+            ),
         ],
         responses=HistoryResponseSerializer,
     )
     def get(self, request, channel_id):
         chat = access.ensure_member(request.user, channel_id)
         limit = _parse_limit(request.query_params.get("limit"))
+        around = request.query_params.get("around")
+        if around not in (None, ""):
+            return self._around(request, chat, around, limit)
         items, has_more, next_cursor = message_service.list_messages(
             chat,
             before=request.query_params.get("before") or None,
@@ -103,6 +121,20 @@ class ChatMessagesView(APIView):
                 "next_cursor": next_cursor,
             }
         )
+
+    @staticmethod
+    def _around(request, chat, around, limit):
+        if request.query_params.get("before") or request.query_params.get("after"):
+            raise AppError(
+                "around нельзя передавать вместе с before/after", code=ErrorCode.PARAM_INVALID, status_code=400
+            )
+        try:
+            message_id = int(around)
+        except (TypeError, ValueError):
+            raise AppError("Некорректный around", code=ErrorCode.PARAM_INVALID, status_code=400)
+        window = message_service.list_messages_around(chat, message_id, limit=limit)
+        window["results"] = MessageSerializer(window["results"], many=True).data
+        return Response(window)
 
     @extend_schema(
         summary="Send message",

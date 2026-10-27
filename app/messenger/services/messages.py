@@ -252,6 +252,20 @@ def decode_cursor(cursor: str) -> tuple[datetime, int]:
     return created_at, message_id
 
 
+def _history_queryset(chat):
+    return Message.objects.filter(chat=chat).select_related("chat", "reply_to", "call").prefetch_related(
+        "attachments", "reply_to__attachments"
+    )
+
+
+def _older_q(created_at, message_id):
+    return Q(created_at__lt=created_at) | Q(created_at=created_at, id__lt=message_id)
+
+
+def _newer_q(created_at, message_id):
+    return Q(created_at__gt=created_at) | Q(created_at=created_at, id__gt=message_id)
+
+
 def list_messages(
     chat, *, before: str | None = None, after: str | None = None, limit: int = DEFAULT_LIMIT
 ) -> tuple[list[Message], bool, str | None]:
@@ -265,18 +279,16 @@ def list_messages(
         raise _param_invalid("Нельзя передавать before и after одновременно")
     limit = max(1, min(int(limit), MAX_LIMIT))
 
-    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to", "call").prefetch_related(
-        "attachments", "reply_to__attachments"
-    )
+    qs = _history_queryset(chat)
     if after:
         created_at, message_id = decode_cursor(after)
         qs = qs.filter(
-            Q(created_at__gt=created_at) | Q(created_at=created_at, id__gt=message_id)
+            _newer_q(created_at, message_id)
         ).order_by("created_at", "id")
     else:
         if before:
             created_at, message_id = decode_cursor(before)
-            qs = qs.filter(Q(created_at__lt=created_at) | Q(created_at=created_at, id__lt=message_id))
+            qs = qs.filter(_older_q(created_at, message_id))
         qs = qs.order_by("-created_at", "-id")
 
     items = list(qs[: limit + 1])
@@ -284,3 +296,43 @@ def list_messages(
     items = items[:limit]
     next_cursor = encode_cursor(items[-1]) if items else None
     return items, has_more, next_cursor
+
+
+def list_messages_around(chat, message_id: int, *, limit: int = DEFAULT_LIMIT) -> dict:
+    """
+    Окно истории вокруг сообщения `message_id` (включительно), от новых к старым.
+
+    Половина `limit` — старее, половина — новее; если с одной стороны сообщений меньше, окно
+    добирается с другой. `before_cursor` (самое старое в окне) — для `before=`, `after_cursor`
+    (самое новое) — для `after=`. Сообщение не из этого чата → 404 MESSAGE_NOT_FOUND.
+    """
+    limit = max(1, min(int(limit), MAX_LIMIT))
+    target = _history_queryset(chat).filter(pk=message_id).first()
+    if target is None:
+        raise AppError("Сообщение не найдено", code=ErrorCode.MESSAGE_NOT_FOUND, status_code=404)
+
+    rest = limit - 1
+    # кандидатов берём с запасом: на добор с другой стороны и на флаг hasMore
+    older = list(
+        _history_queryset(chat).filter(_older_q(target.created_at, target.id)).order_by("-created_at", "-id")[: rest + 1]
+    )
+    newer = list(
+        _history_queryset(chat).filter(_newer_q(target.created_at, target.id)).order_by("created_at", "id")[: rest + 1]
+    )
+    newer_count = rest // 2
+    older_count = rest - newer_count
+    if len(newer) < newer_count:
+        older_count += newer_count - len(newer)
+        newer_count = len(newer)
+    if len(older) < older_count:
+        newer_count = min(len(newer), newer_count + older_count - len(older))
+        older_count = len(older)
+
+    items = list(reversed(newer[:newer_count])) + [target] + older[:older_count]
+    return {
+        "results": items,
+        "has_more_before": len(older) > older_count,
+        "has_more_after": len(newer) > newer_count,
+        "before_cursor": encode_cursor(items[-1]),
+        "after_cursor": encode_cursor(items[0]),
+    }
