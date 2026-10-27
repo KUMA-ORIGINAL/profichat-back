@@ -239,6 +239,7 @@ def chat_list_queryset(base_qs, user):
         "client", "specialist", "last_message", "last_message__reply_to", "last_message__call"
     ).prefetch_related(
         "last_message__attachments",
+        "last_message__reply_to__attachments",
         Prefetch(
             "invite_deliveries",
             queryset=InviteDelivery.objects.order_by("-created_at"),

@@ -265,7 +265,9 @@ def list_messages(
         raise _param_invalid("Нельзя передавать before и after одновременно")
     limit = max(1, min(int(limit), MAX_LIMIT))
 
-    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to", "call").prefetch_related("attachments")
+    qs = Message.objects.filter(chat=chat).select_related("chat", "reply_to", "call").prefetch_related(
+        "attachments", "reply_to__attachments"
+    )
     if after:
         created_at, message_id = decode_cursor(after)
         qs = qs.filter(

@@ -12,18 +12,41 @@ def attachment_order_key(attachment) -> tuple:
     return position, attachment.created_at, str(attachment.pk)
 
 
+class ReplyToAttachmentSerializer(AttachmentSerializer):
+    """Краткое первое вложение сообщения, на которое отвечают (превью в цитате)."""
+
+    class Meta(AttachmentSerializer.Meta):
+        fields = ("id", "kind", "file_name", "url")
+        read_only_fields = fields
+
+
 class ReplyToSerializer(serializers.ModelSerializer):
-    """Краткое представление сообщения, на которое отвечают."""
+    """
+    Краткое представление сообщения, на которое отвечают.
+
+    У удалённого — пустой текст и `attachment: null`. Без N+1 в выборках нужен
+    prefetch_related("reply_to__attachments").
+    """
 
     sender_id = serializers.IntegerField(allow_null=True, read_only=True)
     text = serializers.SerializerMethodField()
+    attachment = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ("id", "sender_id", "text", "type")
+        fields = ("id", "sender_id", "text", "type", "created_at", "deleted_at", "attachment")
 
     def get_text(self, obj) -> str:
         return "" if obj.deleted_at else obj.text
+
+    @extend_schema_field(ReplyToAttachmentSerializer(allow_null=True))
+    def get_attachment(self, obj):
+        if obj.deleted_at:
+            return None
+        attachments = obj.attachments.all()
+        if not attachments:
+            return None
+        return ReplyToAttachmentSerializer(min(attachments, key=attachment_order_key)).data
 
 
 class MessageSerializer(serializers.ModelSerializer):
