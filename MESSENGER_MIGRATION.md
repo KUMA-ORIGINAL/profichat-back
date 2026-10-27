@@ -32,7 +32,7 @@ A-записи на тот же сервер, что и `<DOMAIN>`: `files.<DOMA
 `[certbot] не удалось получить сертификат…`, старый сертификат на `<DOMAIN>` продолжит
 работать, а поддомены по https — нет. Исправить DNS и перезапустить nginx.
 
-Для staging на этом же сервере — ещё четыре записи и отдельный сертификат (A2).
+Для staging на этом же сервере — ещё четыре записи и отдельный сертификат (A1).
 
 ### 0.2. Порты и фаервол
 
@@ -44,7 +44,7 @@ A-записи на тот же сервер, что и `<DOMAIN>`: `files.<DOMA
 | 3478/udp | да | LiveKit TURN/UDP |
 | 7880/tcp, 5349/tcp | **нет** — только из docker-сетей | LiveKit API/сигналинг и TURN-слушатель; снаружи доступны через nginx (`rtc.`, `turn.`) |
 | 9000, 9001, 6379 | нет (слушают 127.0.0.1) | MinIO, Redis |
-| 17881/tcp, 17882/udp, 13478/udp (17880, 15349, 16379 — нет) | только пока работает staging | staging-LiveKit (A2) |
+| 17881/tcp, 17882/udp, 13478/udp (17880, 15349, 16379 — нет) | только пока работает staging | staging-LiveKit (A1) |
 
 LiveKit работает в `network_mode: host`, поэтому nginx, backend и celery ходят к нему через
 `host.docker.internal` (шлюз docker). Если на сервере включён `ufw`, разрешите это явно:
@@ -135,11 +135,23 @@ MinIO и mc клонируются с GitHub по тегу `RELEASE.*` и соб
 - **Обновление релиза:** в `minio/Dockerfile` поменять `MINIO_RELEASE` (и при
   необходимости `MC_RELEASE`; теги — github.com/minio/minio/tags, github.com/minio/mc/tags),
   сверить `GO_IMAGE` с директивами `go`/`toolchain` в `go.mod` релиза, затем поменять тег
-  `image: profichat/minio:<релиз>` у `minio` и `minio-init` в обоих compose-файлах (новый тег —
-  сигнал compose пересобрать) и выполнить `up -d --build minio minio-init`.
+  `image: profichat/minio:<релиз>` у `minio` и `minio-init` в `docker-compose.yml` и
+  `docker-compose.prod.yml` и `profichat-staging/minio:<релиз>` в `docker-compose.staging.yml`
+  (новый тег — сигнал compose пересобрать) и выполнить `up -d --build minio minio-init`.
+- Staging собирает тот же Dockerfile под **своим** тегом `profichat-staging/minio:<релиз>`:
+  `up -d --build` staging не перезаписывает образ, на котором работает прод.
 - Том `minio-data`, созданный **старым** образом `minio/minio` (работал от root), новому
   непривилегированному процессу недоступен на запись. Если такой том уже есть:
   `docker compose -f docker-compose.prod.yml run --rm --no-deps --user root --entrypoint chown minio -R 10001:10001 /data`.
+
+### 0.7. Версия Redis закреплена
+
+Раньше `docker-compose.prod.yml` брал плавающий `redis` (latest на момент последнего pull),
+теперь — `redis:8.2` (staging — тот же тег). Redis читает RDB старых версий, но **не новее
+своей**. Перед деплоем B1 сверьте работающую версию:
+`docker compose -f docker-compose.prod.yml exec redis redis-server --version`. Если она новее
+8.2 — поднимите тег в обоих файлах (`docker-compose.prod.yml`, `docker-compose.staging.yml`)
+до неё, иначе Redis не прочитает свой `dump.rdb`.
 
 ---
 
@@ -185,56 +197,22 @@ Redis для LiveKit:    прод 127.0.0.1:6379,                   staging 127.
 > - В staging-базе — копия боевых персональных и медицинских данных: дамп удалить сразу после
 >   восстановления (A4), доступ к staging — как к проду.
 
-### A1. Прод-nginx с поддержкой staging (один раз)
-
-Нужен прод-nginx из этой версии (`STAGING_DOMAIN`, сеть `profichat-edge`). Сеть создаёт сам
-`docker-compose.prod.yml` при запуске nginx — прод-деплой от ручных шагов не зависит.
-
-> **Не создавайте сеть вручную** (`docker network create profichat-edge`): compose прода
-> откажется её использовать — `network profichat-edge was found but has incorrect label
-> com.docker.compose.network`. Если так случилось: `docker network rm profichat-edge`
-> (в ней не должно быть контейнеров) и повторить `up`.
-
-**Прод ещё на старой версии (до B)** — обновить только nginx, не трогая остальные сервисы:
-
-```bash
-cd <каталог прода>
-git fetch origin
-git checkout origin/<ветка> -- nginx docker-compose.prod.yml   # только эти пути
-echo 'STAGING_DOMAIN=staging.<DOMAIN>' >> .env.prod            # GET_CERTS=True — уже стоит
-docker compose -f docker-compose.prod.yml build nginx
-docker compose -f docker-compose.prod.yml up -d --no-deps nginx
-docker compose -f docker-compose.prod.yml logs nginx | grep -E "certbot|\[tls\]|\[staging\]"
-curl -sI https://<DOMAIN>/admin/login/ | head -1                # прод отвечает как раньше
-```
-
-- `--no-deps` обязателен: без него compose поднял бы новые сервисы прода (centrifugo, minio,
-  livekit). До шага B в каталоге прода не запускайте `up -d` без имени сервиса.
-- Это тот же nginx, что выкатывает B1: 443 переходит на SNI-маршрутизацию, сертификат прода
-  перевыпускается с `files./rtc./turn.<DOMAIN>` (п. 0.1). Нет DNS поддоменов прода — в логе
-  `[certbot] не удалось…`, старый сертификат на `<DOMAIN>` работает дальше.
-- Перед B1 вернуть файлы к текущей версии checkout-а (на работающий nginx это не влияет):
-  `git checkout HEAD -- nginx docker-compose.prod.yml`, затем `git pull` как в B1.
-
-**Прод уже на этой версии** — только `STAGING_DOMAIN` и пересоздать nginx:
-
-```bash
-echo 'STAGING_DOMAIN=staging.<DOMAIN>' >> .env.prod
-docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
-```
-
-### A2. DNS, фаервол, сертификат staging
+### A1. DNS, фаервол, сертификат staging (ДО включения `STAGING_DOMAIN`)
 
 **DNS** — четыре A-записи на IP этого же сервера: `staging.<DOMAIN>`,
-`files.staging.<DOMAIN>`, `rtc.staging.<DOMAIN>`, `turn.staging.<DOMAIN>`.
+`files.staging.<DOMAIN>`, `rtc.staging.<DOMAIN>`, `turn.staging.<DOMAIN>`. Дождитесь, пока
+все четыре резолвятся (`dig +short files.staging.<DOMAIN>` и т. д.), и только потом
+переходите к A2: сертификат staging запрашивается при старте прод-nginx.
 
 **Сертификат** — отдельный (`--cert-name staging.<DOMAIN>`, четыре имени). Прод-nginx
 запрашивает его при старте **после** сертификата прода; ошибка только пишется в лог
 (`[certbot] не удалось получить сертификат staging … — прод не затронут`) и не мешает ни
 выпуску, ни продлению прода. Пока сертификата нет, staging работает только по http :80
-(`[staging] … staging только по http :80`). Исправить DNS и перезапустить nginx:
-`docker compose -f docker-compose.prod.yml restart nginx` (в каталоге прода). Фоновый
-`certbot renew` продлевает оба сертификата, хук перечитывает nginx.
+(`[staging] … staging только по http :80`). Повторная попытка — только перезапуском
+прод-nginx (`docker compose -f docker-compose.prod.yml restart nginx` в каталоге прода): это
+несколько секунд простоя прода на 80/443, поэтому — в часы наименьшей активности и не
+чаще нескольких раз в час (лимит Let's Encrypt на неудачные проверки). Фоновый
+`certbot renew` продлевает оба сертификата, хук перечитывает nginx без перезапуска.
 
 **Фаервол** — порты staging-LiveKit (сеть хоста):
 
@@ -255,7 +233,99 @@ ufw allow from 172.16.0.0/12 to any port 17880,15349 proto tcp   # docker-сет
 
 Docker может выдавать сетям и `192.168.0.0/16` — проверьте подсети и при необходимости
 добавьте такое же правило: `docker network inspect profichat-edge profichat-staging_default
--f '{{.Name}} {{(index .IPAM.Config 0).Subnet}}'` (вторая сеть появится после A5).
+-f '{{.Name}} {{(index .IPAM.Config 0).Subnet}}'` (первая сеть появится после A2, вторая — после A5).
+
+### A2. Прод-nginx с поддержкой staging (один раз)
+
+Нужен прод-nginx из этой версии (`STAGING_DOMAIN`, сеть `profichat-edge`). Сеть создаёт сам
+`docker-compose.prod.yml` при запуске nginx — прод-деплой от ручных шагов не зависит.
+
+> **Не создавайте сеть вручную** (`docker network create profichat-edge`): compose прода
+> откажется её использовать — `network profichat-edge was found but has incorrect label
+> com.docker.compose.network`. Если так случилось: `docker network rm profichat-edge`
+> (в ней не должно быть контейнеров) и повторить `up`.
+
+`STAGING_DOMAIN` записывается в `.env.prod` заменой строки или дописыванием с новой строки
+(простой `echo >> .env.prod` приклеил бы значение к последней переменной, если в конце файла
+нет перевода строки, и испортил бы её). Значение — **только** `staging.<DOMAIN>` (или другой
+домен, не пересекающийся с прод-именами): если оно совпадает с `<DOMAIN>`,
+`www./files./rtc./turn.<DOMAIN>` или `<DOMAIN>` лежит внутри него, nginx его отвергает
+(`[staging] !!! STAGING_DOMAIN=… ОТВЕРГНУТ`) и работает без staging.
+
+```bash
+# в каталоге прода; одна и та же функция — для включения (A2) и выключения (A9)
+set_staging_domain() {
+  if grep -q '^STAGING_DOMAIN=' .env.prod; then
+    sed -i "s|^STAGING_DOMAIN=.*|STAGING_DOMAIN=$1|" .env.prod
+  else
+    printf '\nSTAGING_DOMAIN=%s\n' "$1" >> .env.prod
+  fi
+  grep -c '^STAGING_DOMAIN=' .env.prod; grep '^STAGING_DOMAIN=' .env.prod   # ровно одна строка
+}
+```
+
+**Прод ещё на старой версии (до B)** — обновить только nginx, не трогая остальные сервисы:
+
+```bash
+cd <каталог прода>
+cp .env.prod .env.prod.bak-staging                              # для отката
+git fetch origin
+git checkout origin/<ветка> -- nginx docker-compose.prod.yml   # только эти пути
+set_staging_domain staging.<DOMAIN>                             # GET_CERTS=True — уже стоит
+docker compose -f docker-compose.prod.yml build nginx
+docker compose -f docker-compose.prod.yml up -d --no-deps nginx
+docker compose -f docker-compose.prod.yml logs nginx | grep -E "certbot|\[tls\]|\[staging\]"
+curl -sI https://<DOMAIN>/admin/login/ | head -1                # прод отвечает как раньше
+```
+
+- `--no-deps` обязателен: без него compose поднял бы новые сервисы прода (centrifugo, minio,
+  livekit). Делать в часы наименьшей активности: nginx пересоздаётся и при старте ходит в
+  Let's Encrypt.
+- Это тот же nginx, что выкатывает B1: 443 переходит на SNI-маршрутизацию, сертификат прода
+  перевыпускается с `files./rtc./turn.<DOMAIN>` (п. 0.1). Нет DNS поддоменов прода — в логе
+  `[certbot] не удалось…`, старый сертификат на `<DOMAIN>` работает дальше.
+- **Пока идёт A (до B1) каталог прода смешанный**: `nginx/` и `docker-compose.prod.yml` — из
+  новой версии, код и остальное — из старой. Любой деплой прода в это время (хотфикс) —
+  **только с именем сервиса и `--no-deps`**:
+  `git pull` (если конфликтует с этими путями — сначала откат файлов, см. ниже) и
+  `docker compose -f docker-compose.prod.yml up -d --build --no-deps backend celery celery-beat`.
+  Никогда `up -d` / `up -d --build` без списка сервисов — это частичный деплой B.
+- Перед B1 вернуть файлы к текущей версии checkout-а (на работающий nginx это не влияет):
+  `git checkout HEAD -- nginx docker-compose.prod.yml`, затем `git pull` как в B1.
+
+**Откат A2** (staging не нужен или новый nginx ведёт себя не так), в каталоге прода:
+
+```bash
+# 1. staging, если запущен — остановить (A9, шаг 1), иначе сеть profichat-edge не удалится
+# 2. выключить staging и удалить его сертификат, пока работает новый nginx
+set_staging_domain ''
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+docker compose -f docker-compose.prod.yml exec nginx certbot delete --cert-name staging.<DOMAIN> --non-interactive
+# 3. вернуть старые nginx/ и compose, собрать и пересоздать старый nginx
+git checkout HEAD -- nginx docker-compose.prod.yml
+docker compose -f docker-compose.prod.yml build nginx
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+docker network rm profichat-edge                     # старый compose её не знает; пустую — удалить
+# 4. сертификат прода: новый nginx мог перевыпустить его через webroot (authenticator = webroot,
+#    плюс имена files./rtc./turn.). Старый nginx не отдаёт /.well-known/acme-challenge/ из
+#    webroot — продление такого сертификата будет падать. Перевыпустить через плагин nginx:
+docker compose -f docker-compose.prod.yml exec nginx \
+  certbot certonly --nginx --cert-name <DOMAIN> -d <DOMAIN> --non-interactive --force-renewal
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+docker compose -f docker-compose.prod.yml exec nginx certbot renew --dry-run   # должно пройти
+curl -sI https://<DOMAIN>/admin/login/ | head -1
+```
+
+Путь `live/<DOMAIN>` при этом не меняется, старый конфиг nginx продолжает его находить.
+`.env.prod.bak-staging` — копия до A2; после отката её можно удалить.
+
+**Прод уже на этой версии** — только `STAGING_DOMAIN` и пересоздать nginx (в часы
+наименьшей активности):
+
+```bash
+set_staging_domain staging.<DOMAIN>
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
+```
 
 ### A3. Каталог staging, `.env.staging`, лимиты
 
@@ -326,6 +396,11 @@ echo 'COMPOSE_FILE=docker-compose.staging.yml' > .env   # страховка: г
 | `staging-centrifugo` | 0.5 | 256 МБ |
 | `celery-beat` | 0.25 | 256 МБ |
 | `minio-init`, `staging-static` | 0.25 | 128 / 64 МБ |
+
+Кроме лимитов, у всех staging-сервисов (`x-staging-common` в файле): `oom_score_adj: 800` —
+при нехватке памяти на хосте ядро убивает процессы staging раньше прода; `cpu_shares: 256` —
+при борьбе за CPU прод (1024 по умолчанию) получает вчетверо больший вес; логи `json-file`
+не больше 3 × 10 МБ на контейнер.
 
 Сумма — около 5 CPU и 5 ГБ; это потолки, а не резерв: в простое staging берёт много меньше.
 Подбор: посмотреть ядра и свободную память прода (`nproc`, `free -h`,
@@ -481,7 +556,17 @@ tail -f app/import_staging.log
 - запускайте в часы наименьшей активности прода (ночь) и смотрите `docker stats` и время
   ответа прода (`curl -o /dev/null -s -w '%{time_total}\n' https://<DOMAIN>/admin/login/`);
 - место на диске — как в 0.4, но **ещё раз** для staging (прод и staging хранят вложения
-  отдельно): `df -h /var/lib/docker`;
+  отдельно). Перед стартом и каждые полчаса во время импорта:
+
+  ```bash
+  df -h /var/lib/docker                                         # колонки Avail и Use%
+  docker system df -v | grep profichat-staging_minio-data       # сколько уже занял staging
+  ```
+
+  **Правило остановки:** свободно меньше **20 %** диска или меньше **20 ГБ** (что наступит
+  раньше) — немедленно остановить импорт (команда ниже) и освободить место; прод при полном
+  диске падает (база, Redis, MinIO не могут писать). Освободить: `down -v` staging (A9, шаг 1)
+  или расширить диск; продолжать только при запасе выше порога на весь оставшийся объём;
 - остановить в любой момент безопасно (импорт возобновляем):
   `docker compose -f docker-compose.staging.yml restart staging-backend` — процесс импорта
   завершится вместе с контейнером; продолжить — той же командой `exec -d`.
@@ -534,7 +619,7 @@ docker compose ls                                                   # остал
 
 # 2. в каталоге ПРОДА — выключить staging в nginx и удалить его сертификат (до удаления DNS,
 #    иначе фоновый certbot renew будет пытаться продлить staging и писать ошибки)
-sed -i 's/^STAGING_DOMAIN=.*/STAGING_DOMAIN=/' .env.prod
+set_staging_domain ''                     # функция из A2 (замена строки, без echo >>)
 docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate nginx
 docker compose -f docker-compose.prod.yml logs nginx | grep "\[staging\]"   # STAGING_DOMAIN не задан
 docker compose -f docker-compose.prod.yml exec nginx certbot delete --cert-name staging.<DOMAIN> --non-interactive
@@ -552,7 +637,8 @@ rm -rf /srv/profichat-staging-src
 5. DNS: удалить `staging.`, `files.staging.`, `rtc.staging.`, `turn.staging.<DOMAIN>`.
 
 Сеть `profichat-edge` остаётся (её создаёт и использует прод-nginx; пустая — безвредна).
-Образ `profichat/minio` общий с продом — не удалять.
+Образ staging-MinIO удалить: `docker image rm profichat-staging/minio:<релиз>`. Образ
+`profichat/minio:<релиз>` — прода, не трогать.
 
 ---
 
@@ -563,13 +649,13 @@ rm -rf /srv/profichat-staging-src
 DNS, фаервол и `.env.prod` — раздел 0. Затем:
 
 ```bash
-git checkout HEAD -- nginx docker-compose.prod.yml   # если в A1 nginx обновлялся частичным checkout-ом
+git checkout HEAD -- nginx docker-compose.prod.yml   # если в A2 nginx обновлялся частичным checkout-ом
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 nginx подключается к сети `profichat-edge` — её создаёт сам compose прода (вручную не
-создавать, A1). `STAGING_DOMAIN` в `.env.prod` остаётся, пока работает staging (до A9);
+создавать, A2). `STAGING_DOMAIN` в `.env.prod` остаётся, пока работает staging (до A9);
 пустой — nginx как без staging. Команды B–D выполняются **в каталоге прода** с
 `-f docker-compose.prod.yml`, staging (если запущен) они не затрагивают.
 
@@ -608,7 +694,7 @@ tail -f app/import_full.log
 
 ```bash
 sed -i 's/^MESSENGER_LEGACY_MODE=.*/MESSENGER_LEGACY_MODE=False/' .env.prod
-grep -q '^MESSENGER_LEGACY_MODE=' .env.prod || echo 'MESSENGER_LEGACY_MODE=False' >> .env.prod
+grep -q '^MESSENGER_LEGACY_MODE=' .env.prod || printf '\nMESSENGER_LEGACY_MODE=False\n' >> .env.prod
 docker compose -f docker-compose.prod.yml up -d backend celery celery-beat
 docker compose -f docker-compose.prod.yml exec backend python manage.py shell -c \
   "from django.conf import settings; print(settings.MESSENGER_LEGACY_MODE)"   # False
