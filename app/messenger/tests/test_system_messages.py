@@ -299,6 +299,7 @@ class ChatUpdatedEventTestCase(EventsMixin, MessengerTestCase):
                 "tariff": None,
                 "isFavorite": True,
                 "isBlocked": False,
+                "pinnedAt": None,
             },
         )
         self.assertNotIn("specialistNote", client_data)
