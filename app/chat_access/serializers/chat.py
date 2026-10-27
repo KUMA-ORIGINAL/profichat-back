@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
+from common.media import AbsoluteImageField
 from messenger.serializers import MessageSerializer
 from ..models import Chat, AccessOrder, BlockedChat, FavoriteChat
 
@@ -28,7 +29,7 @@ class ChatCompanionSerializer(serializers.Serializer):
     first_name = serializers.CharField(allow_null=True)
     last_name = serializers.CharField(allow_null=True)
     middle_name = serializers.CharField(allow_null=True)
-    photo = serializers.ImageField(allow_null=True)
+    photo = AbsoluteImageField(allow_null=True)
     phone_number = serializers.CharField(allow_null=True)
     last_active_at = serializers.DateTimeField(allow_null=True)
     is_online = serializers.BooleanField()

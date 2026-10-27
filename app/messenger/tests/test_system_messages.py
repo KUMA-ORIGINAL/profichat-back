@@ -8,6 +8,7 @@ from django.utils import timezone
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
 from account.services.stream import DEFAULT_TEXTS
 from account.services.user import broadcast_user_update
+from account.models import ProfessionCategory
 from chat_access.models import BlockedChat, FavoriteChat, Tariff
 from chat_access.services import update_chat_data_from_order
 from chat_access.services.chat_commands import create_or_get_chat
@@ -454,6 +455,24 @@ class UserUpdatedEventTestCase(EventsMixin, MessengerTestCase):
         # Django Channels по-прежнему получает user_update
         self.assertEqual(layer_mock.return_value.group_send.call_count, 2)
 
+    @override_settings(DOMAIN="api.example.com")
+    @patch("account.services.user.get_channel_layer")
+    def test_user_updated_photos_are_absolute(self, layer_mock):
+        layer_mock.return_value.group_send = AsyncMock()
+        profession = ProfessionCategory.objects.create(name="Терапевт", photo="profession_categories/t.png")
+        User.objects.filter(pk=self.specialist.pk).update(photo="user/photos/2026/10/27/s.jpg", profession=profession)
+        self.specialist.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            broadcast_user_update(self.specialist, changes=["photo"])
+
+        [(_, envelope)] = self.events_of_type("chat.user_updated")
+        user = envelope["data"]["user"]
+        self.assertEqual(user["photo"], "https://api.example.com/media/user/photos/2026/10/27/s.jpg")
+        self.assertEqual(user["profession"]["photo"], "https://api.example.com/media/profession_categories/t.png")
+        # старый канал Django Channels — как на main (путь от корня)
+        legacy = layer_mock.return_value.group_send.call_args.args[1]
+        self.assertEqual(legacy["user"]["photo"], "/media/user/photos/2026/10/27/s.jpg")
+
     PRIVATE_KEYS = {"balance", "birthdate", "gender", "applicationStatus", "showInSearch", "inviteGreeting"}
 
     @patch("account.services.user.get_channel_layer")
@@ -488,7 +507,9 @@ class UserUpdatedEventTestCase(EventsMixin, MessengerTestCase):
         [(channels, envelope)] = self.events_of_type("chat.user_updated")
         self.assertEqual(channels, [events.personal_channel(self.client_user.pk)])
         user = envelope["data"]["user"]
-        self.assertNotIn("phoneNumber", user)
+        # ключ есть, как в companion, но телефона клиенту не отдаём
+        self.assertIn("phoneNumber", user)
+        self.assertIsNone(user["phoneNumber"])
         self.assertFalse(self.PRIVATE_KEYS & set(user), user)
         for key in ("id", "firstName", "lastName", "middleName", "photo", "role", "description", "profession",
                     "organization", "education", "workExperience", "canAudioCall", "canVideoCall"):

@@ -2,6 +2,7 @@ import logging
 
 from django.conf import settings
 
+from common.media import absolute_media_url
 from common.notifications import send_data_push, send_push
 from messenger.clients import apns
 from messenger.models import Attachment, Call, ChatMember, Message, VoipDevice
@@ -23,16 +24,8 @@ def sender_display_name(user) -> str:
 
 
 def user_photo_url(user) -> str | None:
-    """
-    Абсолютный URL фото пользователя для событий и пушей, где нет request
-    (`https://<DOMAIN>/media/...`, как companion.photo в REST); None, если фото нет.
-    """
-    if not user.photo:
-        return None
-    url = user.photo.url
-    if url.startswith(("http://", "https://")):
-        return url
-    return f"https://{settings.DOMAIN}{url}"
+    """Абсолютный URL фото пользователя (`https://<DOMAIN>/media/...`, как companion.photo); None, если фото нет."""
+    return absolute_media_url(user.photo)
 
 
 def message_preview(message) -> str:

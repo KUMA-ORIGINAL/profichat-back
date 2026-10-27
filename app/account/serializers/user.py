@@ -1,6 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
+from common.media import AbsoluteImageField
 from .profession_category import ProfessionCategoryMeSerializer
 from .organization import OrganizationShortSerializer
 from ..models import User, Application, Organization, UserEducation, UserWorkplace
@@ -74,28 +75,43 @@ class UserMeSerializer(serializers.ModelSerializer):
         return last_application.status if last_application else None
 
 
+class _PublicProfessionSerializer(ProfessionCategoryMeSerializer):
+    photo = AbsoluteImageField(allow_null=True)
+
+
+class _PublicOrganizationSerializer(OrganizationShortSerializer):
+    logo = AbsoluteImageField(allow_null=True)
+
+
 class ChatUserPublicSerializer(serializers.ModelSerializer):
     """
     Профиль пользователя для собеседников (`chat.user_updated` в Centrifugo).
 
     Без баланса, даты рождения, пола и статуса заявки. Телефон — отдельным сериализатором
-    `ChatUserPublicWithPhoneSerializer` и только для специалистов (телефон их клиента).
+    `ChatUserPublicWithPhoneSerializer` и только для специалистов (телефон их клиента); у остальных
+    `phone_number: null`. Фото и логотипы — абсолютные URL (`common.media`), как companion.photo.
     """
 
-    profession = ProfessionCategoryMeSerializer(read_only=True)
-    organization = OrganizationShortSerializer(read_only=True)
+    photo = AbsoluteImageField(allow_null=True)
+    profession = _PublicProfessionSerializer(read_only=True)
+    organization = _PublicOrganizationSerializer(read_only=True)
     education = UserEducationSerializer(source='educations', many=True, read_only=True)
     work_experience = UserWorkplaceSerializer(source='workplaces', many=True, read_only=True)
+    # ключ есть всегда (как companion.phoneNumber), значение — только у ChatUserPublicWithPhoneSerializer
+    phone_number = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'first_name', 'last_name', 'middle_name', 'photo', 'role', 'description',
+        fields = ('id', 'first_name', 'last_name', 'middle_name', 'photo', 'phone_number', 'role', 'description',
                   'can_audio_call', 'can_video_call', 'education', 'work_experience', 'profession', 'organization')
+
+    def get_phone_number(self, obj) -> str | None:
+        return None
 
 
 class ChatUserPublicWithPhoneSerializer(ChatUserPublicSerializer):
-    class Meta(ChatUserPublicSerializer.Meta):
-        fields = ChatUserPublicSerializer.Meta.fields + ('phone_number',)
+    def get_phone_number(self, obj) -> str | None:
+        return str(obj.phone_number) if obj.phone_number else None
 
 
 class UserMeUpdateSerializer(serializers.ModelSerializer):

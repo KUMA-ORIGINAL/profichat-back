@@ -376,7 +376,8 @@ def search_messages(
     Поиск подстроки (без учёта регистра) в обычных неудалённых сообщениях видимых чатов пользователя.
 
     От новых к старым по (created_at, id), курсор `before` — как в истории. `query` уже очищен и
-    проверен вьюхой. Фильтр `text__icontains` совпадает с выражением индекса msg_text_upper_trgm_idx.
+    проверен вьюхой. Фильтр `chat_id` + `text__icontains` совпадает с индексом msg_chat_text_upper_trgm_idx
+    (GIN: chat, upper(text) gin_trgm_ops).
     """
     limit = max(1, min(int(limit), SEARCH_MAX_LIMIT))
     items = list(search_queryset(user, query, before=before)[: limit + 1])

@@ -412,6 +412,15 @@ class ChatCompanionTests(MessengerTestCase):
             self.assertEqual(companion["middleName"], "Сергеевна")
             self.assertIsNone(companion["phoneNumber"])
 
+    @override_settings(DOMAIN="api.example.com")
+    def test_companion_photo_is_absolute(self):
+        User.objects.filter(pk=self.specialist.pk).update(photo="user/photos/2026/10/27/s.jpg")
+        for retrieve in (False, True):
+            companion = self.companion(self.client_user, retrieve)
+            self.assertEqual(companion["photo"], "https://api.example.com/media/user/photos/2026/10/27/s.jpg")
+        # без фото — null
+        self.assertIsNone(self.companion(self.specialist)["photo"])
+
     def test_companion_without_phone(self):
         User.objects.filter(pk=self.client_user.pk).update(phone_number=None, middle_name="")
         companion = self.companion(self.specialist)
