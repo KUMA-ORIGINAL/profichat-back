@@ -33,6 +33,25 @@ class TokenTests(MessengerTestCase):
         self.assertEqual(response.json()["wsUrl"], "wss://example.test/connection/websocket")
         self.assertIn("expiresAt", response.json())
 
+    @override_settings(
+        MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE=7,
+        MESSENGER_ATTACHMENT_MAX_BYTES={"image": 1, "video": 2, "file": 3, "voice": 4},
+    )
+    def test_connection_token_includes_upload_limits(self):
+        self.auth(self.client_user)
+        response = self.client.get("/api/messenger/connection-token/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["limits"],
+            {
+                "imageMaxBytes": 1,
+                "videoMaxBytes": 2,
+                "fileMaxBytes": 3,
+                "voiceMaxBytes": 4,
+                "maxAttachmentsPerMessage": 7,
+            },
+        )
+
     def test_connection_token_requires_auth(self):
         response = self.client.get("/api/messenger/connection-token/")
         self.assertEqual(response.status_code, 401)

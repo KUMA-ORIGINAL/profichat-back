@@ -49,9 +49,19 @@ GET /api/messenger/connection-token/
 {
   "token": "eyJhbGciOiJIUzI1NiIs...",
   "wsUrl": "wss://<DOMAIN>/connection/websocket",
-  "expiresAt": "2026-10-26T17:47:36.272523+06:00"
+  "expiresAt": "2026-10-26T17:47:36.272523+06:00",
+  "limits": {
+    "imageMaxBytes": 20971520,
+    "videoMaxBytes": 209715200,
+    "fileMaxBytes": 52428800,
+    "voiceMaxBytes": 20971520,
+    "maxAttachmentsPerMessage": 10
+  }
 }
 ```
+
+`limits` — лимиты загрузки из настроек сервера (байты; раздел 4): проверяйте размер и
+количество вложений на клиенте до `upload/`, а не хардкодьте их — значения могут поменяться.
 
 Токен живёт 1 час. SDK сам запрашивает новый через `getToken` до истечения — вызывайте
 этот же эндпоинт. `503 REALTIME_UNAVAILABLE` — сервер не настроен, повторите позже.
@@ -624,6 +634,7 @@ while (true) {
 ```
 
 Лимиты размера: фото 20 МБ, видео 200 МБ, файл 50 МБ, голосовое 20 МБ (МБ = 1024×1024 байт).
+Актуальные значения приходят в `limits` ответа `connection-token` (раздел 1.1).
 
 Ошибки: `403 TARIFF_REQUIRED` (клиент без тарифа), `403 VOICE_NOT_ALLOWED` (голосовое
 запрещено), `413 ATTACHMENT_TOO_LARGE` (`size` больше лимита), `400 VALIDATION_ERROR`,

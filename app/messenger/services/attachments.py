@@ -23,6 +23,18 @@ def _max_bytes(kind) -> int:
     return settings.MESSENGER_ATTACHMENT_MAX_BYTES[kind]
 
 
+def upload_limits() -> dict:
+    """Лимиты загрузки для клиента (отдаются в connection-token): размеры по типам и вложений на сообщение."""
+    max_bytes = settings.MESSENGER_ATTACHMENT_MAX_BYTES
+    return {
+        "image_max_bytes": max_bytes["image"],
+        "video_max_bytes": max_bytes["video"],
+        "file_max_bytes": max_bytes["file"],
+        "voice_max_bytes": max_bytes["voice"],
+        "max_attachments_per_message": settings.MESSENGER_MAX_ATTACHMENTS_PER_MESSAGE,
+    }
+
+
 def create_upload(
     chat,
     user,
