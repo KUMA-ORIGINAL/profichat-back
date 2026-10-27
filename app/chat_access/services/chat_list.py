@@ -28,6 +28,25 @@ def get_companion(chat, user):
     return None
 
 
+def build_companion(chat, user):
+    """
+    Собеседник для объекта чата. Телефон — только специалисту этого чата (телефон его клиента);
+    клиенту `phone_number` не отдаётся.
+    """
+    companion = get_companion(chat, user)
+    if companion is None:
+        return None
+    show_phone = chat.specialist_id == user.id and companion.phone_number
+    return {
+        "id": companion.id,
+        "first_name": companion.first_name,
+        "last_name": companion.last_name,
+        "middle_name": companion.middle_name,
+        "photo": companion.photo,
+        "phone_number": str(companion.phone_number) if show_phone else None,
+    }
+
+
 def get_last_access_order(chat, user):
     if chat.client_id != user.id:
         return None
@@ -297,7 +316,7 @@ def build_chat_list_item(chat, user, should_reply_map=None):
 
     return {
         "id": chat.id,
-        "companion": get_companion(chat, user),
+        "companion": build_companion(chat, user),
         "channel_id": chat.channel_id,
         "created_at": chat.created_at,
         "user_role": get_user_role(chat, user),

@@ -21,6 +21,17 @@ class UserShortSerializer(serializers.ModelSerializer):
         fields = ('id', 'first_name', 'last_name', 'photo')
 
 
+class ChatCompanionSerializer(serializers.Serializer):
+    """Собеседник в объекте чата (`build_companion`): телефон — только специалисту чата."""
+
+    id = serializers.IntegerField()
+    first_name = serializers.CharField(allow_null=True)
+    last_name = serializers.CharField(allow_null=True)
+    middle_name = serializers.CharField(allow_null=True)
+    photo = serializers.ImageField(allow_null=True)
+    phone_number = serializers.CharField(allow_null=True)
+
+
 class ChatTariffSerializer(serializers.Serializer):
     """Последний оплаченный доступ чата (раньше — extraData канала в Stream)."""
 
@@ -30,7 +41,7 @@ class ChatTariffSerializer(serializers.Serializer):
 
 
 class ChatListSerializer(serializers.ModelSerializer):
-    companion = UserShortSerializer()
+    companion = ChatCompanionSerializer(allow_null=True)
     user_role = serializers.CharField()
     last_access_order = AccessOrderShortSerializer(allow_null=True)
     specialist_note = serializers.CharField(allow_null=True)

@@ -374,3 +374,46 @@ class ChatRetrieveTests(MessengerTestCase):
         response = self.client.get(f"/api/chats/{self.chat.channel_id}/")
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["code"], "CHAT_NOT_FOUND")
+
+
+class ChatCompanionTests(MessengerTestCase):
+    """`companion`: отчество; телефон — только специалисту этого чата (телефон клиента)."""
+
+    def setUp(self):
+        super().setUp()
+        User.objects.filter(pk=self.client_user.pk).update(
+            first_name="Иван", last_name="Иванов", middle_name="Иванович", phone_number="+996700111222"
+        )
+        User.objects.filter(pk=self.specialist.pk).update(
+            first_name="Анна", last_name="Петрова", middle_name="Сергеевна", phone_number="+996700333444"
+        )
+
+    def companion(self, user, retrieve=False):
+        self.auth(user)
+        url = f"/api/chats/{self.chat.channel_id}/" if retrieve else "/api/chats/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        return (body if retrieve else body[0])["companion"]
+
+    def test_specialist_sees_client_middle_name_and_phone(self):
+        for retrieve in (False, True):
+            companion = self.companion(self.specialist, retrieve)
+            self.assertEqual(companion["id"], self.client_user.id)
+            self.assertEqual(companion["firstName"], "Иван")
+            self.assertEqual(companion["middleName"], "Иванович")
+            self.assertEqual(companion["phoneNumber"], "+996700111222")
+            self.assertIn("photo", companion)
+
+    def test_client_sees_specialist_middle_name_but_not_phone(self):
+        for retrieve in (False, True):
+            companion = self.companion(self.client_user, retrieve)
+            self.assertEqual(companion["id"], self.specialist.id)
+            self.assertEqual(companion["middleName"], "Сергеевна")
+            self.assertIsNone(companion["phoneNumber"])
+
+    def test_companion_without_phone(self):
+        User.objects.filter(pk=self.client_user.pk).update(phone_number=None, middle_name="")
+        companion = self.companion(self.specialist)
+        self.assertIsNone(companion["phoneNumber"])
+        self.assertEqual(companion["middleName"], "")
