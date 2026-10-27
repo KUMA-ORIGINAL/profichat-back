@@ -31,7 +31,7 @@ from ..serializers import (
 )
 from ..services import (
     build_chat_list_item,
-    companion_online_ids,
+    apply_companion_presence,
     chat_list_queryset,
     create_or_get_chat,
     get_should_reply_map,
@@ -113,10 +113,11 @@ class ChatViewSet(
     def list(self, request, *args, **kwargs):
         chats = list(self.get_queryset())
         should_reply_map = get_should_reply_map(chats, request.user)
-        online_ids = companion_online_ids(chats, request.user)
-        items = [build_chat_list_item(chat, request.user, should_reply_map, online_ids) for chat in chats]
+        items = [build_chat_list_item(chat, request.user, should_reply_map, include_presence=True) for chat in chats]
 
         page = self.paginate_queryset(items)
+        # «в сети» — только для отдаваемых чатов (страница, если есть пагинация)
+        apply_companion_presence(page if page is not None else items, request.user)
         if page is not None:
             serializer = ChatListSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
@@ -129,8 +130,9 @@ class ChatViewSet(
         chat = ensure_member(request.user, pk)
         chat = chat_list_queryset(Chat.objects.filter(pk=chat.pk), request.user).get()
         item = build_chat_list_item(
-            chat, request.user, get_should_reply_map([chat], request.user), companion_online_ids([chat], request.user)
+            chat, request.user, get_should_reply_map([chat], request.user), include_presence=True
         )
+        apply_companion_presence([item], request.user)
         return Response(ChatListSerializer(item).data)
 
     def perform_create(self, serializer):

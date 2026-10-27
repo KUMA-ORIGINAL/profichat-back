@@ -7,6 +7,7 @@
 import logging
 from collections.abc import Iterable
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
@@ -18,6 +19,10 @@ from messenger.services.events import personal_channel
 logger = logging.getLogger(__name__)
 
 TOUCH_INTERVAL = 60  # секунд: не чаще одной записи в минуту на пользователя
+# После ошибки Centrifugo presence не запрашивается DOWN_TTL секунд: сбой не добавляет
+# таймаут к каждому запросу списка чатов
+DOWN_KEY = "messenger:presence:down"
+DOWN_TTL = 30
 
 
 def throttle_key(user_id) -> str:
@@ -47,15 +52,25 @@ def online_user_ids(user_ids: Iterable[int]) -> set[int]:
     """
     Кто из пользователей сейчас подключён к Centrifugo (есть в presence `personal:<id>`).
 
-    Один batch-запрос на всех; при любой ошибке — все «не в сети» (warning в лог).
+    Один batch-запрос на всех; при любой ошибке — все «не в сети» (warning в лог) и DOWN_TTL секунд
+    без запросов. Centrifugo не настроен (CENTRIFUGO_API_URL пуст) — сразу пустое множество, без лога.
     """
     ids = sorted(set(user_ids))
-    if not ids:
+    if not ids or not settings.CENTRIFUGO_API_URL:
         return set()
+    try:
+        if cache.get(DOWN_KEY):
+            return set()
+    except Exception:
+        logger.warning("Presence down-flag check failed", exc_info=True)
     channels = {personal_channel(user_id): user_id for user_id in ids}
     try:
         stats = centrifugo.presence_stats_batch(list(channels))
     except Exception:
         logger.warning("Centrifugo presence_stats batch failed for %s users", len(ids), exc_info=True)
+        try:
+            cache.set(DOWN_KEY, 1, timeout=DOWN_TTL)
+        except Exception:
+            logger.warning("Failed to set presence down flag", exc_info=True)
         return set()
     return {user_id for channel, user_id in channels.items() if (stats.get(channel) or 0) > 0}

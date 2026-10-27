@@ -10,6 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from account.models import ROLE_SPECIALIST
+from chat_access.models import BlockedChat
 from chat_access.services.chat_commands import create_or_get_chat
 from messenger.clients import centrifugo
 from messenger.clients.centrifugo import CentrifugoError
@@ -78,6 +79,7 @@ class PresenceStatsBatchClientTests(MessengerTestCase):
             REAL_PRESENCE_STATS_BATCH(["personal:1"])
 
 
+@override_settings(CENTRIFUGO_API_URL=API_URL)
 class OnlineUserIdsTests(MessengerTestCase):
     def test_maps_personal_channels_to_online_users(self):
         self.presence_mock.return_value = {"personal:1": 1, "personal:2": 0, "personal:3": None}
@@ -89,6 +91,26 @@ class OnlineUserIdsTests(MessengerTestCase):
         self.presence_mock.side_effect = CentrifugoError("down")
         with self.assertLogs("messenger.services.presence", level="WARNING"):
             self.assertEqual(presence.online_user_ids([1, 2]), set())
+
+    def test_failure_trips_presence_down_flag_for_a_while(self):
+        self.presence_mock.side_effect = CentrifugoError("down")
+        with self.assertLogs("messenger.services.presence", level="WARNING"):
+            presence.online_user_ids([1])
+        self.presence_mock.reset_mock(side_effect=True)
+        self.presence_mock.return_value = {"personal:1": 1}
+        # флаг «presence недоступен» в кэше: следующие вызовы не ходят в Centrifugo
+        self.assertEqual(presence.online_user_ids([1]), set())
+        self.presence_mock.assert_not_called()
+        self.assertLessEqual(presence.DOWN_TTL, 60)
+
+        cache.delete(presence.DOWN_KEY)
+        self.assertEqual(presence.online_user_ids([1]), {1})
+
+    @override_settings(CENTRIFUGO_API_URL="")
+    def test_not_configured_short_circuits_without_warning(self):
+        with self.assertNoLogs("messenger.services.presence", level="WARNING"):
+            self.assertEqual(presence.online_user_ids([1, 2]), set())
+        self.presence_mock.assert_not_called()
 
     def test_no_users_no_call(self):
         self.assertEqual(presence.online_user_ids([]), set())
@@ -163,6 +185,7 @@ class TouchTests(MessengerTestCase):
         self.assertIsNotNone(self.last_active(self.client_user))
 
 
+@override_settings(CENTRIFUGO_API_URL=API_URL)
 class ChatListPresenceTests(MessengerTestCase):
     def setUp(self):
         super().setUp()
@@ -222,6 +245,45 @@ class ChatListPresenceTests(MessengerTestCase):
         self.assertEqual(count(), baseline)
 
     def test_chat_updated_does_not_query_presence(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            events.publish_chat_updated(self.chat)
+        UserPresence.objects.create(user=self.specialist, last_active_at=timezone.now())
+        with CaptureQueriesContext(connection) as ctx:
+            with self.captureOnCommitCallbacks(execute=True):
+                events.publish_chat_updated(self.chat)
         self.presence_mock.assert_not_called()
+        self.assertFalse([q for q in ctx.captured_queries if "messenger_userpresence" in q["sql"]])
+
+    def test_presence_only_for_first_chats_of_list(self):
+        UserPresence.objects.create(user=self.sp2, last_active_at=timezone.now())
+        self.presence_mock.return_value = {f"personal:{self.specialist.pk}": 1, f"personal:{self.sp2.pk}": 1}
+        # порядок списка: chat2 (новее) первым
+        with patch("chat_access.services.chat_list.PRESENCE_LIST_LIMIT", 1):
+            items = self.get_list(self.client_user)
+        self.presence_mock.assert_called_once_with([f"personal:{self.sp2.pk}"])
+        self.assertTrue(items[self.chat2.channel_id]["companion"]["isOnline"])
+        self.assertFalse(items[self.chat.channel_id]["companion"]["isOnline"])
+        # lastActiveAt — для всех (из той же выборки, без Centrifugo)
+        self.assertIsNotNone(items[self.chat2.channel_id]["companion"]["lastActiveAt"])
+
+    def test_blocked_client_does_not_see_specialist_presence(self):
+        BlockedChat.objects.create(user=self.specialist, chat=self.chat)
+        UserPresence.objects.create(user=self.specialist, last_active_at=timezone.now())
+        UserPresence.objects.create(user=self.client_user, last_active_at=timezone.now())
+        self.presence_mock.return_value = {
+            f"personal:{self.specialist.pk}": 1, f"personal:{self.sp2.pk}": 1, f"personal:{self.client_user.pk}": 1,
+        }
+        items = self.get_list(self.client_user)
+        hidden = items[self.chat.channel_id]["companion"]
+        self.assertFalse(hidden["isOnline"])
+        self.assertIsNone(hidden["lastActiveAt"])
+        self.assertNotIn(f"personal:{self.specialist.pk}", self.presence_mock.call_args.args[0])
+        self.assertTrue(items[self.chat2.channel_id]["companion"]["isOnline"])
+        # retrieve — так же
+        self.auth(self.client_user)
+        companion = self.client.get(f"/api/chats/{self.chat.channel_id}/").json()["companion"]
+        self.assertFalse(companion["isOnline"])
+        self.assertIsNone(companion["lastActiveAt"])
+        # специалист, внёсший чат в ЧС, статус клиента видит
+        self.presence_mock.reset_mock()
+        [item] = self.get_list(self.specialist).values()
+        self.assertTrue(item["companion"]["isOnline"])
+        self.assertIsNotNone(item["companion"]["lastActiveAt"])

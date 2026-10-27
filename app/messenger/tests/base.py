@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -50,6 +51,11 @@ class MessengerTestCase(APITestCase):
         presence_patcher = patch("messenger.clients.centrifugo.presence_stats_batch", return_value={})
         self.presence_mock = presence_patcher.start()
         self.addCleanup(presence_patcher.stop)
+        # флаг «presence недоступен» живёт в общем Redis — не тянуть его между тестами
+        from messenger.services import presence
+
+        cache.delete(presence.DOWN_KEY)
+        self.addCleanup(cache.delete, presence.DOWN_KEY)
 
         self.client_user = User.objects.create_user(
             username="client_1", password="pass", role=ROLE_CLIENT,

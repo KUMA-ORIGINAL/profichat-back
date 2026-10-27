@@ -29,15 +29,26 @@ def get_companion(chat, user):
     return None
 
 
-def get_companion_id(chat, user):
-    return chat.specialist_id if chat.client_id == user.id else chat.client_id
+# `isOnline` считается только для первых чатов ответа (в порядке списка): один batch к Centrifugo
+# не должен расти с числом чатов у специалиста. Остальным — false до открытия чата.
+PRESENCE_LIST_LIMIT = 200
 
 
-def companion_online_ids(chats, user):
-    """Кто из собеседников `chats` в сети — один batch-запрос к Centrifugo (ошибка → никто)."""
-    from messenger.services import presence
+def _blocks(chat):
+    prefetched = getattr(chat, "prefetched_blocks", None)
+    if prefetched is not None:
+        return prefetched
+    return list(chat.blocked_entries.all())
 
-    return presence.online_user_ids(get_companion_id(chat, user) for chat in chats)
+
+def is_blocked_by(chat, user_id) -> bool:
+    """Внёс ли пользователь `user_id` этот чат в чёрный список."""
+    return any(block.user_id == user_id for block in _blocks(chat))
+
+
+def _presence_hidden(chat, user) -> bool:
+    """Клиент, которого специалист внёс в ЧС, не видит его «в сети» и последнюю активность."""
+    return chat.client_id == user.id and is_blocked_by(chat, chat.specialist_id)
 
 
 def _last_active_at(companion):
@@ -47,16 +58,19 @@ def _last_active_at(companion):
         return None
 
 
-def build_companion(chat, user, online_ids=None):
+def build_companion(chat, user, include_presence=False):
     """
     Собеседник для объекта чата. Телефон — только специалисту этого чата (телефон его клиента);
-    клиенту `phone_number` не отдаётся. `is_online` — по `online_ids` (`companion_online_ids`);
-    без него False (например, в `chat.updated`, где собеседник не нужен).
+    клиенту `phone_number` не отдаётся.
+
+    `include_presence=False` (chat.updated, invite_client) — без `last_active_at` и без запросов.
+    `is_online` здесь всегда False: его проставляет `apply_companion_presence` для отданных чатов.
     """
     companion = get_companion(chat, user)
     if companion is None:
         return None
     show_phone = chat.specialist_id == user.id and companion.phone_number
+    presence_visible = include_presence and not _presence_hidden(chat, user)
     return {
         "id": companion.id,
         "first_name": companion.first_name,
@@ -64,9 +78,27 @@ def build_companion(chat, user, online_ids=None):
         "middle_name": companion.middle_name,
         "photo": companion.photo,
         "phone_number": str(companion.phone_number) if show_phone else None,
-        "last_active_at": _last_active_at(companion),
-        "is_online": online_ids is not None and companion.id in online_ids,
+        "last_active_at": _last_active_at(companion) if presence_visible else None,
+        "is_online": False,
+        "_presence_visible": presence_visible,  # служебное: сериализатор его не отдаёт
     }
+
+
+def apply_companion_presence(items, user):
+    """
+    `companion.is_online` для отданных элементов списка (после пагинации): один batch-запрос к
+    Centrifugo на первые PRESENCE_LIST_LIMIT собеседников; ошибка/недоступность → все false.
+    """
+    from messenger.services import presence
+
+    companions = [
+        item["companion"] for item in items[:PRESENCE_LIST_LIMIT]
+        if item["companion"] and item["companion"].get("_presence_visible")
+    ]
+    online = presence.online_user_ids(companion["id"] for companion in companions)
+    for companion in companions:
+        companion["is_online"] = companion["id"] in online
+    return items
 
 
 def get_last_access_order(chat, user):
@@ -310,13 +342,14 @@ def chat_list_queryset(base_qs, user):
         ),
         Prefetch(
             "blocked_entries",
-            queryset=BlockedChat.objects.filter(user=user),
-            to_attr="prefetched_my_blocks",
+            # все ЧС чата (<= 2 строки): свой isBlocked и ЧС специалиста для скрытия presence
+            queryset=BlockedChat.objects.all(),
+            to_attr="prefetched_blocks",
         ),
     ).order_by(*chat_list_ordering())
 
 
-def build_chat_list_item(chat, user, should_reply_map=None, online_ids=None):
+def build_chat_list_item(chat, user, should_reply_map=None, include_presence=False):
     invite_delivery = get_latest_invite_delivery(chat, user)
     invite_delivery_payload = None
     if invite_delivery:
@@ -338,7 +371,7 @@ def build_chat_list_item(chat, user, should_reply_map=None, online_ids=None):
 
     return {
         "id": chat.id,
-        "companion": build_companion(chat, user, online_ids),
+        "companion": build_companion(chat, user, include_presence),
         "channel_id": chat.channel_id,
         "created_at": chat.created_at,
         "user_role": get_user_role(chat, user),
@@ -357,7 +390,7 @@ def build_chat_list_item(chat, user, should_reply_map=None, online_ids=None):
         "companion_last_read_message_id": companion_member.last_read_message_id if companion_member else None,
         "pinned_at": member.pinned_at if member else None,
         "is_favorite": _is_marked(chat, user, "prefetched_my_favorites", "favorites"),
-        "is_blocked": _is_marked(chat, user, "prefetched_my_blocks", "blocked_entries"),
+        "is_blocked": is_blocked_by(chat, user.id),
         "client_can_send_voice": chat.client_can_send_voice,
         "tariff": get_tariff(chat),
     }
