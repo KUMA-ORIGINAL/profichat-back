@@ -1,6 +1,12 @@
 from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    PolymorphicProxySerializer,
+    extend_schema,
+    inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -100,7 +106,16 @@ class ChatMessagesView(APIView):
                 description="id сообщения: окно вокруг него (ответ — MessageHistoryAround)",
             ),
         ],
-        responses=HistoryResponseSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=PolymorphicProxySerializer(
+                    component_name="MessageHistoryOrAround",
+                    serializers=[HistoryResponseSerializer, HistoryAroundResponseSerializer],
+                    resource_type_field_name=None,
+                ),
+                description="Без around — MessageHistory; с around=<messageId> — MessageHistoryAround",
+            )
+        },
     )
     def get(self, request, channel_id):
         chat = access.ensure_member(request.user, channel_id)

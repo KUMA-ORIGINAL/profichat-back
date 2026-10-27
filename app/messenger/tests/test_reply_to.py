@@ -63,6 +63,13 @@ class ReplyToTests(AttachmentTestCase):
         self.assertIsNotNone(reply_to["deletedAt"])
         self.assertIsNone(reply_to["attachment"])
 
+    def test_deleted_reply_has_null_reply_to(self):
+        original = self.make_message(sender=self.specialist, text="Вопрос")
+        self.make_attachment(message=original, position=0, status="ready")
+        self.make_message(sender=self.client_user, text="Ответ", reply_to=original, deleted_at=timezone.now())
+        deleted = next(m for m in self.history() if m["deletedAt"] is not None)
+        self.assertIsNone(deleted["replyTo"])
+
     def test_send_reply_returns_rich_reply_to(self):
         original = self.make_message(sender=self.specialist, text="Вопрос")
         self.make_attachment(message=original, position=0, status="ready")

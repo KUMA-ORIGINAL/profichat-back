@@ -53,7 +53,7 @@ class MessageSerializer(serializers.ModelSerializer):
     """
     Сообщение в истории, событиях и списке чатов.
 
-    Удалённое сообщение отдаётся с пустым текстом и без вложений (мягкое удаление).
+    Удалённое сообщение отдаётся с пустым текстом, без вложений и с replyTo=null (мягкое удаление).
     `call` — звонок для `type=call` (иначе null); в выборках нужен select_related("call").
     """
 
@@ -89,7 +89,8 @@ class MessageSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(ReplyToSerializer(allow_null=True))
     def get_reply_to(self, obj):
-        if obj.reply_to_id is None or obj.reply_to is None:
+        # у удалённого сообщения нет содержимого, в том числе цитаты
+        if obj.deleted_at or obj.reply_to_id is None or obj.reply_to is None:
             return None
         return ReplyToSerializer(obj.reply_to).data
 
