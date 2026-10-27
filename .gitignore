@@ -183,3 +183,6 @@ dist-ssr
 *.sln
 *.sw?
 
+
+# локальный .env (например, COMPOSE_FILE=docker-compose.staging.yml в каталоге staging)
+/.env
