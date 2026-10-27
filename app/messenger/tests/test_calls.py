@@ -97,12 +97,15 @@ class DataPushTests(MessengerTestCase):
         self.assertIsNone(message.notification)
         self.assertEqual(message.data, {"type": "incoming_call", "callId": "abc", "n": "1"})
         self.assertEqual(message.android.priority, "high")
+        self.assertEqual(message.android.ttl, timedelta(seconds=45))
+        self.assertIsNone(message.android.notification)
+
+    def test_send_data_push_omits_none_values(self):
         # None не превращается в строку "None": ключ просто не отправляется
+        GCMDevice.objects.create(user=self.specialist, registration_id="fcm-1", active=True, cloud_message_type="FCM")
         with patch.object(GCMDevice, "send_message", return_value=MagicMock(success_count=1)) as send_message:
             send_data_push(self.specialist, {"type": "incoming_call", "callerPhoto": None}, ttl_seconds=45)
         self.assertEqual(send_message.call_args.args[0].data, {"type": "incoming_call"})
-        self.assertEqual(message.android.ttl, timedelta(seconds=45))
-        self.assertIsNone(message.android.notification)
 
 
 @override_settings(**LIVEKIT_SETTINGS)
