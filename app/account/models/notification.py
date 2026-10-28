@@ -14,6 +14,7 @@ class Notification(BaseModel):
     TYPE_PROFESSION_REQUEST_REJECTED = "profession_request_rejected"
     TYPE_ERKINAI = "erkinai"
     TYPE_MISSED_CALL = "missed_call"
+    TYPE_QUIET_HOURS_SUMMARY = "quiet_hours_summary"
 
     TYPE_CHOICES = (
         (TYPE_SYSTEM, "Системное"),
@@ -25,6 +26,7 @@ class Notification(BaseModel):
         (TYPE_PROFESSION_REQUEST_REJECTED, "Заявка на профессию отклонена"),
         (TYPE_ERKINAI, "Из ErkinAI"),
         (TYPE_MISSED_CALL, "Пропущенный звонок"),
+        (TYPE_QUIET_HOURS_SUMMARY, "Пропущенное в нерабочее время"),
     )
 
     # Откуда уведомление взялось. Приложению это нужно раньше типа:

@@ -1,11 +1,14 @@
-from datetime import timedelta
-from unittest.mock import patch
+import importlib
+from datetime import datetime, time, timedelta
+from unittest.mock import MagicMock, patch
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
+from push_notifications.models import GCMDevice
 from rest_framework.test import APITestCase
 
 from account.models import (
@@ -14,6 +17,7 @@ from account.models import (
     ApplicationEducation,
     NonWorkingDate,
     Notification,
+    PushDeviceStatus,
     ProfessionCategory,
     ProfessionRequest,
     UserEducation,
@@ -21,7 +25,10 @@ from account.models import (
     WorkExperience,
     WorkSchedule,
 )
+from account.models import QuietHoursState
 from account.serializers import WorkScheduleSerializer
+from account.services.quiet_hours import quiet_until, summary_text, sync_quiet_hours
+from chat_access.models import AccessOrder, Tariff
 from account.services.application_review import apply_approval_effects
 from account.services.profession_request import (
     ProfessionRequestAlreadyReviewed,
@@ -749,3 +756,351 @@ class NotifyUserServiceTests(APITestCase):
             {"k": "v", "source": "profichat", "type": Notification.TYPE_SYSTEM},
         )
         self.assertIsNotNone(notification.pushed_at)
+
+
+APNS_TOKEN = "a1b2c3d4" * 8
+FCM_TOKEN = "dw34677Az09nhcHaj6BA05:APA91bG2HtL49IPyTDZF0Ixkbq"
+
+
+class PushStatusApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="push_user", password="pass")
+        self.client.force_authenticate(user=self.user)
+        self.now = timezone.now()
+
+    def _device(self, token, active=True, success_at=None, failure_at=None, error_code=""):
+        device = GCMDevice.objects.create(user=self.user, registration_id=token, active=active)
+        if success_at or failure_at:
+            PushDeviceStatus.objects.create(
+                device=device,
+                last_success_at=success_at,
+                last_failure_at=failure_at,
+                last_error_code=error_code,
+            )
+        return device
+
+    def _status(self):
+        response = self.client.get(reverse("push-status"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.data
+
+    def test_dead_device_failure_does_not_hide_working_device(self):
+        self._device("working", success_at=self.now - timedelta(hours=1))
+        self._device("dead", active=False, failure_at=self.now, error_code="INVALID_ARGUMENT")
+
+        data = self._status()
+
+        self.assertEqual(data["reason"], "ok")
+        self.assertTrue(data["push_enabled"])
+        # Код старой ошибки остаётся справочным полем.
+        self.assertEqual(data["last_error_code"], "INVALID_ARGUMENT")
+
+    def test_fresh_devices_after_old_failure_are_not_an_error(self):
+        # Как у специалиста 65: давняя ошибка на погашенном токене и свежие
+        # токены, на которые ещё ничего не отправляли.
+        self._device("old", active=False, failure_at=self.now - timedelta(days=40),
+                     error_code="INVALID_ARGUMENT")
+        self._device("fresh-1")
+        self._device("fresh-2")
+
+        data = self._status()
+
+        self.assertEqual(data["reason"], "unknown")
+        self.assertEqual(data["active_devices"], 2)
+        self.assertEqual(data["total_devices"], 3)
+
+    def test_failure_on_one_active_device_does_not_hide_success_on_another(self):
+        self._device("phone", success_at=self.now - timedelta(hours=1))
+        self._device("tablet", failure_at=self.now, error_code="UNAVAILABLE")
+
+        self.assertEqual(self._status()["reason"], "ok")
+
+    def test_provider_error_when_every_active_device_failed(self):
+        self._device("phone", success_at=self.now - timedelta(days=1),
+                     failure_at=self.now, error_code="UNAVAILABLE")
+
+        data = self._status()
+
+        self.assertEqual(data["reason"], "provider_error")
+        self.assertEqual(data["action"], "retry_later")
+
+    def test_token_invalid_when_no_active_devices(self):
+        self._device("dead", active=False, failure_at=self.now, error_code="UNREGISTERED")
+
+        self.assertEqual(self._status()["reason"], "token_invalid")
+
+    def test_no_devices(self):
+        self.assertEqual(self._status()["reason"], "no_devices")
+
+
+class PushDeviceRegistrationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="push_owner", password="pass")
+        self.other_user = User.objects.create_user(username="push_prev", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    def test_register_fcm_ignores_apns_token(self):
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": APNS_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(GCMDevice.objects.filter(registration_id=APNS_TOKEN).exists())
+
+    def test_register_fcm_moves_token_to_current_user(self):
+        GCMDevice.objects.create(user=self.other_user, registration_id=FCM_TOKEN, active=False)
+
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        device = GCMDevice.objects.get(registration_id=FCM_TOKEN)
+        self.assertEqual(device.user, self.user)
+        self.assertTrue(device.active)
+
+    def test_device_gcm_ignores_apns_token(self):
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": APNS_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(GCMDevice.objects.filter(registration_id=APNS_TOKEN).exists())
+
+    def test_device_gcm_moves_token_to_current_user(self):
+        GCMDevice.objects.create(user=self.other_user, registration_id=FCM_TOKEN)
+
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+        self.assertEqual(GCMDevice.objects.get(registration_id=FCM_TOKEN).user, self.user)
+
+    def test_migration_deactivates_saved_apns_tokens(self):
+        apns_device = GCMDevice.objects.create(user=self.user, registration_id=APNS_TOKEN)
+        fcm_device = GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        migration = importlib.import_module("account.migrations.0057_deactivate_apns_tokens")
+
+        migration.deactivate_apns_tokens(django_apps, None)
+
+        apns_device.refresh_from_db()
+        fcm_device.refresh_from_db()
+        self.assertFalse(apns_device.active)
+        self.assertTrue(fcm_device.active)
+
+
+class PushDeviceDuplicatesTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="dup_owner", password="pass")
+        self.client.force_authenticate(user=self.user)
+
+    def _duplicates(self):
+        GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+
+    def test_register_fcm_survives_duplicate_rows(self):
+        # На проде здесь был 500: update_or_create → MultipleObjectsReturned.
+        self._duplicates()
+
+        response = self.client.post(
+            reverse("register-fcm"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+
+    def test_device_gcm_drops_duplicate_rows(self):
+        self._duplicates()
+
+        response = self.client.post(
+            reverse("gcmdevice-list"), data={"registrationId": FCM_TOKEN}, format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(GCMDevice.objects.filter(registration_id=FCM_TOKEN).count(), 1)
+
+    def test_migration_keeps_newest_row_per_token(self):
+        self._duplicates()
+        newest = GCMDevice.objects.create(user=self.user, registration_id=FCM_TOKEN)
+        single = GCMDevice.objects.create(user=self.user, registration_id="other-token")
+        migration = importlib.import_module("account.migrations.0058_drop_duplicate_devices")
+
+        migration.drop_duplicate_devices(django_apps, None)
+
+        self.assertEqual(
+            list(GCMDevice.objects.filter(registration_id=FCM_TOKEN).values_list("id", flat=True)),
+            [newest.id],
+        )
+        self.assertTrue(GCMDevice.objects.filter(id=single.id).exists())
+
+
+def _bishkek(year, month, day, hour, minute=0):
+    return timezone.make_aware(datetime(year, month, day, hour, minute))
+
+
+# 26.10.2026 — понедельник.
+MONDAY = (2026, 10, 26)
+
+
+class QuietHoursScheduleTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="quiet_specialist", password="pass", role=ROLE_SPECIALIST,
+        )
+
+    def _week(self, overrides=None):
+        """Пн–Пт 9–18, сб и вс выходные; overrides — {день недели: поля}."""
+        for day in range(1, 8):
+            fields = {"from_time": time(9), "to_time": time(18), "is_day_off": day >= 6}
+            fields.update((overrides or {}).get(day, {}))
+            WorkSchedule.objects.create(user=self.user, day_of_week=day, **fields)
+
+    def test_working_hours_are_not_quiet(self):
+        self._week()
+        self.assertIsNone(quiet_until(self.user, _bishkek(*MONDAY, 12)))
+
+    def test_lunch_is_working_time(self):
+        self._week({1: {"lunch_from_time": time(13), "lunch_to_time": time(14)}})
+        self.assertIsNone(quiet_until(self.user, _bishkek(*MONDAY, 13, 30)))
+
+    def test_evening_is_quiet_until_next_morning(self):
+        self._week()
+        self.assertEqual(quiet_until(self.user, _bishkek(*MONDAY, 20)), _bishkek(2026, 10, 27, 9))
+
+    def test_weekend_is_quiet_until_monday(self):
+        self._week()
+        self.assertEqual(quiet_until(self.user, _bishkek(2026, 10, 30, 19)), _bishkek(2026, 11, 2, 9))
+
+    def test_non_working_date_is_skipped(self):
+        self._week()
+        NonWorkingDate.objects.create(user=self.user, date=datetime(2026, 10, 27).date())
+        self.assertEqual(quiet_until(self.user, _bishkek(*MONDAY, 20)), _bishkek(2026, 10, 28, 9))
+
+    def test_overnight_shift_keeps_working_after_midnight(self):
+        self._week({1: {"from_time": time(22), "to_time": time(6)}})
+        self.assertIsNone(quiet_until(self.user, _bishkek(2026, 10, 27, 3)))
+
+    def test_round_the_clock_day_starts_at_midnight(self):
+        self._week({3: {"is_round_the_clock": True}})
+        self.assertEqual(quiet_until(self.user, _bishkek(2026, 10, 27, 20)), _bishkek(2026, 10, 28, 0))
+
+    def test_no_schedule_means_no_quiet(self):
+        self.assertIsNone(quiet_until(self.user, _bishkek(*MONDAY, 23)))
+
+
+@patch("account.services.quiet_hours.notify_user")
+@patch("account.services.quiet_hours.chat_client")
+class QuietHoursSyncTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="quiet_sync", password="pass", role=ROLE_SPECIALIST,
+        )
+        self.client_user = User.objects.create_user(username="quiet_client", password="pass")
+        for day in range(1, 8):
+            WorkSchedule.objects.create(
+                user=self.user, day_of_week=day, from_time=time(9), to_time=time(18),
+            )
+
+    def _preferences(self, stream):
+        return [call.kwargs["data"]["preferences"][0] for call in stream.post.call_args_list]
+
+    def test_evening_pauses_chat_pushes_until_next_shift(self, stream, notify):
+        sync_quiet_hours(self.user, _bishkek(*MONDAY, 20))
+        sync_quiet_hours(self.user, _bishkek(*MONDAY, 20, 5))
+
+        # Второй проход ничего не шлёт: конец тишины тот же.
+        self.assertEqual(
+            self._preferences(stream),
+            [{"user_id": str(self.user.id), "chat_level": "all", "disabled_until": "2026-10-27T03:00:00Z"}],
+        )
+        self.assertEqual(QuietHoursState.objects.get(user=self.user).quiet_since, _bishkek(*MONDAY, 20))
+        notify.assert_not_called()
+
+    def test_shift_start_resumes_pushes_and_sends_summary(self, stream, notify):
+        stream.unread_counts.return_value = {
+            "total_unread_count": 5,
+            "channels": [{"unread_count": 3}, {"unread_count": 2}, {"unread_count": 0}],
+        }
+        sync_quiet_hours(self.user, _bishkek(*MONDAY, 20))
+        tariff = Tariff.objects.create(name="Платный", price=100, specialist=self.user)
+        AccessOrder.objects.create(
+            tariff=tariff, client=self.client_user, specialist=self.user,
+            payment_status="success", activated_at=_bishkek(*MONDAY, 23),
+        )
+
+        sync_quiet_hours(self.user, _bishkek(2026, 10, 27, 9, 2))
+
+        self.assertEqual(self._preferences(stream)[-1], {"user_id": str(self.user.id), "remove_disable": True})
+        notify.assert_called_once()
+        self.assertEqual(notify.call_args.kwargs["title"], "Пока вас не было")
+        self.assertEqual(
+            notify.call_args.kwargs["message"],
+            "Оформлено тарифов: 1. Непрочитанных сообщений: 5 от 2 клиентов.",
+        )
+        self.assertEqual(notify.call_args.kwargs["notification_type"], Notification.TYPE_QUIET_HOURS_SUMMARY)
+        self.assertFalse(QuietHoursState.objects.filter(user=self.user).exists())
+
+    def test_nothing_missed_means_no_summary(self, stream, notify):
+        stream.unread_counts.return_value = {"total_unread_count": 0, "channels": []}
+        sync_quiet_hours(self.user, _bishkek(*MONDAY, 20))
+
+        sync_quiet_hours(self.user, _bishkek(2026, 10, 27, 9, 2))
+
+        notify.assert_not_called()
+        self.assertFalse(QuietHoursState.objects.filter(user=self.user).exists())
+
+    def test_notify_always_ends_quiet_without_summary(self, stream, notify):
+        sync_quiet_hours(self.user, _bishkek(*MONDAY, 20))
+        self.user.notify_outside_work_hours = True
+        self.user.save(update_fields=["notify_outside_work_hours"])
+
+        sync_quiet_hours(self.user, _bishkek(*MONDAY, 21))
+
+        self.assertEqual(self._preferences(stream)[-1], {"user_id": str(self.user.id), "remove_disable": True})
+        notify.assert_not_called()
+        self.assertFalse(QuietHoursState.objects.filter(user=self.user).exists())
+
+    def test_clients_are_never_quiet(self, stream, notify):
+        client = User.objects.create_user(username="quiet_plain_client", password="pass")
+
+        sync_quiet_hours(client, _bishkek(*MONDAY, 23))
+
+        stream.post.assert_not_called()
+
+
+class QuietHoursSummaryTextTests(APITestCase):
+    def test_texts(self):
+        self.assertIsNone(summary_text(0, 0, 0))
+        self.assertEqual(summary_text(0, 1, 1), "Непрочитанных сообщений: 1 от 1 клиента.")
+        self.assertEqual(summary_text(0, 30, 21), "Непрочитанных сообщений: 30 от 21 клиента.")
+        self.assertEqual(summary_text(0, 12, 11), "Непрочитанных сообщений: 12 от 11 клиентов.")
+        self.assertEqual(summary_text(2, 0, 0), "Оформлено тарифов: 2.")
+
+
+class NotifyOutsideWorkHoursApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="quiet_api", password="pass", role=ROLE_SPECIALIST,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    @patch("account.views.user.sync_quiet_hours")
+    def test_patch_saves_setting_and_syncs_right_away(self, sync):
+        response = self.client.patch(
+            reverse("update-notify-outside-work-hours"),
+            data={"notifyOutsideWorkHours": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.notify_outside_work_hours)
+        sync.assert_called_once_with(self.user)
+
+    def test_profile_exposes_setting(self):
+        response = self.client.get(reverse("user-me"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIs(response.data["notify_outside_work_hours"], False)

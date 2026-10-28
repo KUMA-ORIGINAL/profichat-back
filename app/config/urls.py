@@ -21,10 +21,13 @@ from django.urls import path, include
 
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from poll.views import page as corporate_page
+
 from . import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('corporate/', corporate_page, name='corporate_poll'),
 
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
@@ -36,6 +39,7 @@ urlpatterns = [
     path('api/', include('chat_access.urls')),
     path('api/', include('payouts.urls')),
     path('api/', include('messenger.urls')),
+    path('api/', include('poll.urls')),
     path('api/integration/', include('integrations.urls')),
 ]
 

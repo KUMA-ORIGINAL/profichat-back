@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'payouts',
     'integrations',
     'messenger',
+    'poll',
 ]
 
 MIDDLEWARE = [
@@ -340,6 +341,8 @@ REST_FRAMEWORK = {
     ),
     'EXCEPTION_HANDLER': 'common.error_handler.api_exception_handler',
     'DEFAULT_THROTTLE_RATES': {
+        'corporate_poll': '240/min',
+        'corporate_poll_read': '6000/min',
         # заявки на новую профессию — защита от спама в очередь модерации
         'profession_requests': env('PROFESSION_REQUESTS_THROTTLE_RATE', default='10/hour'),
     },

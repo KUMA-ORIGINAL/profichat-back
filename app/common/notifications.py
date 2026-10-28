@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import timedelta
 
 from django.utils import timezone
@@ -6,6 +7,15 @@ from firebase_admin import messaging
 from push_notifications.models import GCMDevice
 
 logger = logging.getLogger(__name__)
+
+# Сырой APNs-токен айфона — 32 байта в hex. Старые iOS-сборки слали его
+# в /api/device/gcm/ вместо FCM-токена; FCM такой не принимает (INVALID_ARGUMENT),
+# так что как устройство для пушей он бесполезен.
+APNS_TOKEN_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def looks_like_apns_token(registration_id):
+    return bool(APNS_TOKEN_RE.match(registration_id or ""))
 
 # firebase_admin отдаёт у этих ошибок обобщённые коды (NOT_FOUND, PERMISSION_DENIED),
 # по которым непонятно, что случилось, — приводим к кодам FCM.

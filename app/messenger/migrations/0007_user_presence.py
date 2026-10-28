@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('account', '0057_notification_missed_call'),
+        ('account', '0060_notification_missed_call'),
         ('messenger', '0006_message_text_trgm_index'),
     ]
 

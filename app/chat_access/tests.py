@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -9,7 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from account.models import ROLE_CLIENT, ROLE_SPECIALIST
-from account.models import InviteDelivery
+from account.models import InviteDelivery, WorkSchedule
 from chat_access.models import AccessOrder, BlockedChat, Chat, FavoriteChat, Tariff
 
 User = get_user_model()
@@ -835,3 +835,91 @@ class AccessOrderActivationTests(ChatBaseTestCase):
         self.assertIsNotNone(order.activated_at)
         self.assertIsNotNone(order.expires_at)
         self.assertEqual(order.expires_at - order.activated_at, timedelta(hours=2))
+
+
+def _bishkek(day, hour):
+    # 26.10.2026 — понедельник.
+    return timezone.make_aware(datetime(2026, 10, day, hour))
+
+
+class AccessOrderOffHoursTests(ChatBaseTestCase):
+    """Оплатили вне графика — срок тарифа идёт с начала следующей смены."""
+
+    def setUp(self):
+        super().setUp()
+        for day in range(1, 8):
+            WorkSchedule.objects.create(
+                user=self.specialist_user, day_of_week=day, from_time=time(9), to_time=time(18),
+            )
+        self.tariff = Tariff.objects.create(
+            name="Сутки", price=100, duration_hours=24, tariff_type="paid",
+            specialist=self.specialist_user,
+        )
+
+    def _activate_at(self, moment):
+        order = AccessOrder.objects.create(
+            client=self.client_user, specialist=self.specialist_user, chat=self.chat,
+            tariff=self.tariff, payment_status="pending",
+        )
+        with patch("django.utils.timezone.now", return_value=moment):
+            order.activate()
+        order.refresh_from_db()
+        return order
+
+    def test_paid_at_night_counts_from_next_shift(self):
+        order = self._activate_at(_bishkek(26, 23))
+
+        # Писать можно сразу, а сутки начинаются с 9 утра.
+        self.assertEqual(order.activated_at, _bishkek(26, 23))
+        self.assertEqual(order.expires_at, _bishkek(28, 9))
+
+    def test_paid_during_shift_counts_from_now(self):
+        order = self._activate_at(_bishkek(26, 12))
+
+        self.assertEqual(order.expires_at, _bishkek(27, 12))
+
+    @patch("chat_access.views.access_order.update_chat_data_from_order")
+    def test_free_order_response_says_when_specialist_answers(self, _update_chat):
+        free = Tariff.objects.create(
+            name="Пробный", price=0, duration_hours=2, tariff_type="free",
+            specialist=self.specialist_user,
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        with patch("django.utils.timezone.now", return_value=_bishkek(26, 23)):
+            response = self.client.post(
+                reverse("access-orders-list"),
+                data={
+                    "specialist": self.specialist_user.id,
+                    "tariff": free.id,
+                    "channelId": self.chat.channel_id,
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["available_from"], _bishkek(27, 9))
+        order = AccessOrder.objects.get(id=response.data["id"])
+        self.assertEqual(order.expires_at, _bishkek(27, 11))
+
+    @patch("chat_access.views.access_order.update_chat_data_from_order")
+    def test_free_order_during_shift_has_no_available_from(self, _update_chat):
+        free = Tariff.objects.create(
+            name="Пробный", price=0, duration_hours=2, tariff_type="free",
+            specialist=self.specialist_user,
+        )
+        self.client.force_authenticate(user=self.client_user)
+
+        with patch("django.utils.timezone.now", return_value=_bishkek(26, 12)):
+            response = self.client.post(
+                reverse("access-orders-list"),
+                data={
+                    "specialist": self.specialist_user.id,
+                    "tariff": free.id,
+                    "channelId": self.chat.channel_id,
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data["available_from"])
