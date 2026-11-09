@@ -7,7 +7,7 @@ from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
-from account.models import ROLE_CLIENT, ROLE_SPECIALIST
+from account.models import ROLE_CLIENT, ROLE_SPECIALIST, Application
 from chat_access.models import BlockedChat, FavoriteChat
 from chat_access.services.chat_commands import create_or_get_chat
 from messenger.models import ChatMember
@@ -84,6 +84,27 @@ class ChatListTests(MessengerTestCase):
         self.send(other_specialist, "newest", chat=older_chat)
         ids = [item["channelId"] for item in self.get_list(self.client_user)]
         self.assertEqual(ids, [older_chat.channel_id, self.chat.channel_id, empty_chat.channel_id])
+
+    def test_removed_specialist_sees_client_chats(self):
+        """Снятый специалист (роль specialist, заявка rejected) — клиент: и в приложении, и в списке."""
+        removed = User.objects.create_user(username="sp_removed", password="p", role=ROLE_SPECIALIST)
+        as_client = create_or_get_chat(removed, self.specialist)
+        as_specialist = create_or_get_chat(self.client_user, removed)
+        Application.objects.create(user=removed, first_name="A", last_name="B", status="accepted")
+        # заявки различаются по created_at — старую отодвигаем, чтобы порядок был однозначным
+        Application.objects.filter(user=removed).update(created_at=timezone.now() - timedelta(days=1))
+
+        ids = [item["channelId"] for item in self.get_list(removed)]
+        self.assertEqual(ids, [as_specialist.channel_id])
+
+        Application.objects.create(user=removed, first_name="A", last_name="B", status="rejected")
+        items = self.get_list(removed)
+        self.assertEqual([item["channelId"] for item in items], [as_client.channel_id])
+        self.assertEqual(items[0]["userRole"], "client")
+
+        # специалист без заявок (заведён вручную) — по-прежнему специалист
+        roles = {item["userRole"] for item in self.get_list(self.specialist)}
+        self.assertEqual(roles, {"specialist"})
 
     def test_chat_list_tariff_block(self):
         order = self.activate_tariff(hours=5)
