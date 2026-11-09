@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import F, OuterRef, Prefetch, Subquery
 from django.utils import timezone
 
-from account.models import ROLE_CLIENT, ROLE_SPECIALIST, InviteDelivery
+from account.models import ROLE_CLIENT, ROLE_SPECIALIST, Application, InviteDelivery
 from chat_access.models import AccessOrder, BlockedChat, Chat, FavoriteChat
 from common.stream_client import chat_client
 from messenger.models import ChatMember, Message
@@ -13,14 +13,29 @@ from messenger.models import ChatMember, Message
 logger = logging.getLogger(__name__)
 
 
+def acts_as_specialist(user) -> bool:
+    """
+    Пользователь работает как специалист: роль specialist и последняя заявка принята (или заявок
+    нет). То же правило, что у приложения (`UserModel.isActiveSpecialist`): снятого специалиста
+    оставляют с ролью specialist, переводя заявку в rejected, — интерфейс у него клиентский.
+    """
+    if user.role != ROLE_SPECIALIST:
+        return False
+    last_status = (
+        Application.objects.filter(user=user).order_by("-created_at").values_list("status", flat=True).first()
+    )
+    return last_status in (None, "", "accepted")
+
+
 def visible_chats(user):
     """
     Чаты списка пользователя (до фильтров и подгрузки): специалисту — где он специалист, клиенту —
     где он клиент, без скрытых этой стороной (soft-delete). Это же правило — у поиска сообщений.
+    Снятый специалист (`acts_as_specialist` — нет) видит чаты, где он клиент, как в приложении.
     """
-    if user.role == ROLE_SPECIALIST:
+    if acts_as_specialist(user):
         return Chat.objects.filter(specialist=user, deleted_by_specialist_at__isnull=True)
-    if user.role == ROLE_CLIENT:
+    if user.role in (ROLE_CLIENT, ROLE_SPECIALIST):
         return Chat.objects.filter(client=user, deleted_by_client_at__isnull=True)
     return Chat.objects.none()
 
