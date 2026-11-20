@@ -1,6 +1,8 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
+from django.core.cache import cache
+
 from chat_access.models import Chat
 from common.stream_client import chat_client
 
@@ -109,6 +111,52 @@ DEFAULT_TEXTS = {
 }
 
 COOLDOWN_SECONDS = 600
+
+# После переключения на свой мессенджер (18.11.2026) в GetStream пишут только старые версии приложения.
+OUTDATED_APP_CUSTOM_TYPE = "appOutdated"
+OUTDATED_APP_TEXT = (
+    "Ваша версия Profigram устарела, собеседник может не получить сообщения из неё. "
+    "Обновите приложение по ссылке:\n"
+    "App Store (iPhone): https://apps.apple.com/app/id6748228988\n"
+    "Google Play (Android): https://play.google.com/store/apps/details?id=site.profigram.app2"
+)
+# юзер «Profigram Support» в Stream (заведён 18.11.2026 для рассылок об обновлении)
+SUPPORT_STREAM_USER_ID = "999999"
+# рассылки поддержки и системные отправители — им не отвечаем
+NOT_OLD_APP_STREAM_USERS = {"", "system", SUPPORT_STREAM_USER_ID}
+
+
+def is_old_app_message_event(event: dict) -> bool:
+    """`message.new` вебхука GetStream от живого пользователя — значит, он пишет из старой версии."""
+    message = event.get("message") or {}
+    user_id = str((message.get("user") or {}).get("id") or "")
+    return (
+        event.get("type") == "message.new"
+        and message.get("type", "regular") in ("regular", "reply")
+        and user_id not in NOT_OLD_APP_STREAM_USERS
+    )
+
+
+def send_outdated_app_notice(channel_type: str, channel_id: str) -> bool:
+    """«Обновите приложение» со ссылками в канал Stream; не чаще раза в COOLDOWN_SECONDS на канал."""
+    # cache.add атомарен: на пачку сообщений подряд (и на повтор вебхука) — одно напоминание
+    if not cache.add(f"stream:outdated_app_notice:{channel_type}:{channel_id}", 1, COOLDOWN_SECONDS):
+        return False
+    try:
+        # обычное, а не type=system: системное старое приложение рисует простым Text, ссылки не нажать
+        chat_client.channel(channel_type, channel_id).send_message(
+            {"text": OUTDATED_APP_TEXT, "custom_type": OUTDATED_APP_CUSTOM_TYPE},
+            user_id=SUPPORT_STREAM_USER_ID,
+            # видно в открытом чате старой версии; обновившимся по живому Stream-токену пуш не нужен
+            skip_push=True,
+            # без карточек-превью сторов: две ссылки и так короче
+            skip_enrich_url=True,
+        )
+        logger.info("[Stream] Outdated app notice sent to %s:%s", channel_type, channel_id)
+        return True
+    except Exception:
+        logger.exception("[Stream] Failed to send outdated app notice to %s:%s", channel_type, channel_id)
+        return False
 
 
 def send_system_message_once(channel_id, custom_type: str, text: str = None):

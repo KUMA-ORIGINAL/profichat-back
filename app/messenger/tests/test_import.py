@@ -695,6 +695,14 @@ class ImportCompletenessTestCase(ImportTestCase):
         self.assertEqual(regular.sender_id, self.client_user.pk)
         self.assertEqual(stats.unknown_users, 1)  # только 999999 из фикстуры
 
+    def test_outdated_app_notice_not_imported(self):
+        self.add_message("msg-outdated", 1, text="Обновите приложение", user={"id": "999999"}, custom_type="appOutdated")
+
+        stats = self.run_import()
+
+        self.assertEqual(stats.errors, [])
+        self.assertFalse(Message.objects.filter(stream_id="msg-outdated").exists())
+
     def test_imported_custom_type_validated(self):
         self.add_message("msg-sys-bad", 1, text="x", isSystem=True, customType="x" * 100)
         self.add_message("msg-sys-int", 2, text="y", isSystem=True, customType=5)

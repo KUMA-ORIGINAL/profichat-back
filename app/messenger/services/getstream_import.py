@@ -31,7 +31,7 @@ from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from stream_chat.base.exceptions import StreamAPIException
 
-from account.services.stream import ALLOWED_TYPES
+from account.services.stream import ALLOWED_TYPES, OUTDATED_APP_CUSTOM_TYPE
 from chat_access.models import Chat
 from common import stream_client
 from messenger.clients import storage
@@ -401,6 +401,9 @@ class _ChannelImporter:
     def _map(self, raw) -> _MappedMessage | None:
         stream_type = raw.get("type") or "regular"
         if stream_type in SKIPPED_STREAM_TYPES:
+            return None
+        # «обновите приложение» адресовано только старым версиям — в новый мессенджер не переносим
+        if _extra_value(raw, "custom_type", "customType") == OUTDATED_APP_CUSTOM_TYPE:
             return None
 
         stream_user_id = str((raw.get("user") or {}).get("id") or raw.get("user_id") or "")
