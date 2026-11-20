@@ -923,3 +923,60 @@ class AccessOrderOffHoursTests(ChatBaseTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIsNone(response.data["available_from"])
+
+
+class StreamWebhookTests(APITestCase):
+    """Вебхук GetStream: на сообщение из старой версии — системное «обновите приложение», не чаще раза в 10 минут."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        patcher = patch("account.services.stream.chat_client")
+        self.stream = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.url = reverse("stream-webhook")
+
+    def post(self, user_id="65", message_type="regular", signature=None):
+        import hashlib
+        import hmac
+        import json
+
+        from django.conf import settings
+
+        body = json.dumps({
+            "type": "message.new",
+            "cid": "messaging:chat_1_65",
+            "channel_type": "messaging",
+            "channel_id": "chat_1_65",
+            "message": {"id": "m1", "type": message_type, "text": "привет", "user": {"id": user_id}},
+        }).encode()
+        if signature is None:
+            signature = hmac.new(settings.STREAM_API_SECRET.encode(), body, hashlib.sha256).hexdigest()
+        return self.client.post(self.url, body, content_type="application/json", HTTP_X_SIGNATURE=signature)
+
+    def sent(self):
+        return self.stream.channel.return_value.send_message.call_args_list
+
+    def test_old_app_message_gets_one_notice_per_cooldown(self):
+        self.assertEqual(self.post().status_code, status.HTTP_200_OK)
+        self.assertEqual(self.post().status_code, status.HTTP_200_OK)
+
+        self.stream.channel.assert_called_once_with("messaging", "chat_1_65")
+        self.assertEqual(len(self.sent()), 1)
+        message = self.sent()[0].args[0]
+        self.assertEqual(message["custom_type"], "appOutdated")
+        self.assertIn("https://apps.apple.com/app/id6748228988", message["text"])
+        self.assertIn("https://play.google.com/store/apps/details?id=site.profigram.app2", message["text"])
+        self.assertEqual(
+            self.sent()[0].kwargs, {"user_id": "999999", "skip_push": True, "skip_enrich_url": True}
+        )
+
+    def test_system_support_and_own_notices_ignored(self):
+        for user_id, message_type in (("system", "regular"), ("999999", "regular"), ("system", "system"), ("65", "system")):
+            self.assertEqual(self.post(user_id, message_type).status_code, status.HTTP_200_OK)
+        self.assertEqual(self.sent(), [])
+
+    def test_bad_signature_rejected(self):
+        self.assertEqual(self.post(signature="bad").status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(self.sent(), [])

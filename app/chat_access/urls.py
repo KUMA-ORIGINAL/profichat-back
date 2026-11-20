@@ -15,5 +15,6 @@ router.register(r'specialist/newcrm', views.SpecialistMamaDocViewSet, basename='
 
 
 urlpatterns = [
+    path('stream/webhook/', views.StreamWebhookView.as_view(), name='stream-webhook'),
     path('', include(router.urls)),
 ]
